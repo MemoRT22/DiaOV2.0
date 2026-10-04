@@ -1,5 +1,6 @@
 import { Loader2, X } from 'lucide-react';
-import { useEffect, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode } from 'react';
+import { useEffect, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes } from 'react';
+import { friendlyError } from '../lib/errors';
 
 type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger';
 
@@ -12,6 +13,12 @@ const VARIANTS: Record<ButtonVariant, string> = {
 
 export function buttonClasses(variant: ButtonVariant = 'primary', className = '') {
   return `inline-flex min-h-12 items-center justify-center gap-2 rounded-full px-6 text-sm font-semibold transition-all duration-200 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 ${VARIANTS[variant]} ${className}`;
+}
+
+// The virtual keyboard opens after focus; wait for the viewport to shrink before centering the field.
+function keepAboveKeyboard(el: HTMLElement) {
+  if (!window.matchMedia('(pointer: coarse)').matches) return;
+  setTimeout(() => el.scrollIntoView({ block: 'center', behavior: 'smooth' }), 300);
 }
 
 export function Button({
@@ -38,6 +45,7 @@ export function Field({
   label,
   hint,
   className = '',
+  onFocus,
   ...rest
 }: InputHTMLAttributes<HTMLInputElement> & { label: string; hint?: string }) {
   return (
@@ -45,8 +53,33 @@ export function Field({
       <span className="mb-2 block text-sm font-semibold text-ink">{label}</span>
       <input
         {...rest}
+        onFocus={(e) => {
+          keepAboveKeyboard(e.currentTarget);
+          onFocus?.(e);
+        }}
         className="h-12 w-full rounded-theme border border-line bg-surface-raised px-4 text-base text-ink placeholder:text-ink-muted/70 transition-colors focus:border-secondary-400 focus:outline-none focus:ring-2 focus:ring-secondary-500/30 disabled:opacity-60 [color-scheme:dark]"
       />
+      {hint && <span className="mt-1 block text-xs text-ink-muted">{hint}</span>}
+    </label>
+  );
+}
+
+export function SelectField({
+  label,
+  hint,
+  className = '',
+  children,
+  ...rest
+}: SelectHTMLAttributes<HTMLSelectElement> & { label: string; hint?: string }) {
+  return (
+    <label className={`block ${className}`}>
+      <span className="mb-2 block text-sm font-semibold text-ink">{label}</span>
+      <select
+        {...rest}
+        className="h-12 w-full rounded-theme border border-line bg-surface-raised px-4 text-base text-ink transition-colors focus:border-secondary-400 focus:outline-none focus:ring-2 focus:ring-secondary-500/30 disabled:opacity-60 [color-scheme:dark]"
+      >
+        {children}
+      </select>
       {hint && <span className="mt-1 block text-xs text-ink-muted">{hint}</span>}
     </label>
   );
@@ -84,6 +117,29 @@ export function Spinner({ label = 'Cargando' }: { label?: string }) {
     <div className="flex items-center justify-center gap-2 py-12 text-ink-muted" role="status">
       <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
       <span className="text-sm">{label}</span>
+    </div>
+  );
+}
+
+export function PageSkeleton({ blocks = 3 }: { blocks?: number }) {
+  return (
+    <div className="space-y-4" role="status" aria-label="Cargando">
+      <div className="h-7 w-2/3 animate-pulse rounded-theme bg-surface-raised" />
+      <div className="h-4 w-1/2 animate-pulse rounded-theme bg-surface-raised" />
+      {Array.from({ length: blocks }, (_, i) => (
+        <div key={i} className="h-28 animate-pulse rounded-theme border border-line bg-surface" />
+      ))}
+    </div>
+  );
+}
+
+export function LoadError({ error, onRetry }: { error: unknown; onRetry: () => void }) {
+  return (
+    <div className="space-y-4">
+      <Alert tone="error">{friendlyError(error)}</Alert>
+      <Button variant="secondary" className="w-full sm:w-auto" onClick={onRetry}>
+        Reintentar
+      </Button>
     </div>
   );
 }

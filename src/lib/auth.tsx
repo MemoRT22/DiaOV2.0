@@ -10,7 +10,12 @@ export type ParticipantProfile = {
   platform_consent_version: string | null;
 };
 
-export type StaffMember = { user_id: string; role: 'coordinacion' | 'staff'; full_name: string; is_active: boolean };
+export type StaffRole = 'coordinacion' | 'staff' | 'sorteo';
+export type StaffMember = { user_id: string; full_name: string; roles: StaffRole[] };
+
+export function hasRole(staff: StaffMember | null, ...roles: StaffRole[]) {
+  return !!staff && roles.some((r) => staff.roles.includes(r));
+}
 
 type AuthContextValue = {
   session: Session | null;
@@ -45,12 +50,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           .select('participant_id, display_name, high_school, platform_consent_at, platform_consent_version')
           .eq('auth_user_id', s.user.id)
           .maybeSingle(),
-        supabase.from('staff_members').select('user_id, role, full_name, is_active').eq('user_id', s.user.id).maybeSingle(),
+        supabase
+          .from('staff_members')
+          .select('user_id, full_name, is_active, staff_roles(role)')
+          .eq('user_id', s.user.id)
+          .maybeSingle(),
       ]);
       if (p.error) throw p.error;
       if (st.error) throw st.error;
       setProfile(p.data as ParticipantProfile | null);
-      setStaff(st.data && st.data.is_active ? (st.data as StaffMember) : null);
+      const roles = ((st.data?.staff_roles as { role: StaffRole }[] | null) ?? []).map((r) => r.role);
+      setStaff(
+        st.data && st.data.is_active && roles.length ? { user_id: st.data.user_id, full_name: st.data.full_name, roles } : null,
+      );
     } catch (cause) {
       console.error('identity load failed', cause);
       setProfile(null);

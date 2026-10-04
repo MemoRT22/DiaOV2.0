@@ -26,7 +26,7 @@ export default function AdminLogin() {
     }
   };
 
-  const wrongAccount = session && (profile || (staff && staff.role !== 'coordinacion') || !staff);
+  const wrongAccount = session && (profile || !staff);
 
   return (
     <div className="flex min-h-dvh items-center justify-center px-4 py-10">
@@ -35,17 +35,13 @@ export default function AdminLogin() {
           {theme.assets.logoMark && <img src={theme.assets.logoMark} alt="" className="h-10 w-10 object-contain" />}
           <div>
             <p className="font-display text-lg font-extrabold">{theme.meta.eventName}</p>
-            <p className="text-sm text-ink-muted">Panel de Coordinación</p>
+            <p className="text-sm text-ink-muted">Panel del personal</p>
           </div>
         </div>
 
         {wrongAccount ? (
           <div className="card space-y-4 p-6">
-            <Alert tone="warning">
-              {staff?.role === 'staff'
-                ? 'Tu cuenta de personal no tiene acceso al panel de Coordinación.'
-                : 'Esta sesión no corresponde a una cuenta de Coordinación.'}
-            </Alert>
+            <Alert tone="warning">Esta sesión no corresponde a una cuenta activa del personal.</Alert>
             <Button variant="secondary" className="w-full" onClick={signOut}>
               Cerrar sesión
             </Button>

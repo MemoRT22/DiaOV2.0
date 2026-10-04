@@ -6,9 +6,6 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 
-const MAX_FAILED = 5;
-const WINDOW_MINUTES = 15;
-
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
@@ -43,15 +40,9 @@ Deno.serve(async (req: Request) => {
     });
 
     const emailHash = await sha256(email);
-    const since = new Date(Date.now() - WINDOW_MINUTES * 60_000).toISOString();
-    const { count, error: countError } = await admin
-      .from("access_attempts")
-      .select("id", { count: "exact", head: true })
-      .eq("email_hash", emailHash)
-      .eq("succeeded", false)
-      .gte("created_at", since);
-    if (countError) throw countError;
-    if ((count ?? 0) >= MAX_FAILED) return json({ error: "TOO_MANY_ATTEMPTS" }, 429);
+    const { data: lock, error: lockError } = await admin.rpc("access_lock_state", { p_email: email });
+    if (lockError) throw lockError;
+    if (lock?.locked) return json({ error: "TOO_MANY_ATTEMPTS" }, 429);
 
     const { data: edition, error: edError } = await admin
       .from("editions").select("id").eq("is_active", true).maybeSingle();
@@ -66,7 +57,7 @@ Deno.serve(async (req: Request) => {
       .maybeSingle();
     if (pError) throw pError;
 
-    if (!participant || participant.birth_date !== birthDate) {
+    if (!participant || !participant.birth_date || participant.birth_date !== birthDate) {
       await admin.from("access_attempts").insert({ email_hash: emailHash, succeeded: false });
       return json({ error: "INVALID_CREDENTIALS" }, 401);
     }

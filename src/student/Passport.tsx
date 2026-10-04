@@ -2,10 +2,9 @@ import { Check, Compass, Lock, Sparkles, X } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ProgressRing, ThemedTitle } from '../components/themed';
-import { Alert, Button, buttonClasses, Spinner } from '../components/ui';
+import { buttonClasses, LoadError, PageSkeleton } from '../components/ui';
 import { useAuth } from '../lib/auth';
 import { fetchDivisions, fetchMyInterests, fetchProgress } from '../lib/catalog';
-import { friendlyError } from '../lib/errors';
 import { useLoad } from '../lib/useLoad';
 import { useTheme } from '../theme/ThemeProvider';
 
@@ -20,17 +19,8 @@ export default function Passport() {
   );
   const [dismissed, setDismissed] = useState(() => sessionStorage.getItem(DISMISS_KEY) === '1');
 
-  if (loading) return <Spinner />;
-  if (error || !data) {
-    return (
-      <div className="space-y-4">
-        <Alert tone="error">{friendlyError(error)}</Alert>
-        <Button variant="secondary" onClick={reload}>
-          Reintentar
-        </Button>
-      </div>
-    );
-  }
+  if (loading && !data) return <PageSkeleton />;
+  if (error || !data) return <LoadError error={error} onRetry={reload} />;
 
   const [progress, divisions, interests] = data;
   const visited = new Set(progress.division_ids);
@@ -83,7 +73,7 @@ export default function Passport() {
         <section className="card relative animate-fade-up overflow-hidden border-primary-500/50 bg-gradient-to-br from-primary-500/15 via-surface to-secondary-500/10 p-5">
           <button
             onClick={dismissPrompt}
-            className="absolute right-3 top-3 rounded-full p-1 text-ink-muted hover:text-ink"
+            className="absolute right-2 top-2 flex h-11 w-11 items-center justify-center rounded-full text-ink-muted hover:text-ink"
             aria-label="Ocultar recordatorio"
           >
             <X className="h-4 w-4" />
@@ -158,7 +148,7 @@ export default function Passport() {
 
       {finished && (
         <section className="card animate-fade-up p-6 text-center">
-          {theme.assets.mascot && <img src={theme.assets.mascot} alt="" className="mx-auto h-28 w-auto" />}
+          {theme.assets.mascot && <img src={theme.assets.mascot} alt="" loading="lazy" decoding="async" className="mx-auto h-28 w-auto" />}
           <h2 className="mt-3 text-lg font-extrabold">{text('closingTitle')}</h2>
           <p className="mt-1 text-sm text-ink-muted">{text('closingBody')}</p>
         </section>

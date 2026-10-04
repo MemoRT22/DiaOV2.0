@@ -1,6 +1,6 @@
 import { ArrowDown, ArrowUp, Check, Search, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, Button, Spinner } from '../components/ui';
+import { Alert, Button, LoadError, PageSkeleton } from '../components/ui';
 import { fetchCareers, fetchDivisions, fetchMyInterests, fetchProgress } from '../lib/catalog';
 import { friendlyError } from '../lib/errors';
 import { supabase } from '../lib/supabase';
@@ -43,17 +43,8 @@ export default function Interests() {
       .filter((g) => g.careers.length > 0);
   }, [careers, divisions, query]);
 
-  if (loading) return <Spinner />;
-  if (error || !data || !progress) {
-    return (
-      <div className="space-y-4">
-        <Alert tone="error">{friendlyError(error)}</Alert>
-        <Button variant="secondary" onClick={reload}>
-          Reintentar
-        </Button>
-      </div>
-    );
-  }
+  if (loading && !data) return <PageSkeleton />;
+  if (error || !data || !progress) return <LoadError error={error} onRetry={reload} />;
 
   const closed = !progress.interests_open;
   const dirty = selected.join() !== saved.join();
@@ -74,6 +65,7 @@ export default function Interests() {
   };
 
   const onSave = async () => {
+    if (saving) return;
     setSaving(true);
     setStatus(null);
     try {
@@ -109,17 +101,17 @@ export default function Interests() {
         ) : (
           <ol className="space-y-2">
             {selected.map((id, idx) => (
-              <li key={id} className="flex items-center gap-3 rounded-theme border border-line bg-surface-raised px-3 py-2">
+              <li key={id} className="flex items-center gap-2 rounded-theme border border-line bg-surface-raised py-1 pl-3 pr-1">
                 <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary-500 text-sm font-extrabold text-on-primary">
                   {idx + 1}
                 </span>
-                <span className="flex-1 text-sm font-semibold">{careerById.get(id)?.name ?? 'Carrera no disponible'}</span>
+                <span className="min-w-0 flex-1 text-sm font-semibold">{careerById.get(id)?.name ?? 'Carrera no disponible'}</span>
                 {!closed && (
-                  <div className="flex items-center">
+                <div className="flex shrink-0 items-center">
                     <button
                       onClick={() => move(idx, -1)}
                       disabled={idx === 0}
-                      className="rounded-full p-2 text-ink-muted hover:text-ink disabled:opacity-30"
+                      className="flex h-11 w-11 items-center justify-center rounded-full text-ink-muted hover:text-ink disabled:opacity-30"
                       aria-label="Subir"
                     >
                       <ArrowUp className="h-4 w-4" />
@@ -127,12 +119,16 @@ export default function Interests() {
                     <button
                       onClick={() => move(idx, 1)}
                       disabled={idx === selected.length - 1}
-                      className="rounded-full p-2 text-ink-muted hover:text-ink disabled:opacity-30"
+                      className="flex h-11 w-11 items-center justify-center rounded-full text-ink-muted hover:text-ink disabled:opacity-30"
                       aria-label="Bajar"
                     >
                       <ArrowDown className="h-4 w-4" />
                     </button>
-                    <button onClick={() => toggle(id)} className="rounded-full p-2 text-ink-muted hover:text-error-400" aria-label="Quitar">
+                    <button
+                      onClick={() => toggle(id)}
+                      className="flex h-11 w-11 items-center justify-center rounded-full text-ink-muted hover:text-error-400"
+                      aria-label="Quitar"
+                    >
                       <X className="h-4 w-4" />
                     </button>
                   </div>

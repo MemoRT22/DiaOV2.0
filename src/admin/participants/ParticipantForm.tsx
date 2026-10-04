@@ -1,0 +1,116 @@
+import { useState, type FormEvent } from 'react';
+import { Alert, Button, Field, Modal, SelectField } from '../../components/ui';
+import { rpc } from '../../lib/adminApi';
+import type { Career } from '../../lib/catalog';
+import { friendlyError } from '../../lib/errors';
+import { useTheme } from '../../theme/ThemeProvider';
+
+export type ParticipantValues = {
+  email: string;
+  full_name: string;
+  birth_date: string;
+  phone: string;
+  high_school: string;
+  initial_career_id: string;
+};
+
+export const EMPTY_VALUES: ParticipantValues = { email: '', full_name: '', birth_date: '', phone: '', high_school: '', initial_career_id: '' };
+
+type Props = {
+  participantId?: string;
+  initial: ParticipantValues;
+  careers: Career[];
+  onClose: () => void;
+  onSaved: (id: string) => void;
+};
+
+export default function ParticipantForm({ participantId, initial, careers, onClose, onSaved }: Props) {
+  const { edition } = useTheme();
+  const editing = !!participantId;
+  const [values, setValues] = useState(initial);
+  const [consent, setConsent] = useState(false);
+  const [isDemo, setIsDemo] = useState(false);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const set = (key: keyof ParticipantValues) => (e: { target: { value: string } }) => setValues((v) => ({ ...v, [key]: e.target.value }));
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    setError('');
+    try {
+      if (editing) {
+        const changed = Object.fromEntries(
+          (Object.keys(values) as (keyof ParticipantValues)[]).filter((k) => values[k] !== initial[k]).map((k) => [k, values[k]]),
+        );
+        if (Object.keys(changed).length) await rpc('update_participant', { p_id: participantId, p: changed });
+        onSaved(participantId);
+      } else {
+        const id = await rpc<string>('create_participant_manual', { p: { ...values, consent_confirmed: consent, is_demo: isDemo } });
+        if (typeof id !== 'string') throw new Error('SERVER_ERROR');
+        onSaved(id);
+      }
+    } catch (cause) {
+      setError(friendlyError(cause));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const active = careers.filter((c) => c.is_active || c.id === initial.initial_career_id);
+
+  return (
+    <Modal title={editing ? 'Corregir datos' : 'Dar de alta a un aspirante'} onClose={onClose}>
+      <form onSubmit={submit} className="space-y-4">
+        {editing && (
+          <Alert tone="info">Los campos que cambies quedan marcados como corrección manual. Una importación posterior no los reemplazará.</Alert>
+        )}
+        <Field label="Correo" type="email" required value={values.email} onChange={set('email')} autoComplete="off" />
+        <Field label="Nombre completo" required minLength={3} value={values.full_name} onChange={set('full_name')} autoComplete="off" />
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field
+            label="Fecha de nacimiento"
+            type="date"
+            value={values.birth_date}
+            onChange={set('birth_date')}
+            hint="Es necesaria para que el aspirante pueda entrar."
+          />
+          <Field label="Teléfono" type="tel" inputMode="tel" value={values.phone} onChange={set('phone')} autoComplete="off" />
+        </div>
+        <Field label="Preparatoria" value={values.high_school} onChange={set('high_school')} autoComplete="off" />
+        <SelectField label="Carrera de interés inicial" value={values.initial_career_id} onChange={set('initial_career_id')}>
+          <option value="">Sin carrera</option>
+          {active.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </SelectField>
+        {!editing && (
+          <div className="space-y-3 rounded-theme border border-line p-4">
+            <label className="flex items-start gap-3 text-sm">
+              <input type="checkbox" className="mt-0.5 h-4 w-4 accent-primary-500" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
+              <span>El aspirante leyó y aceptó el aviso de privacidad (versión {edition?.privacy_notice_version ?? 'vigente'}).</span>
+            </label>
+            {edition?.mode === 'preparacion' && (
+              <label className="flex items-center gap-3 text-sm text-ink-muted">
+                <input type="checkbox" className="h-4 w-4 accent-primary-500" checked={isDemo} onChange={(e) => setIsDemo(e.target.checked)} />
+                Es un registro de prueba
+              </label>
+            )}
+          </div>
+        )}
+        {error && <Alert tone="error">{error}</Alert>}
+        <div className="flex flex-wrap justify-end gap-3 pt-2">
+          <Button type="button" variant="ghost" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button type="submit" loading={busy} disabled={!editing && !consent}>
+            {editing ? 'Guardar cambios' : 'Dar de alta'}
+          </Button>
+        </div>
+      </form>
+    </Modal>
+  );
+}

@@ -1,18 +1,61 @@
-import { History, KeyRound, LayoutDashboard, LogOut, Medal, Menu, Palette, Power, X } from 'lucide-react';
-import { useState } from 'react';
+import {
+  BookOpen,
+  FileSpreadsheet,
+  GitMerge,
+  History,
+  KeyRound,
+  LayoutDashboard,
+  LifeBuoy,
+  LogOut,
+  Medal,
+  Menu,
+  Palette,
+  Power,
+  Upload,
+  Users,
+  UsersRound,
+  X,
+  type LucideIcon,
+} from 'lucide-react';
+import { Suspense, useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
-import { Badge, Spinner } from '../components/ui';
-import { useAuth } from '../lib/auth';
+import { Badge, Button, Spinner } from '../components/ui';
+import { ROLE_LABELS } from '../lib/adminApi';
+import { hasRole, useAuth } from '../lib/auth';
 import { useTheme } from '../theme/ThemeProvider';
 import AdminLogin from './AdminLogin';
 
-const NAV = [
-  { to: '/coordinacion', label: 'Resumen', icon: LayoutDashboard, end: true },
-  { to: '/coordinacion/operacion', label: 'Operación y datos de prueba', icon: Power },
-  { to: '/coordinacion/tematica', label: 'Edición y temática', icon: Palette },
-  { to: '/coordinacion/rangos', label: 'Reglas de rangos', icon: Medal },
-  { to: '/coordinacion/auditoria', label: 'Auditoría', icon: History },
-  { to: '/coordinacion/cuenta', label: 'Mi cuenta', icon: KeyRound },
+type NavItem = { to: string; label: string; icon: LucideIcon; end?: boolean; coordOnly?: boolean };
+
+const NAV: { title: string; items: NavItem[] }[] = [
+  {
+    title: 'Atención',
+    items: [
+      { to: '/coordinacion', label: 'Resumen', icon: LayoutDashboard, end: true, coordOnly: true },
+      { to: '/coordinacion/participantes', label: 'Participantes', icon: Users },
+      { to: '/coordinacion/acceso', label: 'Ayuda de acceso', icon: LifeBuoy },
+    ],
+  },
+  {
+    title: 'Datos',
+    items: [
+      { to: '/coordinacion/importar', label: 'Importar participantes', icon: Upload, coordOnly: true },
+      { to: '/coordinacion/conflictos', label: 'Conflictos de importación', icon: GitMerge, coordOnly: true },
+      { to: '/coordinacion/catalogo', label: 'Catálogo', icon: BookOpen, coordOnly: true },
+      { to: '/coordinacion/exportacion', label: 'Exportación', icon: FileSpreadsheet, coordOnly: true },
+    ],
+  },
+  {
+    title: 'Configuración',
+    items: [
+      { to: '/coordinacion/personal', label: 'Personal', icon: UsersRound, coordOnly: true },
+      { to: '/coordinacion/tematica', label: 'Edición y temática', icon: Palette, coordOnly: true },
+      { to: '/coordinacion/rangos', label: 'Reglas de rangos', icon: Medal, coordOnly: true },
+      { to: '/coordinacion/operacion', label: 'Operación y datos de prueba', icon: Power, coordOnly: true },
+      { to: '/coordinacion/auditoria', label: 'Auditoría', icon: History, coordOnly: true },
+      { to: '/coordinacion/cuenta', label: 'Mi cuenta', icon: KeyRound },
+    ],
+  },
 ];
 
 export default function AdminLayout() {
@@ -21,13 +64,35 @@ export default function AdminLayout() {
   const [open, setOpen] = useState(false);
 
   if (!ready || loading) return <Spinner />;
-  if (!staff || staff.role !== 'coordinacion' || profile) return <AdminLogin />;
+  if (!staff || profile) return <AdminLogin />;
 
+  if (!hasRole(staff, 'coordinacion', 'staff')) {
+    return (
+      <div className="flex min-h-dvh items-center justify-center p-6">
+        <div className="card max-w-md space-y-4 p-8 text-center">
+          <h1 className="text-xl font-extrabold">Sin pantallas por ahora</h1>
+          <p className="text-sm text-ink-muted">
+            Tu cuenta tiene el rol de sorteo, que todavía no tiene funciones en el panel. Coordinación te avisará cuando esté disponible.
+          </p>
+          <Button variant="secondary" onClick={signOut}>
+            Cerrar sesión
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  const coord = hasRole(staff, 'coordinacion');
   const real = edition?.mode === 'operacion_real';
+  const roleLabel = staff.roles.map((r) => ROLE_LABELS[r]).join(' · ');
+  const sections = NAV.map((s) => ({ ...s, items: s.items.filter((i) => coord || !i.coordOnly) })).filter((s) => s.items.length);
 
   const nav = (
-    <nav className="space-y-1">
-      {NAV.map(({ to, label, icon: Icon, end }) => (
+    <nav className="space-y-5">
+      {sections.map((section) => (
+        <div key={section.title} className="space-y-1">
+          <p className="px-3 text-[11px] font-semibold uppercase tracking-wider text-ink-muted/70">{section.title}</p>
+          {section.items.map(({ to, label, icon: Icon, end }) => (
         <NavLink
           key={to}
           to={to}
@@ -42,6 +107,8 @@ export default function AdminLayout() {
           <Icon className="h-4 w-4" aria-hidden />
           {label}
         </NavLink>
+          ))}
+        </div>
       ))}
     </nav>
   );
@@ -49,7 +116,7 @@ export default function AdminLayout() {
   return (
     <div className="min-h-dvh lg:flex">
       <aside
-        className={`fixed inset-y-0 left-0 z-40 w-72 border-r border-line bg-surface p-4 transition-transform lg:static lg:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-40 w-72 overflow-y-auto border-r border-line bg-surface p-4 transition-transform lg:sticky lg:top-0 lg:h-dvh lg:translate-x-0 ${
           open ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
@@ -58,7 +125,7 @@ export default function AdminLayout() {
             {theme.assets.logoMark && <img src={theme.assets.logoMark} alt="" className="h-8 w-8 object-contain" />}
             <div>
               <p className="font-display text-sm font-extrabold">{edition?.name ?? theme.meta.eventName}</p>
-              <p className="text-xs text-ink-muted">Coordinación</p>
+              <p className="text-xs text-ink-muted">{roleLabel}</p>
             </div>
           </div>
           <button className="rounded-full p-1 text-ink-muted lg:hidden" onClick={() => setOpen(false)} aria-label="Cerrar menú">
@@ -84,10 +151,12 @@ export default function AdminLayout() {
           <button onClick={() => setOpen(true)} className="rounded-full p-2 text-ink" aria-label="Abrir menú">
             <Menu className="h-5 w-5" />
           </button>
-          <span className="text-sm font-semibold">Coordinación</span>
+          <span className="text-sm font-semibold">{roleLabel}</span>
         </header>
         <main className="mx-auto max-w-5xl p-4 sm:p-8">
-          <Outlet />
+          <Suspense fallback={<Spinner />}>
+            <Outlet />
+          </Suspense>
         </main>
       </div>
     </div>

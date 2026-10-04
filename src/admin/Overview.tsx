@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { Alert, Button, Spinner } from '../components/ui';
 import { formatDateTime, formatEventDate } from '../lib/catalog';
 import { friendlyError } from '../lib/errors';
@@ -16,6 +17,8 @@ type Summary = {
   attendances: number;
   with_interests: number;
   theme_locked: boolean;
+  missing_birth_date: number;
+  pending_conflicts: number;
 };
 
 export default function Overview() {
@@ -68,6 +71,20 @@ export default function Overview() {
         <Alert tone="success">
           Operación real activa desde {edition?.real_operation_at ? formatDateTime(edition.real_operation_at) : '—'}. La temática y la
           limpieza de datos de prueba están bloqueadas.
+        </Alert>
+      )}
+
+      {data.pending_conflicts > 0 && (
+        <Alert tone="warning">
+          Hay {data.pending_conflicts} conflicto(s) de importación por revisar.{' '}
+          <Link to="conflictos" className="font-semibold underline">
+            Resolver
+          </Link>
+        </Alert>
+      )}
+      {data.missing_birth_date > 0 && (
+        <Alert tone="warning">
+          {data.missing_birth_date} participante(s) no tienen fecha de nacimiento y no podrán entrar a la plataforma hasta que se corrija.
         </Alert>
       )}
 

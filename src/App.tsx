@@ -1,37 +1,70 @@
+import { lazy, Suspense } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
-import Account from './admin/Account';
-import AdminLayout from './admin/AdminLayout';
-import AuditLog from './admin/AuditLog';
-import Operation from './admin/Operation';
-import Overview from './admin/Overview';
-import RankRules from './admin/RankRules';
-import ThemeEditor from './admin/theme/ThemeEditor';
-import Interests from './student/Interests';
-import Missions from './student/Missions';
-import Passport from './student/Passport';
-import StudentLayout from './student/StudentLayout';
+import { Spinner } from './components/ui';
+import { hasRole, useAuth } from './lib/auth';
 import StudentLogin from './student/StudentLogin';
-import Welcome from './student/Welcome';
+
+const StudentLayout = lazy(() => import('./student/StudentLayout'));
+const Welcome = lazy(() => import('./student/Welcome'));
+const Passport = lazy(() => import('./student/Passport'));
+const Missions = lazy(() => import('./student/Missions'));
+const Interests = lazy(() => import('./student/Interests'));
+
+const AdminLayout = lazy(() => import('./admin/AdminLayout'));
+const CoordinationOnly = lazy(() => import('./admin/CoordinationOnly'));
+const Overview = lazy(() => import('./admin/Overview'));
+const Participants = lazy(() => import('./admin/participants/Participants'));
+const ParticipantDetail = lazy(() => import('./admin/participants/ParticipantDetail'));
+const AccessHelp = lazy(() => import('./admin/participants/AccessHelp'));
+const ParticipantImport = lazy(() => import('./admin/imports/ParticipantImport'));
+const Conflicts = lazy(() => import('./admin/imports/Conflicts'));
+const Catalog = lazy(() => import('./admin/catalog/Catalog'));
+const CatalogImport = lazy(() => import('./admin/catalog/CatalogImport'));
+const ExportPage = lazy(() => import('./admin/export/ExportPage'));
+const StaffAccounts = lazy(() => import('./admin/staff/StaffAccounts'));
+const Operation = lazy(() => import('./admin/Operation'));
+const ThemeEditor = lazy(() => import('./admin/theme/ThemeEditor'));
+const RankRules = lazy(() => import('./admin/RankRules'));
+const AuditLog = lazy(() => import('./admin/AuditLog'));
+const Account = lazy(() => import('./admin/Account'));
+
+function AdminHome() {
+  const { staff } = useAuth();
+  return hasRole(staff, 'coordinacion') ? <Overview /> : <Navigate to="participantes" replace />;
+}
 
 export default function App() {
   return (
-    <Routes>
-      <Route path="/" element={<StudentLogin />} />
-      <Route element={<StudentLayout />}>
-        <Route path="/bienvenida" element={<Welcome />} />
-        <Route path="/bitacora" element={<Passport />} />
-        <Route path="/misiones" element={<Missions />} />
-        <Route path="/destinos" element={<Interests />} />
-      </Route>
-      <Route path="/coordinacion" element={<AdminLayout />}>
-        <Route index element={<Overview />} />
-        <Route path="operacion" element={<Operation />} />
-        <Route path="tematica" element={<ThemeEditor />} />
-        <Route path="rangos" element={<RankRules />} />
-        <Route path="auditoria" element={<AuditLog />} />
-        <Route path="cuenta" element={<Account />} />
-      </Route>
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+    <Suspense fallback={<Spinner />}>
+      <Routes>
+        <Route path="/" element={<StudentLogin />} />
+        <Route element={<StudentLayout />}>
+          <Route path="/bienvenida" element={<Welcome />} />
+          <Route path="/bitacora" element={<Passport />} />
+          <Route path="/misiones" element={<Missions />} />
+          <Route path="/destinos" element={<Interests />} />
+        </Route>
+        <Route path="/coordinacion" element={<AdminLayout />}>
+          <Route index element={<AdminHome />} />
+          <Route path="participantes" element={<Participants />} />
+          <Route path="participantes/:id" element={<ParticipantDetail />} />
+          <Route path="acceso" element={<AccessHelp />} />
+          <Route path="cuenta" element={<Account />} />
+          <Route element={<CoordinationOnly />}>
+            <Route path="importar" element={<ParticipantImport />} />
+            <Route path="conflictos" element={<Conflicts />} />
+            <Route path="catalogo" element={<Catalog />} />
+            <Route path="catalogo/importar" element={<CatalogImport />} />
+            <Route path="exportacion" element={<ExportPage />} />
+            <Route path="personal" element={<StaffAccounts />} />
+            <Route path="operacion" element={<Operation />} />
+            <Route path="tematica" element={<ThemeEditor />} />
+            <Route path="rangos" element={<RankRules />} />
+            <Route path="auditoria" element={<AuditLog />} />
+          </Route>
+        </Route>
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </Suspense>
   );
 }

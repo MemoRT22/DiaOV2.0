@@ -1,8 +1,7 @@
 import { CheckCircle2, Clock, MapPin, Users } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import { Alert, Button, Spinner } from '../components/ui';
+import { Alert, LoadError, PageSkeleton } from '../components/ui';
 import { fetchActivities, fetchDivisions, fetchMyAttendedSessionIds, formatTime } from '../lib/catalog';
-import { friendlyError } from '../lib/errors';
 import { useLoad } from '../lib/useLoad';
 import { useTheme } from '../theme/ThemeProvider';
 
@@ -18,20 +17,11 @@ export default function Missions() {
   const divisionById = useMemo(() => new Map(divisions.map((d) => [d.id, d])), [divisions]);
   const visible = filter ? activities.filter((a) => a.division_id === filter) : activities;
 
-  if (loading) return <Spinner />;
-  if (error || !data) {
-    return (
-      <div className="space-y-4">
-        <Alert tone="error">{friendlyError(error)}</Alert>
-        <Button variant="secondary" onClick={reload}>
-          Reintentar
-        </Button>
-      </div>
-    );
-  }
+  if (loading && !data) return <PageSkeleton blocks={4} />;
+  if (error || !data) return <LoadError error={error} onRetry={reload} />;
 
   const chip = (active: boolean) =>
-    `shrink-0 rounded-full border px-4 py-2 text-xs font-semibold transition-colors ${
+    `min-h-11 shrink-0 rounded-full border px-4 text-sm font-semibold transition-colors ${
       active ? 'border-primary-500 bg-primary-500 text-on-primary' : 'border-line bg-surface text-ink-muted hover:text-ink'
     }`;
 
@@ -42,7 +32,7 @@ export default function Missions() {
         <p className="mt-1 text-sm text-ink-muted">{text('activitiesIntro')}</p>
       </header>
 
-      <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1" role="tablist" aria-label={term('division', true)}>
+      <div className="-mx-4 flex gap-2 overflow-x-auto overscroll-x-contain px-4 pb-1 [scrollbar-width:none]" role="tablist" aria-label={term('division', true)}>
         <button className={chip(filter === null)} onClick={() => setFilter(null)}>
           Todos
         </button>

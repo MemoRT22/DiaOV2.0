@@ -1,2 +1,5 @@
 [functions.student-access]
 verify_jwt = false
+
+[functions.staff-accounts]
+verify_jwt = true

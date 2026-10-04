@@ -89,3 +89,20 @@
     transition-duration: 0.001ms !important;
   }
 }
+
+/* Modest phones: drop continuous animations and blur, which are the costliest effects to paint. */
+.lite .starfield::before,
+.lite .starfield::after,
+.lite .animate-spin-slow {
+  animation: none !important;
+}
+.lite .starfield::after {
+  display: none;
+}
+.lite .glow-ring {
+  filter: none;
+}
+.lite [class*='backdrop-blur'] {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}

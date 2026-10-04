@@ -29,12 +29,10 @@ export async function fetchDivisions(): Promise<Division[]> {
   return data ?? [];
 }
 
-export async function fetchCareers(): Promise<Career[]> {
-  const { data, error } = await supabase
-    .from('careers')
-    .select('id, code, name, division_id, is_active, is_demo')
-    .eq('is_active', true)
-    .order('name');
+export async function fetchCareers(includeInactive = false): Promise<Career[]> {
+  let query = supabase.from('careers').select('id, code, name, division_id, is_active, is_demo');
+  if (!includeInactive) query = query.eq('is_active', true);
+  const { data, error } = await query.order('name');
   if (error) throw error;
   return data ?? [];
 }
@@ -82,6 +80,11 @@ export function formatEventDate(date: string) {
   return new Intl.DateTimeFormat('es-MX', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }).format(
     new Date(Date.UTC(y, m - 1, d)),
   );
+}
+
+// America/Cancun has a fixed UTC-5 offset (no daylight saving).
+export function eventTimestamp(date: string, time: string) {
+  return `${date}T${time}:00-05:00`;
 }
 
 export function formatDateTime(iso: string) {

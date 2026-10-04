@@ -1,4 +1,6 @@
+import { Link } from 'react-router-dom';
 import { Alert, Button, Spinner } from '../components/ui';
+import { FIELD_LABELS, ROLE_LABELS } from '../lib/adminApi';
 import { formatDateTime } from '../lib/catalog';
 import { friendlyError } from '../lib/errors';
 import { supabase } from '../lib/supabase';
@@ -15,13 +17,49 @@ const ACTIONS: Record<string, string> = {
   'ranks.updated': 'Actualizó las reglas de rangos',
   'demo.purged': 'Retiró los datos de prueba',
   'edition.real_operation_activated': 'Activó la operación real',
+  'participant.viewed': 'Consultó el expediente de un participante',
+  'participant.created': 'Dio de alta a un participante',
+  'participant.updated': 'Corrigió datos de un participante',
+  'participant.access_checked': 'Revisó el acceso de un correo',
+  'participant.access_unlocked': 'Retiró un bloqueo de acceso',
+  'participants.imported': 'Importó participantes',
+  'participants.conflict_resolved': 'Resolvió un conflicto de importación',
+  'participants.exported': 'Exportó participantes a Excel',
+  'catalog.division_saved': 'Guardó una división',
+  'catalog.career_saved': 'Guardó una carrera',
+  'catalog.activity_saved': 'Guardó un taller',
+  'catalog.activity_deleted': 'Eliminó un taller',
+  'catalog.session_saved': 'Guardó un horario',
+  'catalog.session_deleted': 'Eliminó un horario',
+  'catalog.imported': 'Importó catálogo',
+  'staff.created': 'Creó una cuenta del personal',
+  'staff.updated': 'Actualizó una cuenta del personal',
+  'staff.password_reset': 'Cambió la contraseña de una cuenta del personal',
 };
+
+const COUNT_LABELS: Record<string, string> = { new: 'nuevos', update: 'actualizados', conflict: 'con conflicto', error: 'con error' };
+
+const roleList = (v: unknown) => (Array.isArray(v) ? v.map((r) => ROLE_LABELS[String(r)] ?? String(r)).join(', ') : '');
 
 function describe(e: Entry): string | null {
   const d = e.detail ?? {};
-  if (typeof d.reason === 'string') return `Motivo: ${d.reason}`;
+  if (typeof d.reason === 'string') return `Motivo: ${d.reason}${typeof d.count === 'number' ? ` · ${d.count} registros` : ''}`;
   if (typeof d.version === 'number') return `Versión ${d.version}`;
   if (typeof d.from_version === 'number') return `Desde la versión ${d.from_version}`;
+  if (Array.isArray(d.fields)) return `Campos: ${d.fields.map((f) => FIELD_LABELS[String(f)] ?? String(f)).join(', ') || 'ninguno'}`;
+  if (typeof d.field === 'string') return `${FIELD_LABELS[d.field] ?? d.field}: ${d.accepted_import ? 'se usó el dato del archivo' : 'se conservó la corrección'}`;
+  if (d.counts && typeof d.counts === 'object') {
+    const c = d.counts as Record<string, number>;
+    const parts = Object.entries(COUNT_LABELS)
+      .filter(([k]) => c[k])
+      .map(([k, label]) => `${c[k]} ${label}`);
+    const kind = d.kind === 'careers' ? 'Carreras · ' : d.kind === 'workshops' ? 'Talleres · ' : '';
+    return `${kind}${parts.join(', ') || 'sin cambios'}`;
+  }
+  if (typeof d.code === 'string') return `Código ${d.code}`;
+  if (e.action.startsWith('staff.') && Array.isArray(d.roles))
+    return `Roles: ${roleList(d.roles)}${d.is_active === false ? ' · desactivada' : ''}`;
+  if (d.found === false) return 'Correo sin registro';
   return null;
 }
 
@@ -72,6 +110,11 @@ export default function AuditLog() {
                   <p className="text-sm font-semibold">{ACTIONS[e.action] ?? e.action}</p>
                   <p className="text-xs text-ink-muted">{e.actor}</p>
                   {extra && <p className="mt-1 text-xs text-ink-muted">{extra}</p>}
+                  {typeof e.detail?.participant_id === 'string' && (
+                    <Link to={`/coordinacion/participantes/${e.detail.participant_id}`} className="mt-1 inline-block text-xs font-semibold text-secondary-300 hover:underline">
+                      Ver participante
+                    </Link>
+                  )}
                 </div>
                 <time className="shrink-0 text-xs text-ink-muted">{formatDateTime(e.created_at)}</time>
               </li>
