@@ -1,0 +1,91 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    -webkit-tap-highlight-color: transparent;
+  }
+  body {
+    @apply bg-surface-sunken font-body text-ink antialiased;
+    line-height: 1.5;
+    min-height: 100dvh;
+  }
+  h1,
+  h2,
+  h3,
+  h4 {
+    @apply font-display;
+    line-height: 1.2;
+  }
+  :focus-visible {
+    outline: 2px solid rgb(var(--c-secondary-400));
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  .metallic-text {
+    background: linear-gradient(180deg, #ffffff 0%, #d9dde6 38%, #8e96a8 62%, #e9ecf2 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .starfield {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    pointer-events: none;
+    background:
+      radial-gradient(ellipse 60% 40% at 85% 10%, rgb(var(--c-primary-500) / 0.16), transparent 70%),
+      radial-gradient(ellipse 50% 40% at 10% 30%, rgb(var(--c-secondary-500) / 0.14), transparent 70%),
+      radial-gradient(ellipse 40% 30% at 60% 90%, rgb(var(--c-accent-500) / 0.1), transparent 70%);
+  }
+  .starfield::before,
+  .starfield::after {
+    content: '';
+    position: absolute;
+    inset: -50%;
+    background-image:
+      radial-gradient(1px 1px at 20px 30px, rgba(255, 255, 255, 0.9), transparent),
+      radial-gradient(1px 1px at 120px 80px, rgba(255, 255, 255, 0.7), transparent),
+      radial-gradient(1.5px 1.5px at 200px 150px, rgba(255, 255, 255, 0.8), transparent),
+      radial-gradient(1px 1px at 60px 200px, rgba(255, 255, 255, 0.6), transparent),
+      radial-gradient(1px 1px at 260px 40px, rgba(255, 255, 255, 0.5), transparent);
+    background-size: 300px 260px;
+    animation: twinkle 6s ease-in-out infinite;
+  }
+  .starfield::after {
+    background-size: 420px 380px;
+    animation-delay: -3s;
+    opacity: 0.6;
+  }
+
+  .glow-ring {
+    background: conic-gradient(
+      from 210deg,
+      rgb(var(--c-secondary-400)),
+      rgb(var(--c-secondary-600)) 30%,
+      rgb(var(--c-accent-500) / 0.6) 45%,
+      rgb(var(--c-primary-500)) 70%,
+      rgb(var(--c-primary-300)) 85%,
+      rgb(var(--c-secondary-400))
+    );
+    filter: drop-shadow(0 0 18px rgb(var(--c-primary-500) / 0.45)) drop-shadow(0 0 30px rgb(var(--c-secondary-500) / 0.3));
+  }
+
+  .card {
+    @apply rounded-theme border border-line bg-surface;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

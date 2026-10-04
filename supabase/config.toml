@@ -1,0 +1,2 @@
+[functions.student-access]
+verify_jwt = false
