@@ -27,7 +27,9 @@ export type Activity = {
 
 export type Progress = {
   level: number;
-  attendances: number;
+  stamps: number;
+  attended_workshops: number;
+  reserved_workshops: number;
   division_ids: string[];
   next: { level: number; required_attendances: number; required_divisions: number } | null;
   consent_accepted: boolean;

@@ -27,6 +27,8 @@ const Operation = lazy(() => import('./admin/Operation'));
 const ThemeEditor = lazy(() => import('./admin/theme/ThemeEditor'));
 const RankRules = lazy(() => import('./admin/RankRules'));
 const ReservationRules = lazy(() => import('./admin/ReservationRules'));
+const CheckinModule = lazy(() => import('./admin/CheckinModule'));
+const Scanner = lazy(() => import('./student/Scanner'));
 const AuditLog = lazy(() => import('./admin/AuditLog'));
 const Account = lazy(() => import('./admin/Account'));
 
@@ -45,6 +47,7 @@ export default function App() {
           <Route path="/bitacora" element={<Passport />} />
           <Route path="/misiones" element={<Missions />} />
           <Route path="/ruta" element={<MyRoute />} />
+          <Route path="/escanear" element={<Scanner />} />
           <Route path="/destinos" element={<Interests />} />
         </Route>
         <Route path="/coordinacion" element={<AdminLayout />}>
@@ -53,6 +56,7 @@ export default function App() {
           <Route path="participantes/:id" element={<ParticipantDetail />} />
           <Route path="acceso" element={<AccessHelp />} />
           <Route path="cuenta" element={<Account />} />
+          <Route path="checkin" element={<CheckinModule />} />
           <Route element={<CoordinationOnly />}>
             <Route path="importar" element={<ParticipantImport />} />
             <Route path="conflictos" element={<Conflicts />} />

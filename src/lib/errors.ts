@@ -80,6 +80,12 @@ const MESSAGES: Record<string, string> = {
   INVALID_BUFFER: 'El tiempo de traslado debe estar entre 0 y 120 minutos.',
   INVALID_WINDOW: 'El cierre debe ser posterior a la apertura.',
   LOCATION_REQUIRED: 'Escribe la nueva ubicación.',
+  INVALID_CREDENTIAL: 'El código o QR no es válido. Verifica con el facilitador.',
+  CHECKIN_TOO_EARLY: 'Aún no es hora de registrar asistencia. Espera al final del taller.',
+  CHECKIN_TOO_LATE: 'La ventana de check-in ya cerró para esta sesión.',
+  NO_RESERVATION: 'No tienes reservación para esta sesión.',
+  ALREADY_CHECKED_IN: 'Esta asistencia ya estaba registrada.',
+  INVALID_CHECKIN_WINDOW: 'Los minutos del check-in deben estar entre 0 y 120.',
 };
 
 const GENERIC = 'Algo salió mal. Inténtalo de nuevo.';

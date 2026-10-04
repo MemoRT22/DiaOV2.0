@@ -33,6 +33,8 @@ export default function ReservationRules() {
   const [closeAt, setCloseAt] = useState(toCancunInput(edition?.reservations_close_at ?? null));
   const [max, setMax] = useState(String(edition?.max_reservations ?? 4));
   const [buffer, setBuffer] = useState(String(edition?.travel_buffer_minutes ?? 10));
+  const [checkinOpen, setCheckinOpen] = useState(String(edition?.checkin_open_before_minutes ?? 5));
+  const [checkinClose, setCheckinClose] = useState(String(edition?.checkin_close_after_minutes ?? 20));
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<{ tone: 'success' | 'error'; msg: string } | null>(null);
 
@@ -49,6 +51,8 @@ export default function ReservationRules() {
         reservations_close_at: fromCancunInput(closeAt),
         max_reservations: Number(max),
         travel_buffer_minutes: Number(buffer),
+        checkin_open_before_minutes: Number(checkinOpen),
+        checkin_close_after_minutes: Number(checkinClose),
       });
       await reloadEdition();
       setStatus({ tone: 'success', msg: 'Reglas de reservación guardadas.' });
@@ -98,6 +102,31 @@ export default function ReservationRules() {
             hint="Tiempo mínimo entre sesiones."
             required
           />
+        </div>
+        <div className="border-t border-line pt-4">
+          <p className="mb-2 text-sm font-semibold">Check-in (asistencia)</p>
+          <div className="grid grid-cols-2 gap-4">
+            <Field
+              label="Abrar antes del final (min)"
+              type="number"
+              min={0}
+              max={120}
+              value={checkinOpen}
+              onChange={(e) => setCheckinOpen(e.target.value)}
+              hint="Minutos antes del fin para permitir escanear."
+              required
+            />
+            <Field
+              label="Cerrar después del final (min)"
+              type="number"
+              min={0}
+              max={120}
+              value={checkinClose}
+              onChange={(e) => setCheckinClose(e.target.value)}
+              hint="Minutos después del fin para dejar de aceptar."
+              required
+            />
+          </div>
         </div>
         {status && <Alert tone={status.tone}>{status.msg}</Alert>}
         <div className="flex justify-end">

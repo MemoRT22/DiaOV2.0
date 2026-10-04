@@ -26,6 +26,8 @@ export type Edition = {
   reservations_close_at: string | null;
   max_reservations: number;
   travel_buffer_minutes: number;
+  checkin_open_before_minutes: number;
+  checkin_close_after_minutes: number;
 };
 
 type ThemeContextValue = {

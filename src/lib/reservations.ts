@@ -72,6 +72,8 @@ export type ReservationSettings = {
   reservations_close_at: string | null;
   max_reservations: number;
   travel_buffer_minutes: number;
+  checkin_open_before_minutes: number;
+  checkin_close_after_minutes: number;
 };
 
 export const updateReservationSettings = (p: ReservationSettings) => rpc('update_reservation_settings', { p });

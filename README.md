@@ -46,3 +46,21 @@ Staff y Coordinación registran a quien llega el mismo día (`create_participant
 1. Ejecutar `supabase/tests/concurrency_fixture_setup.sql` (SQL editor). Crea solo aspirantes demo `cc.01`…`cc.30` y `cc.max@test.invalid` y talleres/sesiones demo `CC …`, guarda la configuración de reservaciones vigente y abre la ventana. Se niega a correr si ya hay datos CC.
 2. `node supabase/tests/concurrency_reservations.mjs`
 3. Ejecutar `supabase/tests/concurrency_fixture_cleanup.sql`. Borra solo esos datos (incluye sus usuarios de acceso, intentos de acceso y reservaciones) y restaura la configuración guardada. Puede repetirse sin efecto.
+
+## Check-in (asistencia con QR y código manual)
+
+- Al final de cada taller, el facilitador muestra un QR y un código manual de 6 letras. El aspirante escanea o escribe el código desde su Pasaporte; el servidor valida identidad, Aviso, credencial, sesión, ventana de tiempo, reservación y duplicados en una sola transacción.
+- La credencial de cada sesión es impredecible y se guarda cifrada (pgcrypto). Nadie lee la tabla de credenciales directamente; solo Coordinación y Staff pueden mostrarla mediante una función auditada. Regenerar la credencial invalida la anterior al instante.
+- La ventana de check-in se configura por edición: abre N minutos antes del final (default 5) y cierra M minutos después (default 20). Siempre usa la hora del servidor.
+- Una asistencia por persona y sesión, con un snapshot de los créditos otorgados. Los rangos avanzan por sellos acumulados (suma de créditos), no por número de asistencias. El recordatorio de intereses sigue basado en talleres asistidos.
+- Sesión oculta con reservación sigue permitiendo check-in. Sesión cancelada no valida. Reactivar no revive asistencias.
+- `attendances` y `session_credentials` no tienen permisos para anon ni authenticated (RLS como defensa en profundidad).
+- Coordinación y Staff tienen un módulo "Check-in" con lista de sesiones, conteos, QR en pantalla completa, vista imprimible y regeneración (solo Coordinación). Sorteo no tiene acceso.
+
+`supabase/tests/regression_asistencia.sql` funciona igual que las demás (todo se revierte) y cubre autorización, credenciales válidas e inválidas, regeneración, reservación, ventana de tiempo, estado de sesión, idempotencia, créditos/snapshot, progreso y seguridad de datos.
+
+`supabase/tests/concurrency_checkin.mjs` lanza 20 requests simultáneos del mismo aspirante mezclando QR y código. Pasos:
+
+1. Ejecutar `supabase/tests/concurrency_checkin_setup.sql` (SQL editor).
+2. Obtener credenciales de la BD y exportarlas: `QR_TOKEN=... MANUAL_CODE=... node supabase/tests/concurrency_checkin.mjs`.
+3. Ejecutar `supabase/tests/concurrency_checkin_cleanup.sql`.

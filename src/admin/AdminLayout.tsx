@@ -12,6 +12,7 @@ import {
   Menu,
   Palette,
   Power,
+  QrCode,
   Upload,
   Users,
   UsersRound,
@@ -35,6 +36,7 @@ const NAV: { title: string; items: NavItem[] }[] = [
       { to: '/coordinacion', label: 'Resumen', icon: LayoutDashboard, end: true, coordOnly: true },
       { to: '/coordinacion/participantes', label: 'Participantes', icon: Users },
       { to: '/coordinacion/acceso', label: 'Ayuda de acceso', icon: LifeBuoy },
+      { to: '/coordinacion/checkin', label: 'Check-in', icon: QrCode },
     ],
   },
   {

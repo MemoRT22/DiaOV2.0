@@ -6,6 +6,7 @@ import { buttonClasses, LoadError, PageSkeleton } from '../components/ui';
 import { useAuth } from '../lib/auth';
 import { fetchDivisions, fetchMyInterests, fetchProgress } from '../lib/catalog';
 import { useLoad } from '../lib/useLoad';
+import ScanButton from './ScanButton';
 import { useTheme } from '../theme/ThemeProvider';
 
 const DISMISS_KEY = 'diaov.interestsPromptDismissed';
@@ -28,7 +29,7 @@ export default function Passport() {
   const showPrompt = progress.interests_prompt && progress.interests_open && interests.length === 0 && !dismissed;
   const finished = progress.level === 5 || interests.length > 0;
 
-  const remainingActivities = progress.next ? Math.max(progress.next.required_attendances - progress.attendances, 0) : 0;
+  const remainingStamps = progress.next ? Math.max(progress.next.required_attendances - progress.stamps, 0) : 0;
   const remainingDivisions = progress.next ? Math.max(progress.next.required_divisions - visited.size, 0) : 0;
 
   const dismissPrompt = () => {
@@ -38,6 +39,23 @@ export default function Passport() {
 
   return (
     <div className="space-y-6">
+      <ScanButton />
+
+      <section className="card animate-fade-up grid grid-cols-3 gap-2 p-4 text-center">
+        <div>
+          <p className="font-display text-2xl font-extrabold text-primary-400">{progress.reserved_workshops}</p>
+          <p className="text-xs text-ink-muted">Reservados</p>
+        </div>
+        <div>
+          <p className="font-display text-2xl font-extrabold text-secondary-300">{progress.attended_workshops}</p>
+          <p className="text-xs text-ink-muted">Asistidos</p>
+        </div>
+        <div>
+          <p className="font-display text-2xl font-extrabold text-accent-400">{progress.stamps}</p>
+          <p className="text-xs text-ink-muted">{term('stamp', true)}</p>
+        </div>
+      </section>
+
       <section className="animate-fade-up text-center">
         <p className="text-sm text-ink-muted">{term('passport')}</p>
         <h1 className="mt-1 text-2xl font-extrabold">{profile?.display_name}</h1>
@@ -53,14 +71,14 @@ export default function Passport() {
         <p className="mx-auto mt-4 max-w-sm rounded-theme border border-line bg-surface/70 px-4 py-3 text-sm">
           {progress.next
             ? text('progressNext', {
-                activities: remainingActivities,
-                activityTerm: term('activity', remainingActivities !== 1).toLowerCase(),
+                activities: remainingStamps,
+                activityTerm: term('stamp', remainingStamps !== 1).toLowerCase(),
                 divisions: progress.next.required_divisions,
                 divisionTerm: term('division', progress.next.required_divisions !== 1).toLowerCase(),
                 rank: rankName(progress.next.level),
               })
             : text('progressMax')}
-          {progress.next && remainingDivisions > 0 && remainingActivities === 0 && (
+          {progress.next && remainingDivisions > 0 && remainingStamps === 0 && (
             <span className="mt-1 block text-xs text-ink-muted">
               Te falta visitar {remainingDivisions} {term('division', remainingDivisions !== 1).toLowerCase()} distinto
               {remainingDivisions !== 1 ? 's' : ''}.
