@@ -86,6 +86,7 @@ const MESSAGES: Record<string, string> = {
   NO_RESERVATION: 'No tienes reservación para esta sesión.',
   ALREADY_CHECKED_IN: 'Esta asistencia ya estaba registrada.',
   INVALID_CHECKIN_WINDOW: 'Los minutos del check-in deben estar entre 0 y 120.',
+  CREDENTIAL_GENERATION_FAILED: 'No se pudo generar una credencial nueva. Intenta de nuevo.',
 };
 
 const GENERIC = 'Algo salió mal. Inténtalo de nuevo.';

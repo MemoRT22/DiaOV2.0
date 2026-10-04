@@ -7,8 +7,10 @@ export type CheckInResult = {
   starts_at: string;
   ends_at: string;
   credits_granted: number;
+  method: 'qr' | 'codigo_manual';
   stamps: number;
   attended_workshops: number;
+  level: number;
 };
 
 export const checkIn = (credential: string) => rpc<CheckInResult>('check_in', { p_credential: credential });

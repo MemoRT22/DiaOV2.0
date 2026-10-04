@@ -1,6 +1,6 @@
 // Concurrency test for check-in: 20 simultaneous requests from the same participant
-// mixing QR token and manual code. Expected: 1 attendance, all responses consistent,
-// credits granted exactly once.
+// mixing QR token and manual code. Expected: 1 attendance, credits granted exactly once,
+// all other responses idempotent, and the stored method = the request that won the race.
 // 1) run concurrency_checkin_setup.sql
 // 2) Get the credential token and code from the DB:
 //    select pgp_sym_decrypt(qr_token_encrypted, credential_encryption_key()) as token,
@@ -8,7 +8,10 @@
 //    from session_credentials sc join activity_sessions s on s.id=sc.session_id
 //    join activities a on a.id=s.activity_id where a.title='CC CHK' and a.is_demo;
 // 3) QR_TOKEN=... MANUAL_CODE=... node supabase/tests/concurrency_checkin.mjs
-// 4) run concurrency_checkin_cleanup.sql
+// 4) Verify in the DB (WINNER_METHOD printed by this script):
+//    select count(*), min(method), sum(credits_granted) from attendances at
+//    join participants p on p.id = at.participant_id where p.email = 'cc.check@test.invalid';
+// 5) run concurrency_checkin_cleanup.sql
 import { readFileSync } from 'node:fs';
 import { createClient } from '@supabase/supabase-js';
 
@@ -53,11 +56,12 @@ async function main() {
 
   console.log(`Lanzando ${N} requests simultaneos (mezcla QR y codigo)...`);
 
+  const sent = Array.from({ length: N }, (_, i) => (i % 2 === 0 ? 'qr' : 'codigo_manual'));
   const gate = new Promise((resolve) => setTimeout(resolve, 0));
   const results = await Promise.all(
-    Array.from({ length: N }, (_, i) =>
+    sent.map((kind) =>
       gate.then(() =>
-        supabase.rpc('check_in', { p_credential: i % 2 === 0 ? QR_TOKEN : MANUAL_CODE }),
+        supabase.rpc('check_in', { p_credential: kind === 'qr' ? QR_TOKEN : MANUAL_CODE }),
       ),
     ),
   );
@@ -65,8 +69,10 @@ async function main() {
   let okCount = 0;
   let alreadyCount = 0;
   let errorCount = 0;
+  let winnerKind = null;
+  let winnerMethod = null;
   const counts = {};
-  for (const r of results) {
+  results.forEach((r, i) => {
     if (r.error) {
       errorCount++;
       const code = r.error.message || 'unknown';
@@ -75,8 +81,11 @@ async function main() {
       alreadyCount++;
     } else {
       okCount++;
+      winnerKind = sent[i];
+      winnerMethod = r.data?.method;
     }
-  }
+  });
+  const ok = results.filter((r) => !r.error).map((r) => r.data);
 
   console.log(`Resultados: ${okCount} nuevas, ${alreadyCount} ya registradas, ${errorCount} errores`);
   if (errorCount > 0) console.log('Errores:', JSON.stringify(counts));
@@ -84,6 +93,11 @@ async function main() {
   check('exactamente 1 asistencia nueva', okCount === 1, `${okCount}`);
   check('19 respuestas de ya registrada', alreadyCount === N - 1, `${alreadyCount}`);
   check('sin errores inesperados', errorCount === 0, JSON.stringify(counts));
+  check('metodo del ganador = credencial enviada', winnerMethod === winnerKind, `${winnerKind} -> ${winnerMethod}`);
+  check('todas reportan el metodo del ganador', ok.every((d) => d.method === winnerMethod));
+  check('creditos una sola vez (sellos = 1 en todas)', ok.every((d) => d.stamps === 1 && d.credits_granted === 1));
+  check('misma asistencia en todas', new Set(ok.map((d) => d.attendance_id)).size === 1);
+  console.log(`WINNER_METHOD=${winnerMethod}`);
 
   if (failures === 0) console.log('\nRESULTADO: todo correcto');
   else console.log(`\nRESULTADO: ${failures} falla(s)`);

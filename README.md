@@ -50,17 +50,22 @@ Staff y Coordinación registran a quien llega el mismo día (`create_participant
 ## Check-in (asistencia con QR y código manual)
 
 - Al final de cada taller, el facilitador muestra un QR y un código manual de 6 letras. El aspirante escanea o escribe el código desde su Pasaporte; el servidor valida identidad, Aviso, credencial, sesión, ventana de tiempo, reservación y duplicados en una sola transacción.
-- La credencial de cada sesión es impredecible y se guarda cifrada (pgcrypto). Nadie lee la tabla de credenciales directamente; solo Coordinación y Staff pueden mostrarla mediante una función auditada. Regenerar la credencial invalida la anterior al instante.
+- La credencial de cada sesión es impredecible y se guarda cifrada (pgcrypto `pgp_sym_encrypt`). La clave de cifrado vive en Supabase Vault (`diaov_checkin_credential_key`), se generó dentro de la base de datos y no está en el repositorio ni llega al frontend; solo la lee la función interna `credential_encryption_key()` (sin permisos para anon/authenticated). La clave literal de migraciones anteriores se considera comprometida y ya no se usa: las credenciales existentes se volvieron a cifrar con la clave de Vault.
+- El token QR (32 bytes) y el código manual (6 caracteres) se generan con `gen_random_bytes`. Ambos hashes son UNIQUE en base de datos; si un código nuevo choca con uno existente, se reintenta con valores nuevos (máximo 10, si no `CREDENTIAL_GENERATION_FAILED`).
+- Nadie lee la tabla de credenciales directamente; solo Coordinación y Staff pueden mostrarla mediante una función auditada. Regenerar la credencial invalida la anterior (QR y código) al instante.
+- El método de la asistencia (`qr` o `codigo_manual`) lo infiere el servidor según la credencial que coincidió; el navegador no lo envía. Se guarda en la asistencia y en la auditoría, y un reintento posterior no lo cambia.
+- La respuesta del check-in incluye el rango actual calculado por `participant_rank_level()`, la misma función que usa el Pasaporte.
 - La ventana de check-in se configura por edición: abre N minutos antes del final (default 5) y cierra M minutos después (default 20). Siempre usa la hora del servidor.
 - Una asistencia por persona y sesión, con un snapshot de los créditos otorgados. Los rangos avanzan por sellos acumulados (suma de créditos), no por número de asistencias. El recordatorio de intereses sigue basado en talleres asistidos.
 - Sesión oculta con reservación sigue permitiendo check-in. Sesión cancelada no valida. Reactivar no revive asistencias.
 - `attendances` y `session_credentials` no tienen permisos para anon ni authenticated (RLS como defensa en profundidad).
 - Coordinación y Staff tienen un módulo "Check-in" con lista de sesiones, conteos, QR en pantalla completa, vista imprimible y regeneración (solo Coordinación). Sorteo no tiene acceso.
 
-`supabase/tests/regression_asistencia.sql` funciona igual que las demás (todo se revierte) y cubre autorización, credenciales válidas e inválidas, regeneración, reservación, ventana de tiempo, estado de sesión, idempotencia, créditos/snapshot, progreso y seguridad de datos.
+`supabase/tests/regression_asistencia.sql` funciona igual que las demás (todo se revierte) y cubre autorización, clave en Vault, credenciales válidas e inválidas, método real QR/código (primer check-in e idempotencia), rango, regeneración (QR y código anteriores fallan), unicidad y reintento por colisión, reservación vigente/cambiada/cancelada por sesión y reactivación, sesión oculta, ventana temprana y tardía, idempotencia, créditos/snapshot, progreso y seguridad de datos.
 
-`supabase/tests/concurrency_checkin.mjs` lanza 20 requests simultáneos del mismo aspirante mezclando QR y código. Pasos:
+`supabase/tests/concurrency_checkin.mjs` lanza 20 requests simultáneos del mismo aspirante mezclando QR y código. Verifica una sola asistencia nueva, 19 idempotentes, créditos una sola vez y que el método reportado sea el de la credencial que ganó la carrera. Pasos:
 
 1. Ejecutar `supabase/tests/concurrency_checkin_setup.sql` (SQL editor).
 2. Obtener credenciales de la BD y exportarlas: `QR_TOKEN=... MANUAL_CODE=... node supabase/tests/concurrency_checkin.mjs`.
-3. Ejecutar `supabase/tests/concurrency_checkin_cleanup.sql`.
+3. Confirmar en la BD que hay 1 asistencia con el `WINNER_METHOD` impreso (query en el encabezado del script).
+4. Ejecutar `supabase/tests/concurrency_checkin_cleanup.sql`.

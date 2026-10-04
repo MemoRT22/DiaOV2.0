@@ -107,7 +107,7 @@ export default function ReservationRules() {
           <p className="mb-2 text-sm font-semibold">Check-in (asistencia)</p>
           <div className="grid grid-cols-2 gap-4">
             <Field
-              label="Abrar antes del final (min)"
+              label="Abrir antes del final (min)"
               type="number"
               min={0}
               max={120}

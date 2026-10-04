@@ -1,4 +1,4 @@
-import { ArrowLeft, CheckCircle2, Keyboard, Loader2, QrCode, RotateCcw, Sparkles } from 'lucide-react';
+import { ArrowLeft, Award, CheckCircle2, Keyboard, Loader2, QrCode, RotateCcw, Sparkles } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import QRScanner from 'qr-scanner';
 import { Link } from 'react-router-dom';
@@ -6,12 +6,15 @@ import { Alert, Button } from '../components/ui';
 import { checkIn, type CheckInResult } from '../lib/checkin';
 import { friendlyError } from '../lib/errors';
 import { formatTime } from '../lib/catalog';
+import { useTheme } from '../theme/ThemeProvider';
 
 type Phase = 'idle' | 'scanning' | 'validating' | 'success' | 'error' | 'manual';
 
 export default function Scanner() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const scannerRef = useRef<QRScanner | null>(null);
+  const decodedRef = useRef(false);
+  const { term, rankName } = useTheme();
   const [phase, setPhase] = useState<Phase>('idle');
   const [result, setResult] = useState<CheckInResult | null>(null);
   const [errorMsg, setErrorMsg] = useState('');
@@ -23,11 +26,14 @@ export default function Scanner() {
     setErrorMsg('');
     setCameraError(false);
     if (!videoRef.current) return;
+    decodedRef.current = false;
     try {
+      scannerRef.current?.destroy();
       const scanner = new QRScanner(
         videoRef.current,
         (decoded) => {
-          if (phase !== 'scanning') return;
+          if (decodedRef.current) return;
+          decodedRef.current = true;
           scanner.stop();
           void validate(decoded.data);
         },
@@ -93,16 +99,25 @@ export default function Scanner() {
           <div className="mt-4 inline-flex items-center gap-2 rounded-theme bg-accent-500/15 px-4 py-2">
             <Sparkles className="h-5 w-5 text-accent-400" aria-hidden />
             <span className="text-lg font-extrabold text-accent-400">+{result.credits_granted}</span>
-            <span className="text-sm text-ink-muted">sellos</span>
+            <span className="text-sm text-ink-muted">{term('stamp', true).toLowerCase()}</span>
           </div>
           <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
             <div className="rounded-theme border border-line p-3">
               <p className="font-display text-xl font-extrabold">{result.stamps}</p>
-              <p className="text-xs text-ink-muted">Sellos totales</p>
+              <p className="text-xs text-ink-muted">{term('stamp', true)} totales</p>
             </div>
             <div className="rounded-theme border border-line p-3">
               <p className="font-display text-xl font-extrabold">{result.attended_workshops}</p>
               <p className="text-xs text-ink-muted">Talleres asistidos</p>
+            </div>
+          </div>
+          <div className="mt-3 flex items-center justify-center gap-3 rounded-theme border border-primary-400/40 bg-primary-500/10 p-3">
+            <Award className="h-6 w-6 text-primary-400" aria-hidden />
+            <div className="text-left">
+              <p className="text-xs uppercase tracking-widest text-ink-muted">{term('rank')} actual</p>
+              <p className="font-extrabold text-primary-400">
+                {result.level} · {rankName(result.level)}
+              </p>
             </div>
           </div>
           {result.already_registered && (
