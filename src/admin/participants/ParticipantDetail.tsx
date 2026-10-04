@@ -9,6 +9,7 @@ import { friendlyError } from '../../lib/errors';
 import { useLoad } from '../../lib/useLoad';
 import AccessStatus, { type AccessState } from './AccessStatus';
 import ParticipantForm from './ParticipantForm';
+import { EmailHistory, FormsExtra, type EmailHistoryEntry, type FormsExtraEntry } from './ParticipantExtraSections';
 
 type Detail = {
   id: string;
@@ -24,7 +25,9 @@ type Detail = {
   forms_consent_at: string | null;
   manual_consent_at: string | null;
   manual_consent_by: string | null;
-  manual_overrides: Record<string, { at: string; by: string | null }>;
+  manual_overrides: Record<string, { at: string; by: string | null; cleared?: boolean }>;
+  email_history?: EmailHistoryEntry[];
+  forms_extra?: FormsExtraEntry[];
   pending_conflicts: number;
   has_logged_in: boolean;
   platform_consent_at: string | null;
@@ -113,12 +116,21 @@ export default function ParticipantDetail() {
               <p className="text-sm text-ink-muted">{FIELD_LABELS[key]}</p>
               <p className={`font-semibold ${value ? '' : 'text-ink-muted'}`}>{value ?? 'Sin dato'}</p>
               <p className="text-xs text-ink-muted">
-                {override ? `Corregido${override.by ? ` por ${override.by}` : ''} · ${formatDateTime(override.at)}` : key === 'email' ? '' : 'Del registro original'}
+                {override
+                  ? `${override.cleared ? 'Borrado' : 'Capturado o corregido'}${override.by ? ` por ${override.by}` : ''} · ${formatDateTime(override.at)}`
+                  : key === 'email'
+                    ? ''
+                    : value
+                      ? 'Del registro original'
+                      : 'Se completará con Forms si llega el dato'}
               </p>
             </div>
           );
         })}
       </section>
+
+      <EmailHistory entries={p.email_history ?? []} />
+      {hasRole(staff, 'coordinacion') && Array.isArray(p.forms_extra) && <FormsExtra entries={p.forms_extra} />}
 
       <section className="grid gap-4 sm:grid-cols-3">
         <div className="card p-5">

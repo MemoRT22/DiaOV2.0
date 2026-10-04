@@ -30,6 +30,8 @@ export default function ParticipantForm({ participantId, initial, careers, onClo
   const [values, setValues] = useState(initial);
   const [consent, setConsent] = useState(false);
   const [isDemo, setIsDemo] = useState(false);
+  const [emailReason, setEmailReason] = useState('');
+  const emailChanged = editing && values.email.trim().toLowerCase() !== initial.email.trim().toLowerCase();
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -44,7 +46,10 @@ export default function ParticipantForm({ participantId, initial, careers, onClo
         const changed = Object.fromEntries(
           (Object.keys(values) as (keyof ParticipantValues)[]).filter((k) => values[k] !== initial[k]).map((k) => [k, values[k]]),
         );
-        if (Object.keys(changed).length) await rpc('update_participant', { p_id: participantId, p: changed });
+        if (Object.keys(changed).length) {
+          const payload = emailChanged ? { ...changed, email_reason: emailReason.trim() } : changed;
+          await rpc('update_participant', { p_id: participantId, p: payload });
+        }
         onSaved(participantId);
       } else {
         const id = await rpc<string>('create_participant_manual', { p: { ...values, consent_confirmed: consent, is_demo: isDemo } });
@@ -67,6 +72,16 @@ export default function ParticipantForm({ participantId, initial, careers, onClo
           <Alert tone="info">Los campos que cambies quedan marcados como corrección manual. Una importación posterior no los reemplazará.</Alert>
         )}
         <Field label="Correo" type="email" required value={values.email} onChange={set('email')} autoComplete="off" />
+        {emailChanged && (
+          <Field
+            label="Motivo del cambio de correo"
+            value={emailReason}
+            onChange={(e) => setEmailReason(e.target.value)}
+            maxLength={300}
+            placeholder="Ej. el aspirante escribió mal su correo en Forms"
+            hint="El correo anterior se guarda solo para reconocer al aspirante en futuras importaciones. No servirá para entrar."
+          />
+        )}
         <Field label="Nombre completo" required minLength={3} value={values.full_name} onChange={set('full_name')} autoComplete="off" />
         <div className="grid gap-4 sm:grid-cols-2">
           <Field

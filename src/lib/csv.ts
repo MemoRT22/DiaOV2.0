@@ -1,10 +1,13 @@
 export type CsvColumn = { key: string; label: string; aliases: string[]; required?: boolean };
 
+export type CsvExtraCell = { col: number; header: string; value: string };
+
 export type CsvMapping = {
   rows: Record<string, string>[];
+  extras: CsvExtraCell[][];
   missing: CsvColumn[];
   unknownHeaders: string[];
-  matched: { column: CsvColumn; header: string }[];
+  matched: { column: CsvColumn; header: string; index: number }[];
 };
 
 export function fold(value: string) {
@@ -67,20 +70,30 @@ export function mapColumns(table: string[][], columns: CsvColumn[]): CsvMapping 
     if (index < 0) index = folded.findIndex((h, i) => !used.has(i) && names.some((n) => n.length > 3 && h.startsWith(n)));
     if (index >= 0) {
       used.add(index);
-      matched.push({ column, header: header[index] });
+      matched.push({ column, header: header[index], index });
     }
   }
-  const indexOf = new Map(matched.map((m) => [m.column.key, header.indexOf(m.header)]));
+  const indexOf = new Map(matched.map((m) => [m.column.key, m.index]));
+  const width = Math.max(header.length, ...body.map((cells) => cells.length));
+  const extraCols = Array.from({ length: width }, (_, i) => i).filter((i) => !used.has(i));
   const rows = body.map((cells) => {
     const out: Record<string, string> = {};
     for (const [key, i] of indexOf) out[key] = (cells[i] ?? '').trim();
     return out;
   });
+  const extras = body.map((cells) =>
+    extraCols
+      .map((i) => ({ col: i + 1, header: (header[i] ?? '').replace(/^\uFEFF/, ''), value: (cells[i] ?? '').trim() }))
+      .filter((c) => c.value !== ''),
+  );
   return {
     rows,
+    extras,
     matched,
     missing: columns.filter((c) => c.required && !indexOf.has(c.key)),
-    unknownHeaders: header.filter((h, i) => !used.has(i) && h.trim() !== ''),
+    unknownHeaders: extraCols
+      .filter((i) => body.some((cells) => (cells[i] ?? '').trim() !== '') || (header[i] ?? '').trim() !== '')
+      .map((i) => (header[i] ?? '').trim() || `Columna sin título ${i + 1}`),
   };
 }
 

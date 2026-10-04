@@ -37,11 +37,12 @@ const CONFIG: Record<
       { key: 'start', label: 'Inicio', aliases: ['hora inicio', 'hora de inicio', 'inicia'], required: true },
       { key: 'end', label: 'Fin', aliases: ['hora fin', 'hora de fin', 'termina'], required: true },
       { key: 'capacity', label: 'Cupo', aliases: ['capacidad', 'lugares'], required: true },
+      { key: 'status', label: 'Estado', aliases: ['estatus', 'estado del horario'] },
     ],
     template:
-      'División,Taller,Descripción,Ubicación,Inicio,Fin,Cupo\n' +
-      'SALUD,Simulador clínico,Practica una consulta,Edificio B 204,10:00,10:45,30\n' +
-      'SALUD,Simulador clínico,Practica una consulta,Edificio B 204,11:00,11:45,30\n',
+      'División,Taller,Descripción,Ubicación,Inicio,Fin,Cupo,Estado\n' +
+      'SALUD,Simulador clínico,Practica una consulta,Edificio B 204,10:00,10:45,30,Activa\n' +
+      'SALUD,Simulador clínico,Practica una consulta,Edificio B 205,11:00,11:45,30,Oculta\n',
     build: (r, row) => ({
       row,
       division: r.division ?? '',
@@ -51,11 +52,14 @@ const CONFIG: Record<
       start: toTime(r.start ?? ''),
       end: toTime(r.end ?? ''),
       capacity: r.capacity ?? '',
+      status: r.status ?? '',
     }),
     notes: [
       'Una fila por horario. Repite el taller en otra fila para agregar más horarios.',
       'Las horas van como 10:00 y se registran para el día del evento, en hora de Cancún.',
-      'Si el taller y el horario ya existen, se actualizan su descripción, ubicación, fin y cupo.',
+      'La ubicación es de cada horario. Si el taller es nuevo, la del primer horario también queda como ubicación del taller.',
+      'Estado: Activa (visible para aspirantes), Oculta o Cancelada. Si lo dejas vacío se conserva el estado actual (o Activa si el horario es nuevo).',
+      'Si el taller y el horario ya existen, se actualizan la descripción, ubicación, fin, cupo y estado del horario.',
     ],
   },
 };

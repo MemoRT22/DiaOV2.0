@@ -39,9 +39,12 @@ export default function ParticipantImport() {
             <li>Las fechas pueden ir como 15/03/2008 o 2008-03-15. La carrera puede ir por nombre o por código.</li>
             <li>Un dato vacío en el archivo nunca borra un dato existente.</li>
             <li>Si staff corrigió un dato a mano, no se reemplaza: queda como conflicto para que lo decidas.</li>
+            <li>Si un correo fue corregido, el aspirante se reconoce aunque el archivo traiga el correo anterior. El correo vigente no cambia.</li>
+            <li>Las demás preguntas del Forms se conservan como información adicional, visible solo para Coordinación y en la exportación.</li>
           </ul>
         }
-        buildRow={(r, row) => ({
+        keepExtraColumns
+        buildRow={(r, row, extras) => ({
           row,
           email: r.email ?? '',
           full_name: r.full_name ?? '',
@@ -51,6 +54,7 @@ export default function ParticipantImport() {
           career: r.career ?? '',
           consent: toBool(r.consent ?? '') === true,
           submitted_at: r.submitted_at ? toIsoTimestamp(r.submitted_at) : '',
+          extra: extras,
         })}
         preview={(rows, isDemo) => rpc<ImportResult>('preview_participant_import', { p_rows: rows, p_is_demo: isDemo })}
         commit={(rows, fileName, isDemo) =>

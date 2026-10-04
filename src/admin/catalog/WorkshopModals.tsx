@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { Alert, Button, Field, Modal, SelectField } from '../../components/ui';
 import { rpc } from '../../lib/adminApi';
-import { eventTimestamp, formatTime, type Activity, type Division, type Session } from '../../lib/catalog';
+import { eventTimestamp, formatTime, SESSION_STATUS_LABELS, type Activity, type Division, type Session, type SessionStatus } from '../../lib/catalog';
 import { friendlyError } from '../../lib/errors';
 import { DemoCheckbox } from './DemoCheckbox';
 
@@ -83,9 +83,11 @@ export function ActivityModal({ initial, divisions, onClose, onSaved }: Activity
   );
 }
 
-type SessionProps = { initial: Partial<Session>; eventDate: string; onClose: () => void; onSaved: () => void };
+type SessionProps = { initial: Partial<Session>; activityLocation: string; eventDate: string; onClose: () => void; onSaved: () => void };
 
-export function SessionModal({ initial, eventDate, onClose, onSaved }: SessionProps) {
+export function SessionModal({ initial, activityLocation, eventDate, onClose, onSaved }: SessionProps) {
+  const [location, setLocation] = useState(initial.location ?? '');
+  const [status, setStatus] = useState<SessionStatus>(initial.status ?? 'activa');
   const [start, setStart] = useState(initial.starts_at ? formatTime(initial.starts_at) : '10:00');
   const [end, setEnd] = useState(initial.ends_at ? formatTime(initial.ends_at) : '10:45');
   const [capacity, setCapacity] = useState(String(initial.capacity ?? 30));
@@ -98,6 +100,8 @@ export function SessionModal({ initial, eventDate, onClose, onSaved }: SessionPr
           starts_at: eventTimestamp(eventDate, start),
           ends_at: eventTimestamp(eventDate, end),
           capacity: Number(capacity),
+          location: location.trim(),
+          status,
         },
       }),
     onSaved,
@@ -112,6 +116,21 @@ export function SessionModal({ initial, eventDate, onClose, onSaved }: SessionPr
           <Field label="Fin" type="time" value={end} onChange={(e) => setEnd(e.target.value)} required />
         </div>
         <Field label="Cupo" type="number" min={1} value={capacity} onChange={(e) => setCapacity(e.target.value)} required />
+        <Field
+          label="Ubicación de este horario"
+          placeholder={activityLocation || 'Ej. Edificio B, aula 204'}
+          value={location}
+          onChange={(e) => setLocation(e.target.value)}
+          hint="Si lo dejas vacío se usa la ubicación del taller."
+        />
+        <SelectField label="Estado" value={status} onChange={(e) => setStatus(e.target.value as SessionStatus)}>
+          {(Object.keys(SESSION_STATUS_LABELS) as SessionStatus[]).map((s) => (
+            <option key={s} value={s}>
+              {SESSION_STATUS_LABELS[s]}
+            </option>
+          ))}
+        </SelectField>
+        <p className="text-xs text-ink-muted">Solo los horarios publicados son visibles para los aspirantes.</p>
         <Footer busy={busy} error={error} onClose={onClose} />
       </form>
     </Modal>

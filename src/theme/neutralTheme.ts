@@ -71,7 +71,7 @@ export const neutralTheme: ThemeConfig = {
     interestsSaved: 'Guardamos tus carreras de interés.',
     interestsClosed: 'La selección de carreras ya cerró.',
     closingTitle: 'Gracias por participar',
-    closingBody: 'El equipo de Admisiones dará seguimiento a tus intereses.',
+    closingBody: 'Gracias por participar en el Día OV. Tus carreras de interés quedaron guardadas.',
   },
   divisions: {},
 };

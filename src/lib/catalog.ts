@@ -2,7 +2,18 @@ import { supabase } from './supabase';
 
 export type Division = { id: string; code: string; name: string; sort_order: number; is_demo: boolean };
 export type Career = { id: string; code: string; name: string; division_id: string; is_active: boolean; is_demo: boolean };
-export type Session = { id: string; activity_id: string; starts_at: string; ends_at: string; capacity: number };
+export type SessionStatus = 'activa' | 'oculta' | 'cancelada';
+export type Session = {
+  id: string;
+  activity_id: string;
+  starts_at: string;
+  ends_at: string;
+  capacity: number;
+  location: string;
+  status: SessionStatus;
+};
+
+export const SESSION_STATUS_LABELS: Record<SessionStatus, string> = { activa: 'Publicada', oculta: 'Oculta', cancelada: 'Cancelada' };
 export type Activity = {
   id: string;
   division_id: string;
@@ -40,7 +51,7 @@ export async function fetchCareers(includeInactive = false): Promise<Career[]> {
 export async function fetchActivities(editionId: string): Promise<Activity[]> {
   const { data, error } = await supabase
     .from('activities')
-    .select('id, division_id, title, description, location, is_demo, activity_sessions(id, activity_id, starts_at, ends_at, capacity)')
+    .select('id, division_id, title, description, location, is_demo, activity_sessions(id, activity_id, starts_at, ends_at, capacity, location, status)')
     .eq('edition_id', editionId)
     .order('title');
   if (error) throw error;

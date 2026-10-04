@@ -2,7 +2,7 @@ import { Clock, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { Alert, Badge, Button, Spinner } from '../../components/ui';
 import { rpc } from '../../lib/adminApi';
-import { fetchActivities, fetchDivisions, formatTime, type Activity, type Session } from '../../lib/catalog';
+import { fetchActivities, fetchDivisions, formatTime, SESSION_STATUS_LABELS, type Activity, type Session } from '../../lib/catalog';
 import { friendlyError } from '../../lib/errors';
 import { useLoad } from '../../lib/useLoad';
 import { useTheme } from '../../theme/ThemeProvider';
@@ -86,6 +86,8 @@ export default function WorkshopsTab() {
                     <span key={s.id} className="inline-flex items-center gap-1 rounded-full border border-line bg-surface-raised py-1 pl-3 pr-1 text-xs">
                       <Clock className="h-3.5 w-3.5 text-ink-muted" aria-hidden />
                       {formatTime(s.starts_at)}–{formatTime(s.ends_at)} · {s.capacity} lugares
+                      {s.location && s.location !== a.location && <span className="text-ink-muted">· {s.location}</span>}
+                      {s.status !== 'activa' && <Badge tone={s.status === 'cancelada' ? 'error' : 'neutral'}>{SESSION_STATUS_LABELS[s.status]}</Badge>}
                       <button onClick={() => setSession(s)} className="rounded-full p-1 text-ink-muted hover:text-ink" aria-label="Editar horario">
                         <Pencil className="h-3 w-3" />
                       </button>
@@ -112,7 +114,14 @@ export default function WorkshopsTab() {
         );
       })}
       {activity && <ActivityModal initial={activity} divisions={divisions} onClose={() => setActivity(null)} onSaved={done} />}
-      {session && <SessionModal initial={session} eventDate={edition.event_date} onClose={() => setSession(null)} onSaved={done} />}
+      {session && (
+        <SessionModal
+          initial={session}
+          activityLocation={activities.find((a) => a.id === session.activity_id)?.location ?? ''}
+          eventDate={edition.event_date} onClose={() => setSession(null)}
+          onSaved={done}
+        />
+      )}
     </section>
   );
 }

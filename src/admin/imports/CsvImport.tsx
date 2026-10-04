@@ -2,7 +2,7 @@ import { Download, FileUp, RotateCcw } from 'lucide-react';
 import { useMemo, useRef, useState, type ReactNode } from 'react';
 import { Alert, Badge, Button } from '../../components/ui';
 import { FIELD_LABELS } from '../../lib/adminApi';
-import { mapColumns, parseCsv, type CsvColumn } from '../../lib/csv';
+import { mapColumns, parseCsv, type CsvColumn, type CsvExtraCell } from '../../lib/csv';
 import { friendlyError } from '../../lib/errors';
 import { useTheme } from '../../theme/ThemeProvider';
 
@@ -16,6 +16,8 @@ export type ImportRowResult = {
   label?: string;
   updated_fields?: string[];
   conflict_fields?: string[];
+  note?: string | null;
+  alert?: string | null;
 };
 export type ImportResult = { counts: Record<string, number>; rows: ImportRowResult[] };
 
@@ -23,7 +25,8 @@ type Props = {
   columns: CsvColumn[];
   template: string;
   templateName: string;
-  buildRow: (record: Record<string, string>, row: number) => Record<string, unknown>;
+  buildRow: (record: Record<string, string>, row: number, extras: CsvExtraCell[]) => Record<string, unknown>;
+  keepExtraColumns?: boolean;
   preview: (rows: Record<string, unknown>[], isDemo: boolean) => Promise<ImportResult>;
   commit: (rows: Record<string, unknown>[], fileName: string, isDemo: boolean) => Promise<ImportResult>;
   intro: ReactNode;
@@ -43,7 +46,7 @@ type Stage =
   | { kind: 'reviewing'; fileName: string; rows: Record<string, unknown>[]; result: ImportResult; unknown: string[] }
   | { kind: 'done'; result: ImportResult };
 
-export default function CsvImport({ columns, template, templateName, buildRow, preview, commit, intro }: Props) {
+export default function CsvImport({ columns, template, templateName, buildRow, keepExtraColumns = false, preview, commit, intro }: Props) {
   const { edition } = useTheme();
   const canDemo = edition?.mode === 'preparacion';
   const [isDemo, setIsDemo] = useState(false);
@@ -75,7 +78,7 @@ export default function CsvImport({ columns, template, templateName, buildRow, p
         return;
       }
       if (!mapping.rows.length) throw new Error('CSV_EMPTY');
-      const rows = mapping.rows.map((r, i) => buildRow(r, i + 2));
+      const rows = mapping.rows.map((r, i) => buildRow(r, i + 2, mapping.extras[i] ?? []));
       const result = await preview(rows, isDemo);
       if (!result || !Array.isArray(result.rows)) throw new Error('SERVER_ERROR');
       setStage({ kind: 'reviewing', fileName: file.name, rows, result, unknown: mapping.unknownHeaders });
@@ -140,6 +143,7 @@ export default function CsvImport({ columns, template, templateName, buildRow, p
           result={stage.result}
           fileName={stage.fileName}
           unknown={stage.unknown}
+          keepExtraColumns={keepExtraColumns}
           isDemo={isDemo}
           filter={filter}
           setFilter={setFilter}
@@ -195,6 +199,7 @@ function Review({
   result,
   fileName,
   unknown,
+  keepExtraColumns,
   isDemo,
   filter,
   setFilter,
@@ -203,6 +208,7 @@ function Review({
   result: ImportResult;
   fileName: string;
   unknown: string[];
+  keepExtraColumns: boolean;
   isDemo: boolean;
   filter: string;
   setFilter: (f: string) => void;
@@ -218,9 +224,15 @@ function Review({
         {isDemo && <Badge tone="warning">Datos de prueba</Badge>}
       </div>
       <p className="text-sm text-ink-muted">Aún no se ha guardado nada. Revisa el resumen y confirma para aplicar todos los cambios a la vez.</p>
-      {unknown.length > 0 && (
-        <Alert tone="warning">Estas columnas no se reconocieron y no se importarán: {unknown.join(', ')}.</Alert>
-      )}
+      {unknown.length > 0 &&
+        (keepExtraColumns ? (
+          <Alert tone="info">
+            Estas columnas se conservarán como información adicional del participante (solo visible para Coordinación y en la
+            exportación): {unknown.join(', ')}.
+          </Alert>
+        ) : (
+          <Alert tone="warning">Estas columnas no se reconocieron y no se importarán: {unknown.join(', ')}.</Alert>
+        ))}
       <Counts counts={result.counts} active={filter} onPick={setFilter} />
 
       <div className="card overflow-hidden">
@@ -246,6 +258,8 @@ function Review({
                     <Badge tone={STATUS[r.status]?.tone ?? 'neutral'}>{STATUS[r.status]?.label ?? r.status}</Badge>
                   </td>
                   <td className="space-y-1 px-4 py-3 text-xs">
+                    {r.alert && <p className="rounded-md border border-error-400/60 bg-error-500/15 px-2 py-1 font-semibold text-error-200">{r.alert}</p>}
+                    {r.note && <p className="font-semibold text-secondary-200">{r.note}</p>}
                     {r.errors.map((e) => <p key={e} className="text-error-300">{e}</p>)}
                     {r.warnings.map((w) => <p key={w} className="text-warning-200">{w}</p>)}
                     {!!r.updated_fields?.length && <p className="text-ink-muted">Actualiza: {fields(r.updated_fields)}</p>}

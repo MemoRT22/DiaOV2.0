@@ -47,6 +47,8 @@ const MESSAGES: Record<string, string> = {
   INVALID_ROLES: 'Elige al menos un rol.',
   CANNOT_DEACTIVATE_SELF: 'No puedes desactivar tu propia cuenta.',
   LAST_COORDINATOR: 'Debe quedar al menos una cuenta de Coordinación activa.',
+  PRIVACY_NOTICE_REQUIRED: 'Primero acepta el Aviso de Privacidad para continuar.',
+  INVALID_SESSION_STATUS: 'Elige un estado válido para el horario.',
   CSV_EMPTY: 'El archivo no tiene filas.',
   CSV_UNREADABLE: 'No se pudo leer el archivo. Verifica que sea un CSV.',
 };

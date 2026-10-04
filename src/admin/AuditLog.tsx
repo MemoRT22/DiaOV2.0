@@ -25,6 +25,7 @@ const ACTIONS: Record<string, string> = {
   'participants.imported': 'Importó participantes',
   'participants.conflict_resolved': 'Resolvió un conflicto de importación',
   'participants.exported': 'Exportó participantes a Excel',
+  'participants.empty_overrides_cleaned': 'Limpió protecciones manuales vacías',
   'catalog.division_saved': 'Guardó una división',
   'catalog.career_saved': 'Guardó una carrera',
   'catalog.activity_saved': 'Guardó un taller',

@@ -1,6 +1,7 @@
 export type ExportRow = {
   full_name: string;
   email: string;
+  previous_emails: string | null;
   phone: string | null;
   birth_date: string | null;
   high_school: string | null;
@@ -19,7 +20,10 @@ export type ExportRow = {
   interest_3: string | null;
   attendances: number;
   created_at: string;
+  forms_extra: Record<string, string> | null;
 };
+
+export type ExtraColumn = { key: string; label: string };
 
 export type ExportPayload = {
   edition: string;
@@ -28,6 +32,7 @@ export type ExportPayload = {
   generated_by: string | null;
   count: number;
   rows: ExportRow[];
+  extra_columns: ExtraColumn[];
 };
 
 const ORIGIN: Record<string, string> = { forms: 'Forms', manual: 'Alta manual', demo: 'Prueba' };
@@ -52,12 +57,14 @@ export async function buildWorkbook(payload: ExportPayload, reason: string, incl
   wb.creator = payload.generated_by ?? 'Coordinación';
   wb.created = new Date(payload.generated_at);
 
+  const extras = Array.isArray(payload.extra_columns) ? payload.extra_columns : [];
   const ws = wb.addWorksheet('Participantes', { views: [{ state: 'frozen', ySplit: 1 }] });
   const date = 'dd/mm/yyyy';
   const dateTime = 'dd/mm/yyyy hh:mm';
   ws.columns = [
     { header: 'Nombre completo', key: 'full_name', width: 32 },
     { header: 'Correo', key: 'email', width: 32 },
+    { header: 'Correos anteriores', key: 'previous_emails', width: 32 },
     { header: 'Teléfono', key: 'phone', width: 16, style: { numFmt: '@' } },
     { header: 'Fecha de nacimiento', key: 'birth_date', width: 18, style: { numFmt: date } },
     { header: 'Preparatoria', key: 'high_school', width: 28 },
@@ -76,11 +83,16 @@ export async function buildWorkbook(payload: ExportPayload, reason: string, incl
     { header: 'Fecha aviso en plataforma', key: 'platform_consent_at', width: 18, style: { numFmt: dateTime } },
     { header: 'Fecha de registro', key: 'created_at', width: 18, style: { numFmt: dateTime } },
     ...(includeDemo ? [{ header: 'Dato de prueba', key: 'is_demo', width: 10 }] : []),
+    // Synthetic keys keep Forms questions from ever overwriting structured columns.
+    ...extras.map((c, i) => ({ header: `Forms: ${c.label}`, key: `forms_extra_${i}`, width: 28 })),
   ];
 
   for (const r of payload.rows) {
+    const { forms_extra: formsExtra, ...base } = r;
     ws.addRow({
-      ...r,
+      ...base,
+      ...Object.fromEntries(extras.map((c, i) => [`forms_extra_${i}`, formsExtra?.[c.key] ?? ''])),
+      previous_emails: r.previous_emails ?? '',
       phone: r.phone ?? '',
       birth_date: birthDate(r.birth_date),
       origin: ORIGIN[r.origin] ?? r.origin,

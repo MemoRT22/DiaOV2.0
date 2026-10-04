@@ -94,6 +94,12 @@ export default function Missions() {
                           <Users className="h-3.5 w-3.5" aria-hidden />
                           {s.capacity}
                         </span>
+                        {s.location && s.location !== a.location && (
+                          <span className="inline-flex items-center gap-1 text-ink-muted">
+                            <MapPin className="h-3.5 w-3.5" aria-hidden />
+                            {s.location}
+                          </span>
+                        )}
                       </span>
                     ))}
                   </div>
