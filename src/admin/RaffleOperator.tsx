@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Check, X } from 'lucide-react';
 import { Alert, Button, LoadError, Spinner } from '../components/ui';
 import { friendlyError } from '../lib/errors';
@@ -130,16 +130,13 @@ export default function RaffleOperator() {
 
 function PresentationRoulette({ result, onExit }: { result: DrawResult; onExit: () => void }) {
   const [spinning, setSpinning] = useState(true);
-  const [displayName, setDisplayName] = useState('');
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [countdown, setCountdown] = useState(3);
 
   useEffect(() => {
-    const names = ['Ana R.', 'Carlos M.', 'Guillermo P.', 'Sofía L.', 'Diego H.', 'Valeria T.', 'Mariana V.', 'Alejandro G.'];
-    let i = 0;
-    timerRef.current = setInterval(() => { setDisplayName(names[i % names.length]); i++; }, 80);
-    const stopTimer = setTimeout(() => { if (timerRef.current) clearInterval(timerRef.current); setDisplayName(result.display_name); setSpinning(false); }, 3000);
-    return () => { if (timerRef.current) clearInterval(timerRef.current); clearTimeout(stopTimer); };
-  }, [result]);
+    if (countdown <= 0) { setSpinning(false); return; }
+    const timer = setTimeout(() => setCountdown((c) => c - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [countdown]);
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col items-center justify-center overflow-hidden" style={{ background: 'radial-gradient(ellipse at center, #0a0e27 0%, #000 100%)' }}>
@@ -156,8 +153,15 @@ function PresentationRoulette({ result, onExit }: { result: DrawResult; onExit: 
         <p className="text-sm font-semibold uppercase tracking-[0.3em] text-primary-300">{result.category_name}</p>
         <p className="mt-4 text-2xl font-extrabold text-white/80">{result.prize_name}</p>
         <div className="mt-12 flex h-48 items-center justify-center">
-          <p className={`font-display text-5xl font-extrabold transition-all duration-300 sm:text-7xl ${spinning ? 'text-white/60 blur-[1px]' : 'text-primary-400 drop-shadow-[0_0_30px_rgba(96,165,250,0.6)]'}`}
-            key={displayName} style={{ animation: spinning ? 'none' : 'winnerReveal 0.6s ease-out' }}>{displayName}</p>
+          {spinning ? (
+            <div className="flex flex-col items-center">
+              <div className="h-16 w-16 animate-spin rounded-full border-4 border-white/20 border-t-primary-400" />
+              <p className="mt-4 text-sm text-white/60">Sorteando…</p>
+            </div>
+          ) : (
+            <p className="font-display text-5xl font-extrabold text-primary-400 drop-shadow-[0_0_30px_rgba(96,165,250,0.6)] sm:text-7xl"
+              style={{ animation: 'winnerReveal 0.6s ease-out' }}>{result.display_name}</p>
+          )}
         </div>
         {!spinning && <div className="mt-8 animate-fade-up"><p className="text-xl font-semibold text-white/90">¡Ganador!</p></div>}
         <button onClick={onExit} className="mt-12 rounded-full border border-white/20 px-6 py-2 text-sm font-semibold text-white/60 transition-colors hover:bg-white/10 hover:text-white">Salir de presentación</button>

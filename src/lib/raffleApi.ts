@@ -36,6 +36,7 @@ export type DrawResult = {
   status: string; pool_size: number; idempotent: boolean;
 };
 
+export async function fetchMyRaffleStatus(): Promise<{ academic_tickets: number; leadership_tickets: number; raffle_category: string | null; raffle_category_name: string | null; has_won: boolean }> { return rpc('my_raffle_status'); }
 export async function fetchOperatorView(): Promise<OperatorView> { return rpc<OperatorView>('raffle_operator_view'); }
 export async function fetchCategories(): Promise<RaffleCategory[]> { return rpc<RaffleCategory[]>('raffle_categories_read'); }
 export async function fetchPrizes(categoryId: string): Promise<RafflePrize[]> { return rpc<RafflePrize[]>('raffle_prizes_read', { p_category_id: categoryId }); }

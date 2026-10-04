@@ -5,6 +5,7 @@ import { ProgressRing, ThemedTitle } from '../components/themed';
 import { buttonClasses, LoadError, PageSkeleton } from '../components/ui';
 import { useAuth } from '../lib/auth';
 import { fetchDivisions, fetchMyInterests, fetchProgress } from '../lib/catalog';
+import { fetchMyRaffleStatus } from '../lib/raffleApi';
 import { useLoad } from '../lib/useLoad';
 import ScanButton from './ScanButton';
 import { useTheme } from '../theme/ThemeProvider';
@@ -15,7 +16,7 @@ export default function Passport() {
   const { theme, term, text, rankName } = useTheme();
   const { profile } = useAuth();
   const { data, error, loading, reload } = useLoad(
-    () => Promise.all([fetchProgress(), fetchDivisions(), fetchMyInterests()]),
+    () => Promise.all([fetchProgress(), fetchDivisions(), fetchMyInterests(), fetchMyRaffleStatus().catch(() => null)]),
     [],
   );
   const [dismissed, setDismissed] = useState(() => sessionStorage.getItem(DISMISS_KEY) === '1');
@@ -23,7 +24,7 @@ export default function Passport() {
   if (loading && !data) return <PageSkeleton />;
   if (error || !data) return <LoadError error={error} onRetry={reload} />;
 
-  const [progress, divisions, interests] = data;
+  const [progress, divisions, interests, raffle] = data;
   const visited = new Set(progress.division_ids);
   const rank = theme.ranks[progress.level - 1];
   const showPrompt = progress.interests_prompt && progress.interests_open && interests.length === 0 && !dismissed;
@@ -61,38 +62,40 @@ export default function Passport() {
           <Ticket className="h-5 w-5 text-accent-400" aria-hidden />
           <h2 className="text-base font-extrabold">Tickets para el sorteo</h2>
         </div>
-        {progress.has_won ? (
+        {raffle?.has_won ? (
           <div className="mt-4 rounded-theme border border-success-500/40 bg-success-500/10 p-4 text-center">
             <Trophy className="mx-auto h-8 w-8 text-success-400" aria-hidden />
             <p className="mt-2 font-semibold text-success-300">¡Ganaste un premio!</p>
             <p className="mt-1 text-sm text-ink-muted">Ya participaste en el sorteo final.</p>
           </div>
-        ) : progress.raffle_category_name ? (
+        ) : raffle?.raffle_category_name ? (
           <div className="mt-4 rounded-theme border border-accent-500/40 bg-accent-500/10 p-4 text-center">
             <p className="text-sm font-semibold text-ink-muted">Grupo de sorteo desbloqueado</p>
-            <p className="mt-1 text-lg font-extrabold text-accent-400">{progress.raffle_category_name}</p>
-            <p className="mt-1 text-sm text-ink-muted">{progress.academic_tickets} académicos + {progress.leadership_tickets} liderazgo</p>
+            <p className="mt-1 text-lg font-extrabold text-accent-400">{raffle.raffle_category_name}</p>
+            <p className="mt-1 text-sm text-ink-muted">{raffle.academic_tickets} académicos + {raffle.leadership_tickets} liderazgo</p>
           </div>
-        ) : (
+        ) : raffle ? (
           <div className="mt-4 space-y-3">
             <div className="grid grid-cols-2 gap-3 text-center">
               <div className="rounded-theme border border-line bg-surface-raised p-3">
-                <p className="font-display text-2xl font-extrabold text-primary-400">{progress.academic_tickets}</p>
+                <p className="font-display text-2xl font-extrabold text-primary-400">{raffle.academic_tickets}</p>
                 <p className="text-xs text-ink-muted">Académicos</p>
               </div>
               <div className="rounded-theme border border-line bg-surface-raised p-3">
-                <p className="font-display text-2xl font-extrabold text-secondary-300">{progress.leadership_tickets}</p>
+                <p className="font-display text-2xl font-extrabold text-secondary-300">{raffle.leadership_tickets}</p>
                 <p className="text-xs text-ink-muted">Liderazgo</p>
               </div>
             </div>
             <p className="text-center text-sm text-ink-muted">
-              {progress.academic_tickets < 3
-                ? `Te falta completar ${3 - progress.academic_tickets} misión${3 - progress.academic_tickets !== 1 ? 'es' : ''} académica${3 - progress.academic_tickets !== 1 ? 's' : ''}.`
-                : progress.leadership_tickets === 0
+              {raffle.academic_tickets < 3
+                ? `Te falta completar ${3 - raffle.academic_tickets} misión${3 - raffle.academic_tickets !== 1 ? 'es' : ''} académica${3 - raffle.academic_tickets !== 1 ? 's' : ''}.`
+                : raffle.leadership_tickets === 0
                   ? 'Te falta 1 actividad de liderazgo.'
                   : 'Aún no perteneces a ningún grupo de sorteo.'}
             </p>
           </div>
+        ) : (
+          <p className="mt-4 text-sm text-ink-muted">Acepta el Aviso de Privacidad para ver tu progreso en el sorteo.</p>
         )}
       </section>
 

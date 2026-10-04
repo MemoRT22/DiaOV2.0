@@ -95,6 +95,9 @@ const MESSAGES: Record<string, string> = {
   PRIZE_EXHAUSTED: 'Este premio ya no tiene unidades disponibles.',
   POOL_EMPTY: 'No hay candidatos en el pool para este sorteo.',
   INVALID_STATUS: 'El estado del ganador no permite esta acción.',
+  PRIZE_INACTIVE: 'Este premio está inactivo y no se puede sortear.',
+  DEMO_REAL_MISMATCH: 'No se puede mover un premio entre entornos de prueba y real.',
+  QUANTITY_BELOW_COMMITTED: 'La cantidad no puede ser menor que las unidades ya comprometidas (entregadas o seleccionadas).',
 };
 
 const GENERIC = 'Algo salió mal. Inténtalo de nuevo.';

@@ -38,11 +38,6 @@ export type Progress = {
   consent_accepted: boolean;
   interests_prompt: boolean;
   interests_open: boolean;
-  academic_tickets: number;
-  leadership_tickets: number;
-  raffle_category: string | null;
-  raffle_category_name: string | null;
-  has_won: boolean;
 };
 
 export async function fetchDivisions(): Promise<Division[]> {
