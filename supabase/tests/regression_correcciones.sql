@@ -38,6 +38,8 @@ BEGIN
   INSERT INTO careers (code, name, division_id, is_demo, is_active)
   SELECT 'RT-OFF', 'RT Carrera Inactiva', division_id, false, false FROM careers WHERE code = 'DEMO-MED'
   RETURNING id::text INTO v_off;
+  INSERT INTO careers (code, name, division_id, is_demo, is_active)
+  SELECT 'RT-DMED', 'RT Medicina', division_id, true, true FROM careers WHERE code = 'DEMO-MED';
 
   CREATE TEMP TABLE rt_steps (seq serial, name text, who text, q text, expect text) ON COMMIT DROP;
   INSERT INTO rt_steps (name, who, q, expect) VALUES
@@ -57,12 +59,12 @@ BEGIN
 
   -- Import batch 1: new, CSV duplicates, invalid date, missing consent, extra headers
   ('import 1 aplicar', 'C', $q$select commit_participant_import('[
-    {"row":2,"email":"RT.Ana@Test.invalid ","full_name":"Ana Prueba","birth_date":"2008-05-14","phone":"9981111111","high_school":"Prepa Uno","career":"DEMO-MED","consent":true,"submitted_at":"2026-01-10T10:00:00Z",
+    {"row":2,"email":"RT.Ana@Test.invalid ","full_name":"Ana Prueba","birth_date":"2008-05-14","phone":"9981111111","high_school":"Prepa Uno","career":"RT-REAL","consent":true,"submitted_at":"2026-01-10T10:00:00Z",
      "extra":[{"col":9,"header":"¿Cómo te enteraste?","value":"Instagram"},{"col":10,"header":"  ¿cómo te  enteraste? ","value":"Amigos"},{"col":11,"header":"","value":"sin titulo"},{"col":12,"header":"Pregunta muy larga sobre tus intereses profesionales y personales que excede el límite permitido de caracteres","value":"larga"},{"col":13,"header":"email","value":"intruso@test.invalid"},{"col":14,"header":"Vacía","value":""}]},
-    {"row":3,"email":"rt.beto@test.invalid","full_name":"Beto Uno","birth_date":"2008-01-01","career":"DEMO-MED","consent":true},
-    {"row":4,"email":"rt.beto@test.invalid","full_name":"Beto Dos","birth_date":"2008-01-01","career":"DEMO-MED","consent":true},
-    {"row":6,"email":"rt.dani@test.invalid","full_name":"Dani Prueba","birth_date":"2008-13-45","career":"DEMO-MED","consent":true},
-    {"row":7,"email":"rt.eli@test.invalid","full_name":"Eli Prueba","birth_date":"2008-03-03","career":"DEMO-MED","consent":false}
+    {"row":3,"email":"rt.beto@test.invalid","full_name":"Beto Uno","birth_date":"2008-01-01","career":"RT-REAL","consent":true},
+    {"row":4,"email":"rt.beto@test.invalid","full_name":"Beto Dos","birth_date":"2008-01-01","career":"RT-REAL","consent":true},
+    {"row":6,"email":"rt.dani@test.invalid","full_name":"Dani Prueba","birth_date":"2008-13-45","career":"RT-REAL","consent":true},
+    {"row":7,"email":"rt.eli@test.invalid","full_name":"Eli Prueba","birth_date":"2008-03-03","career":"RT-REAL","consent":false}
   ]'::jsonb, 'rt.csv', false)$q$, 'OK'),
   ('import: fila nueva', 'P', $q$select jsonb_path_query_first($LAST::jsonb, '$.** ? (@.row == 2)')->>'status' = 'new'$q$, 'TRUE'),
   ('import: duplicado en CSV marca la fila anterior', 'P', $q$select jsonb_path_query_first($LAST::jsonb, '$.** ? (@.row == 3)')->>'status' = 'duplicate'$q$, 'TRUE'),
@@ -80,9 +82,9 @@ BEGIN
 
   -- Stable extra identity: same duplicated headers, alternating empty cells
   ('extras alternos: importar', 'C', $q$select commit_participant_import('[
-    {"row":2,"email":"rt.ivan@test.invalid","full_name":"Ivan Alterno","birth_date":"2008-04-04","career":"DEMO-MED","consent":true,
+    {"row":2,"email":"rt.ivan@test.invalid","full_name":"Ivan Alterno","birth_date":"2008-04-04","career":"RT-REAL","consent":true,
      "extra":[{"col":9,"header":"Pregunta","value":"Respuesta A"},{"col":10,"header":"Pregunta","value":""}]},
-    {"row":3,"email":"rt.juli@test.invalid","full_name":"Juli Alterna","birth_date":"2008-04-05","career":"DEMO-MED","consent":true,
+    {"row":3,"email":"rt.juli@test.invalid","full_name":"Juli Alterna","birth_date":"2008-04-05","career":"RT-REAL","consent":true,
      "extra":[{"col":9,"header":"Pregunta","value":""},{"col":10,"header":"Pregunta","value":"Respuesta B"}]}
   ]'::jsonb, 'rt-alt.csv', false)$q$, 'OK'),
   ('extras alternos: la primera columna conserva su clave', 'P', $q$select extra->'forms'->'pregunta'->>'value' = 'Respuesta A' and not (extra->'forms' ? 'pregunta (2)') from participants where email = 'rt.ivan@test.invalid'$q$, 'TRUE'),
@@ -95,7 +97,7 @@ BEGIN
     {"row":2,"email":"rt.carla@test.invalid","full_name":"Carla Prueba","birth_date":"2008-02-02","career":"Medicina Veterinaria","consent":true},
     {"row":3,"email":"rt.gabi@test.invalid","full_name":"Gabi Prueba","birth_date":"2008-02-03","career":"  medicina   VETERINARIA ","consent":true},
     {"row":4,"email":"rt.hugo@test.invalid","full_name":"Hugo Prueba","birth_date":"2008-02-04","career":"Gastronomía Molecular","consent":true},
-    {"row":5,"email":"rt.ines@test.invalid","full_name":"Ines Prueba","birth_date":"2008-02-05","career":"DEMO-MED","consent":true}
+    {"row":5,"email":"rt.ines@test.invalid","full_name":"Ines Prueba","birth_date":"2008-02-05","career":"RT-REAL","consent":true}
   ]'::jsonb, false)$q$, 'OK'),
   ('carrera: valor desconocido agrupado una sola vez', 'P', $q$select jsonb_array_length($LAST::jsonb->'unmatched_careers') = 2
       and jsonb_path_exists($LAST::jsonb, '$.unmatched_careers[*] ? (@.count == 2 && @.target == null)')
@@ -122,7 +124,7 @@ BEGIN
     {"row":2,"email":"rt.carla@test.invalid","full_name":"Carla Prueba","birth_date":"2008-02-02","career":"Medicina Veterinaria","consent":true},
     {"row":3,"email":"rt.gabi@test.invalid","full_name":"Gabi Prueba","birth_date":"2008-02-03","career":"  medicina   VETERINARIA ","consent":true},
     {"row":4,"email":"rt.hugo@test.invalid","full_name":"Hugo Prueba","birth_date":"2008-02-04","career":"Gastronomía Molecular","consent":true},
-    {"row":5,"email":"rt.ines@test.invalid","full_name":"Ines Prueba","birth_date":"2008-02-05","career":"DEMO-MED","consent":true}
+    {"row":5,"email":"rt.ines@test.invalid","full_name":"Ines Prueba","birth_date":"2008-02-05","career":"RT-REAL","consent":true}
   ]'::jsonb, 'rt-car.csv', false, '{"medicina veterinaria":":REAL","gastronomia molecular":"none"}'::jsonb)$q$, 'OK'),
   ('carrera: un mapeo aplica a todas las filas y conserva el texto original', 'P', $q$select count(*) = 2 and bool_and(initial_career_id = ':REAL') and array_agg(initial_career_raw order by email) = ARRAY['Medicina Veterinaria','medicina VETERINARIA']
       from participants where email in ('rt.carla@test.invalid','rt.gabi@test.invalid')$q$, 'TRUE'),
@@ -131,24 +133,55 @@ BEGIN
       and jsonb_array_length(detail->'mappings') = 2 and jsonb_path_exists(detail, '$.mappings[*] ? (@.rows == 2)')$q$, 'TRUE'),
   ('carrera: expediente muestra texto recibido', 'C', $q$select get_participant(':CID')->>'initial_career_raw' = 'Medicina Veterinaria'$q$, 'TRUE'),
 
+  -- Automatic recognition in a REAL import only accepts active, non-demo careers
+  ('catálogo: vista previa real con carreras real, inactiva y de prueba', 'C', $q$select preview_participant_import('[
+    {"row":2,"email":"rt.nico@test.invalid","full_name":"Nico Real","birth_date":"2008-06-01","career":"rt carrera real","consent":true},
+    {"row":3,"email":"rt.olga@test.invalid","full_name":"Olga Inactiva","birth_date":"2008-06-02","career":"RT-OFF","consent":true},
+    {"row":4,"email":"rt.pepe@test.invalid","full_name":"Pepe Codigo Demo","birth_date":"2008-06-03","career":"DEMO-MED","consent":true},
+    {"row":5,"email":"rt.quin@test.invalid","full_name":"Quin Nombre Demo","birth_date":"2008-06-04","career":"  RT medicina ","consent":true}
+  ]'::jsonb, false)$q$, 'OK'),
+  ('catálogo: carrera real activa se reconoce sola', 'P', $q$select not (jsonb_path_query_first($LAST::jsonb, '$.** ? (@.row == 2)')->>'career_unresolved')::boolean
+      and not jsonb_path_exists($LAST::jsonb, '$.unmatched_careers[*] ? (@.key == "rt carrera real")')$q$, 'TRUE'),
+  ('catálogo: inactiva, código demo y nombre demo quedan pendientes', 'P', $q$select jsonb_array_length($LAST::jsonb->'unmatched_careers') = 3
+      and jsonb_path_exists($LAST::jsonb, '$.unmatched_careers[*] ? (@.key == "rt-off" && @.target == null)')
+      and jsonb_path_exists($LAST::jsonb, '$.unmatched_careers[*] ? (@.key == "demo-med" && @.target == null)')
+      and jsonb_path_exists($LAST::jsonb, '$.unmatched_careers[*] ? (@.key == "rt medicina" && @.target == null)')
+      and (jsonb_path_query_first($LAST::jsonb, '$.** ? (@.row == 3)')->>'career_unresolved')::boolean
+      and (jsonb_path_query_first($LAST::jsonb, '$.** ? (@.row == 4)')->>'career_unresolved')::boolean
+      and (jsonb_path_query_first($LAST::jsonb, '$.** ? (@.row == 5)')->>'career_unresolved')::boolean$q$, 'TRUE'),
+  ('catálogo: no se puede cargar sin resolverlas', 'C', $q$select commit_participant_import('[
+    {"row":2,"email":"rt.nico@test.invalid","full_name":"Nico Real","birth_date":"2008-06-01","career":"rt carrera real","consent":true},
+    {"row":4,"email":"rt.pepe@test.invalid","full_name":"Pepe Codigo Demo","birth_date":"2008-06-03","career":"DEMO-MED","consent":true}
+  ]'::jsonb, 'rt-cat.csv', false)$q$, 'ERR:UNRESOLVED_CAREERS'),
+  ('catálogo: nada se guardó con la carrera de prueba', 'P', $q$select count(*) = 0 from participants where email in ('rt.nico@test.invalid','rt.pepe@test.invalid')$q$, 'TRUE'),
+  ('catálogo: relacionadas con carrera real activa se cargan', 'C', $q$select commit_participant_import('[
+    {"row":2,"email":"rt.nico@test.invalid","full_name":"Nico Real","birth_date":"2008-06-01","career":"rt carrera real","consent":true},
+    {"row":3,"email":"rt.olga@test.invalid","full_name":"Olga Inactiva","birth_date":"2008-06-02","career":"RT-OFF","consent":true},
+    {"row":4,"email":"rt.pepe@test.invalid","full_name":"Pepe Codigo Demo","birth_date":"2008-06-03","career":"DEMO-MED","consent":true},
+    {"row":5,"email":"rt.quin@test.invalid","full_name":"Quin Nombre Demo","birth_date":"2008-06-04","career":"  RT medicina ","consent":true}
+  ]'::jsonb, 'rt-cat.csv', false, '{"rt-off":":REAL","demo-med":":REAL","rt medicina":":REAL"}'::jsonb)$q$, 'OK'),
+  ('catálogo: todas quedan con la carrera real y conservan el texto', 'P', $q$select count(*) = 4 and bool_and(initial_career_id = ':REAL')
+      and array_agg(initial_career_raw order by email) = ARRAY['rt carrera real','RT-OFF','DEMO-MED','RT medicina']
+      from participants where email in ('rt.nico@test.invalid','rt.olga@test.invalid','rt.pepe@test.invalid','rt.quin@test.invalid')$q$, 'TRUE'),
+
   -- Re-import unchanged
-  ('import 2 sin cambios', 'C', $q$select commit_participant_import('[{"row":2,"email":"rt.ana@test.invalid","full_name":"Ana Prueba","birth_date":"2008-05-14","phone":"9981111111","high_school":"Prepa Uno","career":"DEMO-MED","consent":true,"submitted_at":"2026-01-10T10:00:00Z","extra":[{"col":9,"header":"¿Cómo te enteraste?","value":"Instagram"}]}]'::jsonb, 'rt.csv', false)$q$, 'OK'),
+  ('import 2 sin cambios', 'C', $q$select commit_participant_import('[{"row":2,"email":"rt.ana@test.invalid","full_name":"Ana Prueba","birth_date":"2008-05-14","phone":"9981111111","high_school":"Prepa Uno","career":"RT-REAL","consent":true,"submitted_at":"2026-01-10T10:00:00Z","extra":[{"col":9,"header":"¿Cómo te enteraste?","value":"Instagram"}]}]'::jsonb, 'rt.csv', false)$q$, 'OK'),
   ('import: sin cambios', 'P', $q$select jsonb_path_query_first($LAST::jsonb, '$.** ? (@.row == 2)')->>'status' = 'unchanged'$q$, 'TRUE'),
 
   -- Manual correction preserved
   ('corrección manual de teléfono', 'C', $q$select update_participant(':AID', '{"phone":"9989999999"}'::jsonb)$q$, 'OK'),
-  ('import 3 con teléfono viejo', 'C', $q$select commit_participant_import('[{"row":2,"email":"rt.ana@test.invalid","full_name":"Ana Prueba","birth_date":"2008-05-14","phone":"9981111111","high_school":"Prepa Uno","career":"DEMO-MED","consent":true}]'::jsonb, 'rt.csv', false)$q$, 'OK'),
+  ('import 3 con teléfono viejo', 'C', $q$select commit_participant_import('[{"row":2,"email":"rt.ana@test.invalid","full_name":"Ana Prueba","birth_date":"2008-05-14","phone":"9981111111","high_school":"Prepa Uno","career":"RT-REAL","consent":true}]'::jsonb, 'rt.csv', false)$q$, 'OK'),
   ('import: corrección manual se conserva', 'P', $q$select phone = '9989999999' from participants where id = ':AID'$q$, 'TRUE'),
 
   -- Email correction + old email in Forms
   ('corregir correo con motivo', 'C', $q$select update_participant(':AID', '{"email":"rt.ana2@test.invalid","email_reason":"Error al escribir en Forms"}'::jsonb)$q$, 'OK'),
   ('correo: historial guarda correo anterior y motivo', 'P', $q$select count(*) = 1 from participant_email_history where participant_id = ':AID' and email = 'rt.ana@test.invalid' and reason = 'Error al escribir en Forms' and changed_by = '00000000-0000-4000-8000-0000000000c1'$q$, 'TRUE'),
-  ('import 4 con correo anterior', 'C', $q$select commit_participant_import('[{"row":2,"email":"rt.ana@test.invalid","full_name":"Ana Prueba","birth_date":"2008-05-14","phone":"9981111111","high_school":"Prepa Uno","career":"DEMO-MED","consent":true}]'::jsonb, 'rt.csv', false)$q$, 'OK'),
+  ('import 4 con correo anterior', 'C', $q$select commit_participant_import('[{"row":2,"email":"rt.ana@test.invalid","full_name":"Ana Prueba","birth_date":"2008-05-14","phone":"9981111111","high_school":"Prepa Uno","career":"RT-REAL","consent":true}]'::jsonb, 'rt.csv', false)$q$, 'OK'),
   ('correo: reconocido por correo anterior', 'P', $q$select (jsonb_path_query_first($LAST::jsonb, '$.** ? (@.row == 2)')->>'note') like 'Reconocido por correo anterior%' and jsonb_path_query_first($LAST::jsonb, '$.** ? (@.row == 2)')->>'status' <> 'new'$q$, 'TRUE'),
   ('correo: no se crea duplicado ni se revierte', 'P', $q$select (select count(*) from participants where edition_id = active_edition_id() and email in ('rt.ana@test.invalid','rt.ana2@test.invalid')) = 1 and (select email from participants where id = ':AID') = 'rt.ana2@test.invalid'$q$, 'TRUE'),
   ('correo: el anterior no sirve para entrar', 'P', $q$select count(*) = 0 from participants where edition_id = active_edition_id() and email = 'rt.ana@test.invalid'$q$, 'TRUE'),
   ('correo: no se puede reutilizar un correo anterior', 'C', $q$select create_participant_manual('{"email":"rt.ana@test.invalid","full_name":"Otra Persona","birth_date":"2008-01-01","phone":"9983333333","high_school":"Prepa Tres","initial_career_id":":REAL","consent_confirmed":true}'::jsonb)$q$, 'ERR:EMAIL_EXISTS'),
-  ('import 5 correo anterior con nombre y fecha distintos', 'C', $q$select preview_participant_import('[{"row":2,"email":"rt.ana@test.invalid","full_name":"Zeta Distinta","birth_date":"1990-01-01","career":"DEMO-MED","consent":true}]'::jsonb, false)$q$, 'OK'),
+  ('import 5 correo anterior con nombre y fecha distintos', 'C', $q$select preview_participant_import('[{"row":2,"email":"rt.ana@test.invalid","full_name":"Zeta Distinta","birth_date":"1990-01-01","career":"RT-REAL","consent":true}]'::jsonb, false)$q$, 'OK'),
   ('correo: alerta fuerte sin bloquear la fila', 'P', $q$select jsonb_path_query_first($LAST::jsonb, '$.** ? (@.row == 2)')->>'alert' is not null and jsonb_path_query_first($LAST::jsonb, '$.** ? (@.row == 2)')->>'status' <> 'error'$q$, 'TRUE'),
 
   -- In-person sign-up: every field required, career only from the active official catalog
@@ -163,11 +196,12 @@ BEGIN
   ('alta presencial: completa (staff)', 'S', $q$select create_participant_manual('{"email":"rt.fer@test.invalid","full_name":"Fer Manual","birth_date":"2008-07-07","phone":"9984444444","high_school":"Prepa Cuatro","initial_career_id":":REAL","consent_confirmed":true}'::jsonb)$q$, 'OK'),
   ('alta presencial: guarda todo con origen manual', 'P', $q$select origin = 'manual' and birth_date = '2008-07-07' and phone = '9984444444' and high_school = 'Prepa Cuatro' and initial_career_id = ':REAL'
       and manual_consent_at is not null and manual_overrides ?& ARRAY['full_name','birth_date','phone','high_school','initial_career_id'] from participants where id = ':FID'$q$, 'TRUE'),
-  ('import 6 con datos distintos del alta', 'C', $q$select commit_participant_import('[{"row":2,"email":"rt.fer@test.invalid","full_name":"Fernanda Forms","birth_date":"2008-07-07","phone":"9982222222","high_school":"Prepa Dos","career":"DEMO-MED","consent":true}]'::jsonb, 'rt.csv', false)$q$, 'OK'),
+  ('import 6 con datos distintos del alta', 'C', $q$select commit_participant_import('[{"row":2,"email":"rt.fer@test.invalid","full_name":"Fernanda Forms","birth_date":"2008-07-07","phone":"9982222222","high_school":"Prepa Dos","career":"RT-REAL","consent":true}]'::jsonb, 'rt.csv', false)$q$, 'OK'),
   ('alta presencial: recarga no reemplaza datos capturados ni duplica', 'P', $q$select phone = '9984444444' and high_school = 'Prepa Cuatro' and full_name = 'Fer Manual' and (select count(*) from participants where email = 'rt.fer@test.invalid') = 1 from participants where id = ':FID'$q$, 'TRUE'),
 
   -- Demo row
   ('import demo', 'C', $q$select commit_participant_import('[{"row":2,"email":"rt.demo@test.invalid","full_name":"Demo Prueba","birth_date":"2008-08-08","career":"DEMO-MED","consent":true}]'::jsonb, 'rt-demo.csv', true)$q$, 'OK'),
+  ('demo: importación de prueba sí reconoce carrera de prueba', 'P', $q$select initial_career_id = ':DEMO' and is_demo from participants where email = 'rt.demo@test.invalid'$q$, 'TRUE'),
 
   -- Export
   ('exportar sin demo', 'C', $q$select export_participants('prueba regresion', false)$q$, 'OK'),
@@ -199,9 +233,9 @@ BEGIN
   ('padrón: estado oficial con fecha', 'P', $q$select roster_status = 'oficial' and roster_declared_at is not null from editions where id = active_edition_id()$q$, 'TRUE'),
   ('padrón: declaración auditada', 'P', $q$select count(*) = 1 from audit_log where action = 'roster.declared_official' and actor_user_id = '00000000-0000-4000-8000-0000000000c1'$q$, 'TRUE'),
   ('padrón: no se declara dos veces', 'C', $q$select declare_official_roster('DECLARAR PADRÓN OFICIAL')$q$, 'ERR:ROSTER_ALREADY_OFFICIAL'),
-  ('padrón oficial: bloquea vista previa', 'C', $q$select preview_participant_import('[{"row":2,"email":"rt.kim@test.invalid","full_name":"Kim Tarde","birth_date":"2008-09-09","career":"DEMO-MED","consent":true}]'::jsonb, false)$q$, 'ERR:ROSTER_OFFICIAL'),
-  ('padrón oficial: bloquea carga directa por RPC', 'C', $q$select commit_participant_import('[{"row":2,"email":"rt.kim@test.invalid","full_name":"Kim Tarde","birth_date":"2008-09-09","career":"DEMO-MED","consent":true}]'::jsonb, 'tarde.csv', false)$q$, 'ERR:ROSTER_OFFICIAL'),
-  ('padrón oficial: bloquea también datos de prueba', 'C', $q$select commit_participant_import('[{"row":2,"email":"rt.kim@test.invalid","full_name":"Kim Tarde","birth_date":"2008-09-09","career":"DEMO-MED","consent":true}]'::jsonb, 'tarde.csv', true)$q$, 'ERR:ROSTER_OFFICIAL'),
+  ('padrón oficial: bloquea vista previa', 'C', $q$select preview_participant_import('[{"row":2,"email":"rt.kim@test.invalid","full_name":"Kim Tarde","birth_date":"2008-09-09","career":"RT-REAL","consent":true}]'::jsonb, false)$q$, 'ERR:ROSTER_OFFICIAL'),
+  ('padrón oficial: bloquea carga directa por RPC', 'C', $q$select commit_participant_import('[{"row":2,"email":"rt.kim@test.invalid","full_name":"Kim Tarde","birth_date":"2008-09-09","career":"RT-REAL","consent":true}]'::jsonb, 'tarde.csv', false)$q$, 'ERR:ROSTER_OFFICIAL'),
+  ('padrón oficial: bloquea también datos de prueba', 'C', $q$select commit_participant_import('[{"row":2,"email":"rt.kim@test.invalid","full_name":"Kim Tarde","birth_date":"2008-09-09","career":"RT-REAL","consent":true}]'::jsonb, 'tarde.csv', true)$q$, 'ERR:ROSTER_OFFICIAL'),
   ('padrón oficial: nada se cargó', 'P', $q$select count(*) = 0 from participants where email = 'rt.kim@test.invalid'$q$, 'TRUE'),
   ('padrón oficial: alta presencial funciona', 'S', $q$select create_participant_manual('{"email":"rt.luis@test.invalid","full_name":"Luis Presencial","birth_date":"2008-10-10","phone":"9985555555","high_school":"Prepa Cinco","initial_career_id":":REAL","consent_confirmed":true}'::jsonb)$q$, 'OK'),
   ('padrón oficial: alta presencial sigue validando', 'S', $q$select create_participant_manual('{"email":"rt.mar@test.invalid","full_name":"Mar Presencial","birth_date":"2008-10-11","phone":"9986666666","initial_career_id":":REAL","consent_confirmed":true}'::jsonb)$q$, 'ERR:HIGH_SCHOOL_REQUIRED'),
@@ -224,14 +258,16 @@ BEGIN
   -- Reload during preparation does not duplicate
   ('recarga: contar antes', 'P', $q$select count(*) from participants where edition_id = active_edition_id() and email like 'rt.%@test.invalid'$q$, 'SHOW'),
   ('recarga: mismo CSV completo otra vez', 'C', $q$select commit_participant_import('[
-    {"row":2,"email":"rt.beto@test.invalid","full_name":"Beto Dos","birth_date":"2008-01-01","career":"DEMO-MED","consent":true},
-    {"row":3,"email":"rt.ivan@test.invalid","full_name":"Ivan Alterno","birth_date":"2008-04-04","career":"DEMO-MED","consent":true,"extra":[{"col":9,"header":"Pregunta","value":"Respuesta A"},{"col":10,"header":"Pregunta","value":""}]},
+    {"row":2,"email":"rt.beto@test.invalid","full_name":"Beto Dos","birth_date":"2008-01-01","career":"RT-REAL","consent":true},
+    {"row":3,"email":"rt.ivan@test.invalid","full_name":"Ivan Alterno","birth_date":"2008-04-04","career":"RT-REAL","consent":true,"extra":[{"col":9,"header":"Pregunta","value":"Respuesta A"},{"col":10,"header":"Pregunta","value":""}]},
     {"row":4,"email":"rt.carla@test.invalid","full_name":"Carla Prueba","birth_date":"2008-02-02","career":"Medicina Veterinaria","consent":true},
-    {"row":5,"email":"rt.fer@test.invalid","full_name":"Fernanda Forms","birth_date":"2008-07-07","career":"DEMO-MED","consent":true},
-    {"row":6,"email":"RT.Ana@test.invalid","full_name":"Ana Prueba","birth_date":"2008-05-14","career":"DEMO-MED","consent":true}
+    {"row":5,"email":"rt.fer@test.invalid","full_name":"Fernanda Forms","birth_date":"2008-07-07","career":"RT-REAL","consent":true},
+    {"row":6,"email":"RT.Ana@test.invalid","full_name":"Ana Prueba","birth_date":"2008-05-14","career":"RT-REAL","consent":true}
   ]'::jsonb, 'rt-recarga.csv', false, '{"medicina veterinaria":":REAL"}'::jsonb)$q$, 'OK'),
   ('recarga: ninguna fila nueva', 'P', $q$select not jsonb_path_exists($LAST::jsonb, '$.** ? (@.status == "new")')$q$, 'TRUE'),
-  ('recarga: no duplica aspirantes', 'P', $q$select count(*) = 11 and count(distinct email) = count(*) from participants where edition_id = active_edition_id() and email like 'rt.%@test.invalid'$q$, 'TRUE'),
+  ('recarga: no duplica aspirantes', 'P', $q$select count(*) = 15 and count(distinct email) = count(*) from participants where edition_id = active_edition_id() and email like 'rt.%@test.invalid'$q$, 'TRUE'),
+
+  ('catálogo: ningún aspirante real referencia una carrera de prueba', 'P', $q$select not exists (select 1 from participants p join careers k on k.id = p.initial_career_id where not p.is_demo and k.is_demo)$q$, 'TRUE'),
 
   -- Consent guard (student = participant A)
   ('vincular aspirante', 'P', $q$update participants set auth_user_id = '00000000-0000-4000-8000-0000000000c6' where id = ':AID'$q$, 'SHOW'),
