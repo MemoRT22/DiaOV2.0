@@ -11,6 +11,7 @@ export type Session = {
   capacity: number;
   location: string;
   status: SessionStatus;
+  credits: number;
 };
 
 export const SESSION_STATUS_LABELS: Record<SessionStatus, string> = { activa: 'Publicada', oculta: 'Oculta', cancelada: 'Cancelada' };
@@ -51,7 +52,7 @@ export async function fetchCareers(includeInactive = false): Promise<Career[]> {
 export async function fetchActivities(editionId: string): Promise<Activity[]> {
   const { data, error } = await supabase
     .from('activities')
-    .select('id, division_id, title, description, location, is_demo, activity_sessions(id, activity_id, starts_at, ends_at, capacity, location, status)')
+    .select('id, division_id, title, description, location, is_demo, activity_sessions(id, activity_id, starts_at, ends_at, capacity, location, status, credits)')
     .eq('edition_id', editionId)
     .order('title');
   if (error) throw error;
@@ -66,12 +67,6 @@ export async function fetchProgress(): Promise<Progress> {
   if (error) throw error;
   if (!data || typeof data.level !== 'number') throw new Error('INVALID_PROGRESS');
   return data as Progress;
-}
-
-export async function fetchMyAttendedSessionIds(): Promise<Set<string>> {
-  const { data, error } = await supabase.from('attendances').select('session_id');
-  if (error) throw error;
-  return new Set((data ?? []).map((r) => r.session_id as string));
 }
 
 export async function fetchMyInterests(): Promise<string[]> {

@@ -1,5 +1,6 @@
 import {
   BookOpen,
+  CalendarClock,
   FileSpreadsheet,
   GitMerge,
   History,
@@ -51,6 +52,7 @@ const NAV: { title: string; items: NavItem[] }[] = [
       { to: '/coordinacion/personal', label: 'Personal', icon: UsersRound, coordOnly: true },
       { to: '/coordinacion/tematica', label: 'Edición y temática', icon: Palette, coordOnly: true },
       { to: '/coordinacion/rangos', label: 'Reglas de rangos', icon: Medal, coordOnly: true },
+      { to: '/coordinacion/reservaciones', label: 'Reservaciones', icon: CalendarClock, coordOnly: true },
       { to: '/coordinacion/operacion', label: 'Operación y datos de prueba', icon: Power, coordOnly: true },
       { to: '/coordinacion/auditoria', label: 'Auditoría', icon: History, coordOnly: true },
       { to: '/coordinacion/cuenta', label: 'Mi cuenta', icon: KeyRound },

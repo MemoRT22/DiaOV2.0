@@ -8,6 +8,7 @@ const StudentLayout = lazy(() => import('./student/StudentLayout'));
 const Welcome = lazy(() => import('./student/Welcome'));
 const Passport = lazy(() => import('./student/Passport'));
 const Missions = lazy(() => import('./student/Missions'));
+const MyRoute = lazy(() => import('./student/MyRoute'));
 const Interests = lazy(() => import('./student/Interests'));
 
 const AdminLayout = lazy(() => import('./admin/AdminLayout'));
@@ -25,6 +26,7 @@ const StaffAccounts = lazy(() => import('./admin/staff/StaffAccounts'));
 const Operation = lazy(() => import('./admin/Operation'));
 const ThemeEditor = lazy(() => import('./admin/theme/ThemeEditor'));
 const RankRules = lazy(() => import('./admin/RankRules'));
+const ReservationRules = lazy(() => import('./admin/ReservationRules'));
 const AuditLog = lazy(() => import('./admin/AuditLog'));
 const Account = lazy(() => import('./admin/Account'));
 
@@ -42,6 +44,7 @@ export default function App() {
           <Route path="/bienvenida" element={<Welcome />} />
           <Route path="/bitacora" element={<Passport />} />
           <Route path="/misiones" element={<Missions />} />
+          <Route path="/ruta" element={<MyRoute />} />
           <Route path="/destinos" element={<Interests />} />
         </Route>
         <Route path="/coordinacion" element={<AdminLayout />}>
@@ -60,6 +63,7 @@ export default function App() {
             <Route path="operacion" element={<Operation />} />
             <Route path="tematica" element={<ThemeEditor />} />
             <Route path="rangos" element={<RankRules />} />
+            <Route path="reservaciones" element={<ReservationRules />} />
             <Route path="auditoria" element={<AuditLog />} />
           </Route>
         </Route>

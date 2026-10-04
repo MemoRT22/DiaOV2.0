@@ -1,4 +1,4 @@
-import { Compass, LogOut, Orbit, ScrollText } from 'lucide-react';
+import { Compass, LogOut, Orbit, Route, ScrollText } from 'lucide-react';
 import { Navigate, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { Backdrop } from '../components/themed';
 import { Spinner } from '../components/ui';
@@ -7,7 +7,7 @@ import { useTheme } from '../theme/ThemeProvider';
 
 export default function StudentLayout() {
   const { ready, profile, signOut } = useAuth();
-  const { theme, edition, text, loading } = useTheme();
+  const { theme, edition, text, term, loading } = useTheme();
   const location = useLocation();
 
   if (!ready || loading) return <Spinner />;
@@ -21,6 +21,7 @@ export default function StudentLayout() {
   const tabs = [
     { to: '/bitacora', label: text('navPassport'), icon: ScrollText },
     { to: '/misiones', label: text('navActivities'), icon: Orbit },
+    { to: '/ruta', label: term('route'), icon: Route },
     { to: '/destinos', label: text('navInterests'), icon: Compass },
   ];
 
@@ -50,7 +51,7 @@ export default function StudentLayout() {
 
       {consentOk && (
         <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-line/60 bg-surface-sunken/90 pb-[env(safe-area-inset-bottom)] backdrop-blur-md">
-          <div className="mx-auto grid max-w-2xl grid-cols-3">
+          <div className="mx-auto grid max-w-2xl grid-cols-4">
             {tabs.map(({ to, label, icon: Icon }) => (
               <NavLink
                 key={to}

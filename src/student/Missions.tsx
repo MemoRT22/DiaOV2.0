@@ -1,28 +1,73 @@
-import { CheckCircle2, Clock, MapPin, Users } from 'lucide-react';
+import { ArrowLeftRight, X } from 'lucide-react';
 import { useMemo, useState } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Alert, LoadError, PageSkeleton } from '../components/ui';
-import { fetchActivities, fetchDivisions, fetchMyAttendedSessionIds, formatTime } from '../lib/catalog';
+import { fetchDivisions, formatTime } from '../lib/catalog';
+import { sessionState, type BoardSession } from '../lib/reservations';
 import { useLoad } from '../lib/useLoad';
+import { useReservationBoard } from '../lib/useReservationBoard';
 import { useTheme } from '../theme/ThemeProvider';
+import ConfirmSheet, { type ConfirmRequest } from './reservations/ConfirmSheet';
+import SessionRow from './reservations/SessionRow';
+import WindowNotice from './reservations/WindowNotice';
 
 export default function Missions() {
   const { theme, edition, term, text } = useTheme();
-  const { data, error, loading, reload } = useLoad(async () => {
-    if (!edition) throw new Error('NO_ACTIVE_EDITION');
-    return Promise.all([fetchActivities(edition.id), fetchDivisions(), fetchMyAttendedSessionIds()]);
-  }, [edition?.id]);
+  const { board, error, loading, reload, reserve, change } = useReservationBoard(edition?.id);
+  const divisions = useLoad(fetchDivisions, []);
   const [filter, setFilter] = useState<string | null>(null);
+  const [confirm, setConfirm] = useState<ConfirmRequest | null>(null);
+  const [params, setParams] = useSearchParams();
+  const navigate = useNavigate();
 
-  const [activities, divisions, attended] = data ?? [[], [], new Set<string>()];
-  const divisionById = useMemo(() => new Map(divisions.map((d) => [d.id, d])), [divisions]);
-  const visible = filter ? activities.filter((a) => a.division_id === filter) : activities;
+  const replacing = useMemo(() => {
+    const id = params.get('cambiar');
+    return board?.reservations.find((r) => r.id === id && r.status === 'vigente') ?? null;
+  }, [board, params]);
+  const replacingSession = replacing && board?.sessions.find((s) => s.id === replacing.session_id);
 
-  if (loading && !data) return <PageSkeleton blocks={4} />;
-  if (error || !data) return <LoadError error={error} onRetry={reload} />;
+  const workshops = useMemo(() => {
+    const byActivity = new Map<string, BoardSession[]>();
+    for (const s of board?.sessions ?? []) {
+      if (s.status !== 'activa') continue;
+      byActivity.set(s.activity_id, [...(byActivity.get(s.activity_id) ?? []), s]);
+    }
+    return [...byActivity.values()];
+  }, [board]);
 
-  const chip = (active: boolean) =>
+  if ((loading && !board) || (divisions.loading && !divisions.data)) return <PageSkeleton blocks={4} />;
+  if (error || !board) return <LoadError error={error} onRetry={reload} />;
+  if (divisions.error || !divisions.data) return <LoadError error={divisions.error} onRetry={divisions.reload} />;
+
+  const divisionById = new Map(divisions.data.map((d) => [d.id, d]));
+  const visible = filter ? workshops.filter((w) => w[0].division_id === filter) : workshops;
+  const active = board.reservations.filter((r) => r.status === 'vigente').length;
+
+  const ask = (s: BoardSession) => {
+    const when = `${formatTime(s.starts_at)}–${formatTime(s.ends_at)}`;
+    if (replacing && replacingSession) {
+      setConfirm({
+        title: 'Cambiar horario',
+        body: `Cambiarás ${replacingSession.title} (${formatTime(replacingSession.starts_at)}) por ${s.title} (${when}). Si el nuevo lugar ya no está disponible, conservas tu reservación actual.`,
+        confirmLabel: 'Confirmar cambio',
+        action: async () => {
+          await change(replacing.id, s.id);
+          navigate('/ruta');
+        },
+      });
+    } else {
+      setConfirm({
+        title: 'Reservar lugar',
+        body: `${s.title} · ${when}${s.location ? ` · ${s.location}` : ''}`,
+        confirmLabel: 'Reservar',
+        action: () => reserve(s.id),
+      });
+    }
+  };
+
+  const chip = (on: boolean) =>
     `min-h-11 shrink-0 rounded-full border px-4 text-sm font-semibold transition-colors ${
-      active ? 'border-primary-500 bg-primary-500 text-on-primary' : 'border-line bg-surface text-ink-muted hover:text-ink'
+      on ? 'border-primary-500 bg-primary-500 text-on-primary' : 'border-line bg-surface text-ink-muted hover:text-ink'
     }`;
 
   return (
@@ -32,11 +77,35 @@ export default function Missions() {
         <p className="mt-1 text-sm text-ink-muted">{text('activitiesIntro')}</p>
       </header>
 
-      <div className="-mx-4 flex gap-2 overflow-x-auto overscroll-x-contain px-4 pb-1 [scrollbar-width:none]" role="tablist" aria-label={term('division', true)}>
+      {replacing && replacingSession ? (
+        <div className="card flex items-center gap-3 border-secondary-500/50 p-3">
+          <ArrowLeftRight className="h-5 w-5 shrink-0 text-secondary-300" aria-hidden />
+          <p className="min-w-0 flex-1 text-sm">
+            Elige el nuevo horario para <strong>{replacingSession.title}</strong> ({formatTime(replacingSession.starts_at)}).
+          </p>
+          <button
+            onClick={() => setParams({}, { replace: true })}
+            className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-full text-ink-muted hover:bg-surface-raised hover:text-ink"
+            aria-label="Cancelar cambio"
+          >
+            <X className="h-5 w-5" aria-hidden />
+          </button>
+        </div>
+      ) : (
+        <WindowNotice board={board} />
+      )}
+
+      {!replacing && board.window === 'open' && (
+        <p className="text-sm text-ink-muted">
+          Llevas {active} de {board.max_reservations} en <Link to="/ruta" className="font-semibold text-primary-300 underline-offset-4 hover:underline">{term('route')}</Link>.
+        </p>
+      )}
+
+      <div className="-mx-4 flex gap-2 overflow-x-auto overscroll-x-contain px-4 pb-1 [scrollbar-width:none]" aria-label={term('division', true)}>
         <button className={chip(filter === null)} onClick={() => setFilter(null)}>
           Todos
         </button>
-        {divisions.map((d) => (
+        {divisions.data.map((d) => (
           <button key={d.id} className={chip(filter === d.id)} onClick={() => setFilter(d.id)}>
             {d.name}
           </button>
@@ -47,68 +116,41 @@ export default function Missions() {
         <Alert>{text('activitiesEmpty')}</Alert>
       ) : (
         <ul className="space-y-3">
-          {visible.map((a, i) => {
-            const division = divisionById.get(a.division_id);
+          {visible.map((sessions, i) => {
+            const first = sessions[0];
+            const division = divisionById.get(first.division_id);
             const color = (division && theme.divisions[division.code]?.color) || theme.colors.secondary;
-            const done = a.activity_sessions.some((s) => attended.has(s.id));
+            const sharedLocation = sessions.every((s) => s.location === first.location) ? first.location : '';
             return (
-              <li
-                key={a.id}
-                className="card animate-fade-up overflow-hidden"
-                style={{ animationDelay: `${Math.min(i, 8) * 40}ms` }}
-              >
+              <li key={first.activity_id} className="card animate-fade-up overflow-hidden" style={{ animationDelay: `${Math.min(i, 8) * 40}ms` }}>
                 <div className="h-1" style={{ background: color }} />
                 <div className="p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-wide" style={{ color }}>
-                        {term('division')} · {division?.name}
-                      </p>
-                      <h2 className="mt-1 text-base font-extrabold">{a.title}</h2>
-                    </div>
-                    {done && (
-                      <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-success-500/15 px-2 py-1 text-xs font-semibold text-success-300">
-                        <CheckCircle2 className="h-4 w-4" aria-hidden />
-                        Completada
-                      </span>
-                    )}
-                  </div>
-                  <p className="mt-2 text-sm text-ink-muted">{a.description}</p>
-                  {a.location && (
-                    <p className="mt-2 inline-flex items-center gap-1 text-xs text-ink-muted">
-                      <MapPin className="h-3.5 w-3.5" aria-hidden />
-                      {a.location}
-                    </p>
-                  )}
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {a.activity_sessions.map((s) => (
-                      <span
+                  <p className="text-xs font-semibold uppercase tracking-wide" style={{ color }}>
+                    {term('division')} · {division?.name}
+                  </p>
+                  <h2 className="mt-1 text-base font-extrabold">{first.title}</h2>
+                  {first.description && <p className="mt-2 text-sm text-ink-muted">{first.description}</p>}
+                  {sharedLocation && <p className="mt-2 text-xs text-ink-muted">{sharedLocation}</p>}
+                  <ul className="mt-3 space-y-2">
+                    {sessions.map((s) => (
+                      <SessionRow
                         key={s.id}
-                        className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs ${
-                          attended.has(s.id) ? 'border-success-500/60 text-success-200' : 'border-line text-ink'
-                        }`}
-                      >
-                        <Clock className="h-3.5 w-3.5" aria-hidden />
-                        {formatTime(s.starts_at)}
-                        <span className="inline-flex items-center gap-1 text-ink-muted">
-                          <Users className="h-3.5 w-3.5" aria-hidden />
-                          {s.capacity}
-                        </span>
-                        {s.location && s.location !== a.location && (
-                          <span className="inline-flex items-center gap-1 text-ink-muted">
-                            <MapPin className="h-3.5 w-3.5" aria-hidden />
-                            {s.location}
-                          </span>
-                        )}
-                      </span>
+                        session={s}
+                        state={sessionState(board, s, replacing)}
+                        actionLabel={replacing ? 'Cambiar aquí' : 'Reservar'}
+                        onAction={() => ask(s)}
+                        showLocation={!sharedLocation}
+                      />
                     ))}
-                  </div>
+                  </ul>
                 </div>
               </li>
             );
           })}
         </ul>
       )}
+
+      {confirm && <ConfirmSheet request={confirm} onClose={() => setConfirm(null)} />}
     </div>
   );
 }

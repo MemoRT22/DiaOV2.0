@@ -22,6 +22,10 @@ export type Edition = {
   privacy_notice_url: string | null;
   roster_status: 'preparacion' | 'oficial';
   roster_declared_at: string | null;
+  reservations_open_at: string | null;
+  reservations_close_at: string | null;
+  max_reservations: number;
+  travel_buffer_minutes: number;
 };
 
 type ThemeContextValue = {

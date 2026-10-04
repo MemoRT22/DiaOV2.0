@@ -1,19 +1,24 @@
-import { Clock, Pencil, Plus, Trash2 } from 'lucide-react';
+import { Clock, MapPin, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { Alert, Badge, Button, Spinner } from '../../components/ui';
 import { rpc } from '../../lib/adminApi';
 import { fetchActivities, fetchDivisions, formatTime, SESSION_STATUS_LABELS, type Activity, type Session } from '../../lib/catalog';
 import { friendlyError } from '../../lib/errors';
+import { fetchSessionCounts } from '../../lib/reservations';
 import { useLoad } from '../../lib/useLoad';
 import { useTheme } from '../../theme/ThemeProvider';
-import { ActivityModal, SessionModal } from './WorkshopModals';
+import { ActivityModal, LocationModal, SessionModal } from './WorkshopModals';
 
 export default function WorkshopsTab() {
   const { edition } = useTheme();
   const editionId = edition?.id ?? '';
-  const { data, error, loading, reload } = useLoad(() => Promise.all([fetchDivisions(), fetchActivities(editionId)]), [editionId]);
+  const { data, error, loading, reload } = useLoad(
+    () => Promise.all([fetchDivisions(), fetchActivities(editionId), fetchSessionCounts()]),
+    [editionId],
+  );
   const [activity, setActivity] = useState<Partial<Activity> | null>(null);
   const [session, setSession] = useState<Partial<Session> | null>(null);
+  const [moving, setMoving] = useState<Session | null>(null);
   const [actionError, setActionError] = useState('');
 
   if (loading && !data) return <Spinner />;
@@ -27,7 +32,8 @@ export default function WorkshopsTab() {
       </Alert>
     );
 
-  const [divisions, activities] = data;
+  const [divisions, activities, counts] = data;
+  const reservedOf = (id?: string) => (id && counts.get(id)) || 0;
 
   const remove = async (kind: 'activity' | 'session', id: string, label: string) => {
     if (!window.confirm(`¿Eliminar ${label}? Esta acción no se puede deshacer.`)) return;
@@ -43,6 +49,7 @@ export default function WorkshopsTab() {
   const done = () => {
     setActivity(null);
     setSession(null);
+    setMoving(null);
     reload();
   };
 
@@ -82,15 +89,26 @@ export default function WorkshopsTab() {
                   </button>
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">
-                  {a.activity_sessions.map((s) => (
+                  {a.activity_sessions.map((s) => {
+                    const reserved = reservedOf(s.id);
+                    return (
                     <span key={s.id} className="inline-flex items-center gap-1 rounded-full border border-line bg-surface-raised py-1 pl-3 pr-1 text-xs">
                       <Clock className="h-3.5 w-3.5 text-ink-muted" aria-hidden />
-                      {formatTime(s.starts_at)}–{formatTime(s.ends_at)} · {s.capacity} lugares
+                      {formatTime(s.starts_at)}–{formatTime(s.ends_at)} ·{' '}
+                      <span className={reserved >= s.capacity ? 'font-semibold text-error-300' : ''}>
+                        {reserved}/{s.capacity} reservados · quedan {Math.max(s.capacity - reserved, 0)}
+                      </span>
+                      {s.credits > 1 && <span className="text-ink-muted">· {s.credits} sellos</span>}
                       {s.location && s.location !== a.location && <span className="text-ink-muted">· {s.location}</span>}
                       {s.status !== 'activa' && <Badge tone={s.status === 'cancelada' ? 'error' : 'neutral'}>{SESSION_STATUS_LABELS[s.status]}</Badge>}
                       <button onClick={() => setSession(s)} className="rounded-full p-1 text-ink-muted hover:text-ink" aria-label="Editar horario">
                         <Pencil className="h-3 w-3" />
                       </button>
+                      {reserved > 0 && (
+                        <button onClick={() => setMoving(s)} className="rounded-full p-1 text-ink-muted hover:text-ink" aria-label="Cambiar ubicación" title="Cambiar ubicación">
+                          <MapPin className="h-3 w-3" />
+                        </button>
+                      )}
                       <button
                         onClick={() => remove('session', s.id, `el horario de las ${formatTime(s.starts_at)}`)}
                         className="rounded-full p-1 text-ink-muted hover:text-error-300"
@@ -99,7 +117,8 @@ export default function WorkshopsTab() {
                         <Trash2 className="h-3 w-3" />
                       </button>
                     </span>
-                  ))}
+                    );
+                  })}
                   <button
                     onClick={() => setSession({ activity_id: a.id, capacity: 30 })}
                     className="inline-flex items-center gap-1 rounded-full border border-dashed border-line px-3 py-1 text-xs font-semibold text-ink-muted hover:border-secondary-400 hover:text-ink"
@@ -117,11 +136,13 @@ export default function WorkshopsTab() {
       {session && (
         <SessionModal
           initial={session}
+          reserved={reservedOf(session.id)}
           activityLocation={activities.find((a) => a.id === session.activity_id)?.location ?? ''}
           eventDate={edition.event_date} onClose={() => setSession(null)}
           onSaved={done}
         />
       )}
+      {moving && <LocationModal session={moving} reserved={reservedOf(moving.id)} onClose={() => setMoving(null)} onSaved={done} />}
     </section>
   );
 }
