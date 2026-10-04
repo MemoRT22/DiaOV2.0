@@ -73,7 +73,7 @@ export default function WorkshopsTab() {
                 <div className="flex items-start gap-3">
                   <div className="flex-1">
                     <p className="font-semibold">
-                      {a.title} {a.is_demo && <Badge tone="warning">Prueba</Badge>}
+                      {a.title} {a.is_demo && <Badge tone="warning">Prueba</Badge>} {a.activity_type === 'liderazgo' && <Badge tone="success">Liderazgo</Badge>}
                     </p>
                     <p className="text-sm text-ink-muted">{a.location || 'Sin ubicación'}</p>
                   </div>

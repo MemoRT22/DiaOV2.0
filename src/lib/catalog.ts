@@ -15,6 +15,8 @@ export type Session = {
 };
 
 export const SESSION_STATUS_LABELS: Record<SessionStatus, string> = { activa: 'Publicada', oculta: 'Oculta', cancelada: 'Cancelada' };
+export type ActivityType = 'academica' | 'liderazgo';
+export const ACTIVITY_TYPE_LABELS: Record<ActivityType, string> = { academica: 'Académica', liderazgo: 'Liderazgo' };
 export type Activity = {
   id: string;
   division_id: string;
@@ -22,6 +24,7 @@ export type Activity = {
   description: string;
   location: string;
   is_demo: boolean;
+  activity_type: ActivityType;
   activity_sessions: Session[];
 };
 
@@ -35,6 +38,11 @@ export type Progress = {
   consent_accepted: boolean;
   interests_prompt: boolean;
   interests_open: boolean;
+  academic_tickets: number;
+  leadership_tickets: number;
+  raffle_category: string | null;
+  raffle_category_name: string | null;
+  has_won: boolean;
 };
 
 export async function fetchDivisions(): Promise<Division[]> {
@@ -54,7 +62,7 @@ export async function fetchCareers(includeInactive = false): Promise<Career[]> {
 export async function fetchActivities(editionId: string): Promise<Activity[]> {
   const { data, error } = await supabase
     .from('activities')
-    .select('id, division_id, title, description, location, is_demo, activity_sessions(id, activity_id, starts_at, ends_at, capacity, location, status, credits)')
+    .select('id, division_id, title, description, location, is_demo, activity_type, activity_sessions(id, activity_id, starts_at, ends_at, capacity, location, status, credits)')
     .eq('edition_id', editionId)
     .order('title');
   if (error) throw error;

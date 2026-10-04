@@ -1,4 +1,4 @@
-import { Check, Compass, Lock, Sparkles, X } from 'lucide-react';
+import { Check, Compass, Lock, Sparkles, Ticket, Trophy, X } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ProgressRing, ThemedTitle } from '../components/themed';
@@ -54,6 +54,46 @@ export default function Passport() {
           <p className="font-display text-2xl font-extrabold text-accent-400">{progress.stamps}</p>
           <p className="text-xs text-ink-muted">{term('stamp', true)}</p>
         </div>
+      </section>
+
+      <section className="card animate-fade-up p-5">
+        <div className="flex items-center gap-2">
+          <Ticket className="h-5 w-5 text-accent-400" aria-hidden />
+          <h2 className="text-base font-extrabold">Tickets para el sorteo</h2>
+        </div>
+        {progress.has_won ? (
+          <div className="mt-4 rounded-theme border border-success-500/40 bg-success-500/10 p-4 text-center">
+            <Trophy className="mx-auto h-8 w-8 text-success-400" aria-hidden />
+            <p className="mt-2 font-semibold text-success-300">¡Ganaste un premio!</p>
+            <p className="mt-1 text-sm text-ink-muted">Ya participaste en el sorteo final.</p>
+          </div>
+        ) : progress.raffle_category_name ? (
+          <div className="mt-4 rounded-theme border border-accent-500/40 bg-accent-500/10 p-4 text-center">
+            <p className="text-sm font-semibold text-ink-muted">Grupo de sorteo desbloqueado</p>
+            <p className="mt-1 text-lg font-extrabold text-accent-400">{progress.raffle_category_name}</p>
+            <p className="mt-1 text-sm text-ink-muted">{progress.academic_tickets} académicos + {progress.leadership_tickets} liderazgo</p>
+          </div>
+        ) : (
+          <div className="mt-4 space-y-3">
+            <div className="grid grid-cols-2 gap-3 text-center">
+              <div className="rounded-theme border border-line bg-surface-raised p-3">
+                <p className="font-display text-2xl font-extrabold text-primary-400">{progress.academic_tickets}</p>
+                <p className="text-xs text-ink-muted">Académicos</p>
+              </div>
+              <div className="rounded-theme border border-line bg-surface-raised p-3">
+                <p className="font-display text-2xl font-extrabold text-secondary-300">{progress.leadership_tickets}</p>
+                <p className="text-xs text-ink-muted">Liderazgo</p>
+              </div>
+            </div>
+            <p className="text-center text-sm text-ink-muted">
+              {progress.academic_tickets < 3
+                ? `Te falta completar ${3 - progress.academic_tickets} misión${3 - progress.academic_tickets !== 1 ? 'es' : ''} académica${3 - progress.academic_tickets !== 1 ? 's' : ''}.`
+                : progress.leadership_tickets === 0
+                  ? 'Te falta 1 actividad de liderazgo.'
+                  : 'Aún no perteneces a ningún grupo de sorteo.'}
+            </p>
+          </div>
+        )}
       </section>
 
       <section className="animate-fade-up text-center">

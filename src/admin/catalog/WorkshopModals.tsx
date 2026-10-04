@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { Alert, Button, Field, Modal, SelectField } from '../../components/ui';
 import { rpc } from '../../lib/adminApi';
-import { eventTimestamp, formatTime, SESSION_STATUS_LABELS, type Activity, type Division, type Session, type SessionStatus } from '../../lib/catalog';
+import { eventTimestamp, formatTime, ACTIVITY_TYPE_LABELS, SESSION_STATUS_LABELS, type Activity, type ActivityType, type Division, type Session, type SessionStatus } from '../../lib/catalog';
 import { friendlyError } from '../../lib/errors';
 import { DemoCheckbox } from './DemoCheckbox';
 
@@ -47,10 +47,11 @@ export function ActivityModal({ initial, divisions, onClose, onSaved }: Activity
   const [location, setLocation] = useState(initial.location ?? '');
   const [divisionId, setDivisionId] = useState(initial.division_id ?? '');
   const [isDemo, setIsDemo] = useState(!!initial.is_demo);
+  const [activityType, setActivityType] = useState<ActivityType>(initial.activity_type ?? 'academica');
   const { busy, error, submit } = useSave(
     () =>
       rpc('save_activity', {
-        p: { id: initial.id ?? null, title: title.trim(), description: description.trim(), location: location.trim(), division_id: divisionId, is_demo: isDemo },
+        p: { id: initial.id ?? null, title: title.trim(), description: description.trim(), location: location.trim(), division_id: divisionId, is_demo: isDemo, activity_type: activityType },
       }),
     onSaved,
   );
@@ -67,6 +68,11 @@ export function ActivityModal({ initial, divisions, onClose, onSaved }: Activity
           ))}
         </SelectField>
         <Field label="Ubicación" placeholder="Ej. Edificio B, aula 204" value={location} onChange={(e) => setLocation(e.target.value)} />
+        <SelectField label="Tipo de actividad" value={activityType} onChange={(e) => setActivityType(e.target.value as ActivityType)} hint="Las actividades de liderazgo generan tickets de liderazgo para el sorteo.">
+          {(Object.keys(ACTIVITY_TYPE_LABELS) as ActivityType[]).map((t) => (
+            <option key={t} value={t}>{ACTIVITY_TYPE_LABELS[t]}</option>
+          ))}
+        </SelectField>
         <label className="block">
           <span className="mb-2 block text-sm font-semibold">Descripción</span>
           <textarea

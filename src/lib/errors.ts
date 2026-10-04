@@ -87,6 +87,14 @@ const MESSAGES: Record<string, string> = {
   ALREADY_CHECKED_IN: 'Esta asistencia ya estaba registrada.',
   INVALID_CHECKIN_WINDOW: 'Los minutos del check-in deben estar entre 0 y 120.',
   CREDENTIAL_GENERATION_FAILED: 'No se pudo generar una credencial nueva. Intenta de nuevo.',
+  INVALID_ACTIVITY_TYPE: 'El tipo de actividad debe ser académica o liderazgo.',
+  INVALID_REQUIREMENTS: 'Los requisitos deben ser números válidos.',
+  INVALID_QUANTITY: 'La cantidad debe ser un número válido.',
+  CATEGORY_INACTIVE: 'Esta categoría de sorteo está inactiva.',
+  PENDING_SELECTION: 'Ya hay un ganador pendiente de confirmar para este premio. Confírmalo o márcalo como no presentado.',
+  PRIZE_EXHAUSTED: 'Este premio ya no tiene unidades disponibles.',
+  POOL_EMPTY: 'No hay candidatos en el pool para este sorteo.',
+  INVALID_STATUS: 'El estado del ganador no permite esta acción.',
 };
 
 const GENERIC = 'Algo salió mal. Inténtalo de nuevo.';

@@ -28,12 +28,16 @@ const ThemeEditor = lazy(() => import('./admin/theme/ThemeEditor'));
 const RankRules = lazy(() => import('./admin/RankRules'));
 const ReservationRules = lazy(() => import('./admin/ReservationRules'));
 const CheckinModule = lazy(() => import('./admin/CheckinModule'));
+const RaffleAdmin = lazy(() => import('./admin/RaffleAdmin'));
+const RaffleOperator = lazy(() => import('./admin/RaffleOperator'));
 const Scanner = lazy(() => import('./student/Scanner'));
 const AuditLog = lazy(() => import('./admin/AuditLog'));
 const Account = lazy(() => import('./admin/Account'));
 
 function AdminHome() {
   const { staff } = useAuth();
+  if (hasRole(staff, 'sorteo') && !hasRole(staff, 'coordinacion') && !hasRole(staff, 'staff'))
+    return <Navigate to="sorteo" replace />;
   return hasRole(staff, 'coordinacion') ? <Overview /> : <Navigate to="participantes" replace />;
 }
 
@@ -57,6 +61,7 @@ export default function App() {
           <Route path="acceso" element={<AccessHelp />} />
           <Route path="cuenta" element={<Account />} />
           <Route path="checkin" element={<CheckinModule />} />
+          <Route path="sorteo" element={<RaffleOperator />} />
           <Route element={<CoordinationOnly />}>
             <Route path="importar" element={<ParticipantImport />} />
             <Route path="conflictos" element={<Conflicts />} />
@@ -68,6 +73,7 @@ export default function App() {
             <Route path="tematica" element={<ThemeEditor />} />
             <Route path="rangos" element={<RankRules />} />
             <Route path="reservaciones" element={<ReservationRules />} />
+            <Route path="sorteo-admin" element={<RaffleAdmin />} />
             <Route path="auditoria" element={<AuditLog />} />
           </Route>
         </Route>
