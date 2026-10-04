@@ -1,7 +1,6 @@
 // Concurrency test for the reservation engine: N real clients call the reservation RPCs at the same instant.
 // Uses only the public anon key; each client signs in through the real `student-access` login.
-// Requires test data created beforehand (participants cc.01..cc.30 + cc.max, demo sessions titled "CC ...").
-// Run: node supabase/tests/concurrency_reservations.mjs
+// 1) run concurrency_fixture_setup.sql  2) node supabase/tests/concurrency_reservations.mjs  3) run concurrency_fixture_cleanup.sql
 import { readFileSync } from 'node:fs';
 import { createClient } from '@supabase/supabase-js';
 

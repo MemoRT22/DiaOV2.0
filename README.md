@@ -33,11 +33,16 @@ Staff y Coordinación registran a quien llega el mismo día (`create_participant
 - Con reservaciones vigentes no se mueven horarios ni se baja el cupo por debajo de lo reservado; la ubicación solo cambia con la operación explícita de Coordinación (con motivo y auditoría).
 - Cancelar una sesión marca sus reservaciones como `cancelada_sesion`; reactivarla no las revive. Ocultarla conserva las existentes.
 - La disponibilidad en vivo usa un canal privado por edición que solo emite conteos; la app funciona igual si no hay conexión en vivo.
+- La tabla `reservations` no tiene permisos para `anon` ni `authenticated` (RLS sigue activo como defensa en profundidad). El aspirante solo lee mediante `my_reservation_board()` (exige aviso aceptado) y Coordinación mediante `session_reservation_counts()`, que solo devuelve conteos.
 
 ## Pruebas de regresión
 
 `supabase/tests/regression_correcciones.sql` se ejecuta completo como un solo bloque. Siempre termina con un error que trae los resultados, así que **todos los cambios se revierten**. Cubre roles, carga y recarga del CSV, columnas adicionales, mapeo de carreras, padrón oficial y reapertura, alta presencial, exportación, aviso de privacidad y sesiones.
 
-`supabase/tests/regression_reservaciones.sql` funciona igual (todo se revierte) y cubre autorización, ventana, cupo, duplicados, choques y traslado, límite, tiempo, cambios atómicos, cierre, ediciones administrativas, sesiones ocultas y canceladas, aislamiento y sellos.
+`supabase/tests/regression_reservaciones.sql` funciona igual (todo se revierte) y cubre autorización, ventana, cupo, duplicados, choques y traslado, límite, tiempo, cambios atómicos, cierre, ediciones administrativas, sesiones ocultas y canceladas, lectura directa bloqueada para todos los roles, aislamiento y sellos.
 
-`supabase/tests/concurrency_reservations.mjs` lanza clientes reales simultáneos (solo con la clave pública) contra las funciones de reservación. Requiere datos de prueba previos: aspirantes demo `cc.01`…`cc.30` y `cc.max` (fecha 2008-03-03, aviso aceptado), sesiones demo con títulos `CC LAST` (cupo 1), `CC K5` (5), `CC SRC` (40), `CC TGT` (1) y `CC M1`…`CC M8`, y la ventana abierta. Al terminar hay que borrar esos datos y restaurar la ventana.
+`supabase/tests/concurrency_reservations.mjs` lanza clientes reales simultáneos (solo con la clave pública) contra las funciones de reservación. Pasos:
+
+1. Ejecutar `supabase/tests/concurrency_fixture_setup.sql` (SQL editor). Crea solo aspirantes demo `cc.01`…`cc.30` y `cc.max@test.invalid` y talleres/sesiones demo `CC …`, guarda la configuración de reservaciones vigente y abre la ventana. Se niega a correr si ya hay datos CC.
+2. `node supabase/tests/concurrency_reservations.mjs`
+3. Ejecutar `supabase/tests/concurrency_fixture_cleanup.sql`. Borra solo esos datos (incluye sus usuarios de acceso, intentos de acceso y reservaciones) y restaura la configuración guardada. Puede repetirse sin efecto.
