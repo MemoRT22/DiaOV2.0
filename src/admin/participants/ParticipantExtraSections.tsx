@@ -10,7 +10,7 @@ export function EmailHistory({ entries }: { entries: EmailHistoryEntry[] }) {
       <div className="px-5 py-4">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-muted">Correos anteriores</h2>
         <p className="mt-1 text-xs text-ink-muted">
-          Solo sirven para reconocer al aspirante en futuras importaciones. No permiten entrar a la plataforma.
+          Solo sirven para reconocer al aspirante si el padrón se vuelve a cargar durante la preparación. No permiten entrar a la plataforma.
         </p>
       </div>
       {entries.map((h) => (

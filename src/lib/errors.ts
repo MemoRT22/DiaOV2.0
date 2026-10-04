@@ -50,6 +50,14 @@ const MESSAGES: Record<string, string> = {
   PRIVACY_NOTICE_REQUIRED: 'Primero acepta el Aviso de Privacidad para continuar.',
   INVALID_SESSION_STATUS: 'Elige un estado válido para el horario.',
   CSV_EMPTY: 'El archivo no tiene filas.',
+  ROSTER_OFFICIAL: 'El padrón ya es oficial. La carga de Forms está bloqueada; solo Coordinación puede reabrirla.',
+  ROSTER_ALREADY_OFFICIAL: 'El padrón ya estaba declarado como oficial.',
+  ROSTER_NOT_OFFICIAL: 'El padrón no está declarado como oficial.',
+  UNRESOLVED_CAREERS: 'Relaciona todas las carreras no reconocidas antes de cargar el padrón.',
+  BIRTH_DATE_REQUIRED: 'La fecha de nacimiento es obligatoria: el aspirante la necesita para entrar.',
+  PHONE_REQUIRED: 'El teléfono es obligatorio.',
+  HIGH_SCHOOL_REQUIRED: 'La preparatoria es obligatoria.',
+  CAREER_REQUIRED: 'Elige la carrera de interés inicial del catálogo oficial.',
   CSV_UNREADABLE: 'No se pudo leer el archivo. Verifica que sea un CSV.',
 };
 

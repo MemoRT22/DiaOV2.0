@@ -1,7 +1,9 @@
--- Regression tests for the pre-reservations correction phase.
+-- Regression tests for the pre-reservations correction phase (roster, careers, extras, manual sign-up).
 -- Run the whole file as one statement. It ALWAYS ends by raising an exception
 -- carrying the results, so every change it makes is rolled back.
 -- Expectations: OK | ERR:<code> | NOT:<code> | TRUE (query must return true) | SHOW (just record)
+-- Placeholders: $LAST (last non-P result), :AID Ana, :FID Fer, :CID Carla, :JID Juli, :ACT activity, :ANY any participant,
+--               :REAL active non-demo career, :OFF inactive career, :DEMO demo career
 
 DO $test$
 DECLARE
@@ -14,7 +16,9 @@ DECLARE
   ed uuid := active_edition_id();
   st record;
   v_uid uuid; v_q text; v_val text; v_err text; v_ok boolean; v_last text := 'null';
-  v_aid text; v_fid text; v_act text; v_any text := (SELECT id::text FROM participants WHERE edition_id = active_edition_id() LIMIT 1);
+  v_aid text; v_fid text; v_cid text; v_jid text; v_act text;
+  v_any text := (SELECT id::text FROM participants WHERE edition_id = active_edition_id() LIMIT 1);
+  v_real text; v_off text; v_demo text := (SELECT id::text FROM careers WHERE code = 'DEMO-MED');
   v_res text[] := '{}'; v_pass int := 0; v_fail int := 0;
 BEGIN
   INSERT INTO auth.users (id, instance_id, aud, role, email, raw_app_meta_data, raw_user_meta_data, created_at, updated_at)
@@ -26,6 +30,14 @@ BEGIN
     (r, 'sorteo', 'RT Sorteo', true, 'rt.c3@test.invalid'),
     (d, 'coordinacion', 'RT Desactivada', false, 'rt.c4@test.invalid');
   INSERT INTO staff_roles (user_id, role) VALUES (c, 'coordinacion'), (s, 'staff'), (r, 'sorteo'), (d, 'coordinacion');
+
+  UPDATE editions SET roster_status = 'preparacion', roster_declared_at = NULL WHERE id = ed;
+  INSERT INTO careers (code, name, division_id, is_demo, is_active)
+  SELECT 'RT-REAL', 'RT Carrera Real', division_id, false, true FROM careers WHERE code = 'DEMO-MED'
+  RETURNING id::text INTO v_real;
+  INSERT INTO careers (code, name, division_id, is_demo, is_active)
+  SELECT 'RT-OFF', 'RT Carrera Inactiva', division_id, false, false FROM careers WHERE code = 'DEMO-MED'
+  RETURNING id::text INTO v_off;
 
   CREATE TEMP TABLE rt_steps (seq serial, name text, who text, q text, expect text) ON COMMIT DROP;
   INSERT INTO rt_steps (name, who, q, expect) VALUES
@@ -43,20 +55,18 @@ BEGIN
   ('rol: sin rol no consulta expedientes', 'N', $q$select get_participant(':ANY')$q$, 'ERR:NOT_AUTHORIZED'),
   ('rol: staff consulta expedientes', 'S', $q$select get_participant(':ANY')$q$, 'OK'),
 
-  -- Import batch 1: new, CSV duplicates, unknown career, invalid date, missing consent, extra headers
+  -- Import batch 1: new, CSV duplicates, invalid date, missing consent, extra headers
   ('import 1 aplicar', 'C', $q$select commit_participant_import('[
     {"row":2,"email":"RT.Ana@Test.invalid ","full_name":"Ana Prueba","birth_date":"2008-05-14","phone":"9981111111","high_school":"Prepa Uno","career":"DEMO-MED","consent":true,"submitted_at":"2026-01-10T10:00:00Z",
      "extra":[{"col":9,"header":"¿Cómo te enteraste?","value":"Instagram"},{"col":10,"header":"  ¿cómo te  enteraste? ","value":"Amigos"},{"col":11,"header":"","value":"sin titulo"},{"col":12,"header":"Pregunta muy larga sobre tus intereses profesionales y personales que excede el límite permitido de caracteres","value":"larga"},{"col":13,"header":"email","value":"intruso@test.invalid"},{"col":14,"header":"Vacía","value":""}]},
     {"row":3,"email":"rt.beto@test.invalid","full_name":"Beto Uno","birth_date":"2008-01-01","career":"DEMO-MED","consent":true},
     {"row":4,"email":"rt.beto@test.invalid","full_name":"Beto Dos","birth_date":"2008-01-01","career":"DEMO-MED","consent":true},
-    {"row":5,"email":"rt.carla@test.invalid","full_name":"Carla Prueba","birth_date":"2008-02-02","career":"NO-EXISTE","consent":true},
     {"row":6,"email":"rt.dani@test.invalid","full_name":"Dani Prueba","birth_date":"2008-13-45","career":"DEMO-MED","consent":true},
     {"row":7,"email":"rt.eli@test.invalid","full_name":"Eli Prueba","birth_date":"2008-03-03","career":"DEMO-MED","consent":false}
   ]'::jsonb, 'rt.csv', false)$q$, 'OK'),
   ('import: fila nueva', 'P', $q$select jsonb_path_query_first($LAST::jsonb, '$.** ? (@.row == 2)')->>'status' = 'new'$q$, 'TRUE'),
   ('import: duplicado en CSV marca la fila anterior', 'P', $q$select jsonb_path_query_first($LAST::jsonb, '$.** ? (@.row == 3)')->>'status' = 'duplicate'$q$, 'TRUE'),
   ('import: duplicado en CSV conserva la última', 'P', $q$select jsonb_path_query_first($LAST::jsonb, '$.** ? (@.row == 4)')->>'status' = 'new'$q$, 'TRUE'),
-  ('import: carrera desconocida se guarda con aviso', 'P', $q$select jsonb_path_query_first($LAST::jsonb, '$.** ? (@.row == 5)')->>'status' = 'new' and jsonb_path_query_first($LAST::jsonb, '$.** ? (@.row == 5)')->'warnings' ? 'Carrera no encontrada en el catálogo'$q$, 'TRUE'),
   ('import: fecha inválida es error', 'P', $q$select jsonb_path_query_first($LAST::jsonb, '$.** ? (@.row == 6)')->>'status' = 'error'$q$, 'TRUE'),
   ('import: sin consentimiento es error', 'P', $q$select jsonb_path_query_first($LAST::jsonb, '$.** ? (@.row == 7)')->>'status' = 'error'$q$, 'TRUE'),
   ('import: fecha inválida y sin consentimiento no se guardan', 'P', $q$select count(*) = 0 from participants where email in ('rt.dani@test.invalid','rt.eli@test.invalid')$q$, 'TRUE'),
@@ -67,6 +77,59 @@ BEGIN
       and not exists (select 1 from jsonb_each(extra->'forms') e where e.value->>'label' = 'Vacía')
       from participants where id = ':AID'$q$, 'TRUE'),
   ('extras: encabezado "email" no pisa el correo', 'P', $q$select email = 'rt.ana@test.invalid' and extra->'forms' ? 'email' from participants where id = ':AID'$q$, 'TRUE'),
+
+  -- Stable extra identity: same duplicated headers, alternating empty cells
+  ('extras alternos: importar', 'C', $q$select commit_participant_import('[
+    {"row":2,"email":"rt.ivan@test.invalid","full_name":"Ivan Alterno","birth_date":"2008-04-04","career":"DEMO-MED","consent":true,
+     "extra":[{"col":9,"header":"Pregunta","value":"Respuesta A"},{"col":10,"header":"Pregunta","value":""}]},
+    {"row":3,"email":"rt.juli@test.invalid","full_name":"Juli Alterna","birth_date":"2008-04-05","career":"DEMO-MED","consent":true,
+     "extra":[{"col":9,"header":"Pregunta","value":""},{"col":10,"header":"Pregunta","value":"Respuesta B"}]}
+  ]'::jsonb, 'rt-alt.csv', false)$q$, 'OK'),
+  ('extras alternos: la primera columna conserva su clave', 'P', $q$select extra->'forms'->'pregunta'->>'value' = 'Respuesta A' and not (extra->'forms' ? 'pregunta (2)') from participants where email = 'rt.ivan@test.invalid'$q$, 'TRUE'),
+  ('extras alternos: la segunda columna no se recorre', 'P', $q$select extra->'forms'->'pregunta (2)'->>'value' = 'Respuesta B' and extra->'forms'->'pregunta (2)'->>'label' = 'Pregunta (2)' and not (extra->'forms' ? 'pregunta') from participants where email = 'rt.juli@test.invalid'$q$, 'TRUE'),
+  ('extras alternos: expediente muestra "Pregunta (2)"', 'C', $q$select exists (select 1 from jsonb_array_elements(get_participant(':JID')->'forms_extra') e where e->>'label' = 'Pregunta (2)' and e->>'value' = 'Respuesta B')
+      and not exists (select 1 from jsonb_array_elements(get_participant(':JID')->'forms_extra') e where e->>'label' = 'Pregunta')$q$, 'TRUE'),
+
+  -- Unknown careers: resolved once per distinct value, raw text kept
+  ('carrera: vista previa con carreras desconocidas', 'C', $q$select preview_participant_import('[
+    {"row":2,"email":"rt.carla@test.invalid","full_name":"Carla Prueba","birth_date":"2008-02-02","career":"Medicina Veterinaria","consent":true},
+    {"row":3,"email":"rt.gabi@test.invalid","full_name":"Gabi Prueba","birth_date":"2008-02-03","career":"  medicina   VETERINARIA ","consent":true},
+    {"row":4,"email":"rt.hugo@test.invalid","full_name":"Hugo Prueba","birth_date":"2008-02-04","career":"Gastronomía Molecular","consent":true},
+    {"row":5,"email":"rt.ines@test.invalid","full_name":"Ines Prueba","birth_date":"2008-02-05","career":"DEMO-MED","consent":true}
+  ]'::jsonb, false)$q$, 'OK'),
+  ('carrera: valor desconocido agrupado una sola vez', 'P', $q$select jsonb_array_length($LAST::jsonb->'unmatched_careers') = 2
+      and jsonb_path_exists($LAST::jsonb, '$.unmatched_careers[*] ? (@.count == 2 && @.target == null)')
+      and jsonb_path_exists($LAST::jsonb, '$.unmatched_careers[*] ? (@.count == 1)')$q$, 'TRUE'),
+  ('carrera: filas marcadas con el valor original', 'P', $q$select (jsonb_path_query_first($LAST::jsonb, '$.** ? (@.row == 2)')->>'career_unresolved')::boolean
+      and (jsonb_path_query_first($LAST::jsonb, '$.** ? (@.row == 3)')->>'career_unresolved')::boolean
+      and (jsonb_path_query_first($LAST::jsonb, '$.** ? (@.row == 2)')->'warnings')::text like '%Medicina Veterinaria%'
+      and not (jsonb_path_query_first($LAST::jsonb, '$.** ? (@.row == 5)')->>'career_unresolved')::boolean$q$, 'TRUE'),
+  ('carrera: confirmar sin resolver se bloquea', 'C', $q$select commit_participant_import('[
+    {"row":2,"email":"rt.carla@test.invalid","full_name":"Carla Prueba","birth_date":"2008-02-02","career":"Medicina Veterinaria","consent":true}
+  ]'::jsonb, 'rt-car.csv', false)$q$, 'ERR:UNRESOLVED_CAREERS'),
+  ('carrera: bloqueo no guarda nada', 'P', $q$select count(*) = 0 from participants where email = 'rt.carla@test.invalid'$q$, 'TRUE'),
+  ('carrera: resolver solo una parte sigue bloqueado', 'C', $q$select commit_participant_import('[
+    {"row":2,"email":"rt.carla@test.invalid","full_name":"Carla Prueba","birth_date":"2008-02-02","career":"Medicina Veterinaria","consent":true},
+    {"row":4,"email":"rt.hugo@test.invalid","full_name":"Hugo Prueba","birth_date":"2008-02-04","career":"Gastronomía Molecular","consent":true}
+  ]'::jsonb, 'rt-car.csv', false, '{"medicina veterinaria":":REAL"}'::jsonb)$q$, 'ERR:UNRESOLVED_CAREERS'),
+  ('carrera: no se puede relacionar con carrera de prueba', 'C', $q$select preview_participant_import('[
+    {"row":2,"email":"rt.carla@test.invalid","full_name":"Carla Prueba","birth_date":"2008-02-02","career":"Medicina Veterinaria","consent":true}
+  ]'::jsonb, false, '{"medicina veterinaria":":DEMO"}'::jsonb)$q$, 'ERR:INVALID_CAREER'),
+  ('carrera: no se puede relacionar con carrera inactiva', 'C', $q$select preview_participant_import('[
+    {"row":2,"email":"rt.carla@test.invalid","full_name":"Carla Prueba","birth_date":"2008-02-02","career":"Medicina Veterinaria","consent":true}
+  ]'::jsonb, false, '{"medicina veterinaria":":OFF"}'::jsonb)$q$, 'ERR:INVALID_CAREER'),
+  ('carrera: confirmar con todo resuelto', 'C', $q$select commit_participant_import('[
+    {"row":2,"email":"rt.carla@test.invalid","full_name":"Carla Prueba","birth_date":"2008-02-02","career":"Medicina Veterinaria","consent":true},
+    {"row":3,"email":"rt.gabi@test.invalid","full_name":"Gabi Prueba","birth_date":"2008-02-03","career":"  medicina   VETERINARIA ","consent":true},
+    {"row":4,"email":"rt.hugo@test.invalid","full_name":"Hugo Prueba","birth_date":"2008-02-04","career":"Gastronomía Molecular","consent":true},
+    {"row":5,"email":"rt.ines@test.invalid","full_name":"Ines Prueba","birth_date":"2008-02-05","career":"DEMO-MED","consent":true}
+  ]'::jsonb, 'rt-car.csv', false, '{"medicina veterinaria":":REAL","gastronomia molecular":"none"}'::jsonb)$q$, 'OK'),
+  ('carrera: un mapeo aplica a todas las filas y conserva el texto original', 'P', $q$select count(*) = 2 and bool_and(initial_career_id = ':REAL') and array_agg(initial_career_raw order by email) = ARRAY['Medicina Veterinaria','medicina VETERINARIA']
+      from participants where email in ('rt.carla@test.invalid','rt.gabi@test.invalid')$q$, 'TRUE'),
+  ('carrera: "Sin carrera" explícito conserva el texto', 'P', $q$select initial_career_id is null and initial_career_raw = 'Gastronomía Molecular' from participants where email = 'rt.hugo@test.invalid'$q$, 'TRUE'),
+  ('carrera: mapeo auditado', 'P', $q$select count(*) = 1 from audit_log where action = 'participants.career_mapped' and actor_user_id = '00000000-0000-4000-8000-0000000000c1'
+      and jsonb_array_length(detail->'mappings') = 2 and jsonb_path_exists(detail, '$.mappings[*] ? (@.rows == 2)')$q$, 'TRUE'),
+  ('carrera: expediente muestra texto recibido', 'C', $q$select get_participant(':CID')->>'initial_career_raw' = 'Medicina Veterinaria'$q$, 'TRUE'),
 
   -- Re-import unchanged
   ('import 2 sin cambios', 'C', $q$select commit_participant_import('[{"row":2,"email":"rt.ana@test.invalid","full_name":"Ana Prueba","birth_date":"2008-05-14","phone":"9981111111","high_school":"Prepa Uno","career":"DEMO-MED","consent":true,"submitted_at":"2026-01-10T10:00:00Z","extra":[{"col":9,"header":"¿Cómo te enteraste?","value":"Instagram"}]}]'::jsonb, 'rt.csv', false)$q$, 'OK'),
@@ -84,15 +147,24 @@ BEGIN
   ('correo: reconocido por correo anterior', 'P', $q$select (jsonb_path_query_first($LAST::jsonb, '$.** ? (@.row == 2)')->>'note') like 'Reconocido por correo anterior%' and jsonb_path_query_first($LAST::jsonb, '$.** ? (@.row == 2)')->>'status' <> 'new'$q$, 'TRUE'),
   ('correo: no se crea duplicado ni se revierte', 'P', $q$select (select count(*) from participants where edition_id = active_edition_id() and email in ('rt.ana@test.invalid','rt.ana2@test.invalid')) = 1 and (select email from participants where id = ':AID') = 'rt.ana2@test.invalid'$q$, 'TRUE'),
   ('correo: el anterior no sirve para entrar', 'P', $q$select count(*) = 0 from participants where edition_id = active_edition_id() and email = 'rt.ana@test.invalid'$q$, 'TRUE'),
-  ('correo: no se puede reutilizar un correo anterior', 'C', $q$select create_participant_manual('{"email":"rt.ana@test.invalid","full_name":"Otra Persona","consent_confirmed":true}'::jsonb)$q$, 'ERR:EMAIL_EXISTS'),
+  ('correo: no se puede reutilizar un correo anterior', 'C', $q$select create_participant_manual('{"email":"rt.ana@test.invalid","full_name":"Otra Persona","birth_date":"2008-01-01","phone":"9983333333","high_school":"Prepa Tres","initial_career_id":":REAL","consent_confirmed":true}'::jsonb)$q$, 'ERR:EMAIL_EXISTS'),
   ('import 5 correo anterior con nombre y fecha distintos', 'C', $q$select preview_participant_import('[{"row":2,"email":"rt.ana@test.invalid","full_name":"Zeta Distinta","birth_date":"1990-01-01","career":"DEMO-MED","consent":true}]'::jsonb, false)$q$, 'OK'),
   ('correo: alerta fuerte sin bloquear la fila', 'P', $q$select jsonb_path_query_first($LAST::jsonb, '$.** ? (@.row == 2)')->>'alert' is not null and jsonb_path_query_first($LAST::jsonb, '$.** ? (@.row == 2)')->>'status' <> 'error'$q$, 'TRUE'),
 
-  -- Partial manual creation + later Forms
-  ('alta manual parcial', 'C', $q$select create_participant_manual('{"email":"rt.fer@test.invalid","full_name":"Fer Manual","consent_confirmed":true}'::jsonb)$q$, 'OK'),
-  ('alta manual: solo protege campos capturados', 'P', $q$select (select array_agg(k order by k) from jsonb_object_keys(manual_overrides) k) <@ ARRAY['email','full_name'] and manual_overrides ? 'full_name' and not manual_overrides ? 'phone' from participants where id = ':FID'$q$, 'TRUE'),
-  ('import 6 completa alta manual', 'C', $q$select commit_participant_import('[{"row":2,"email":"rt.fer@test.invalid","full_name":"Fernanda Forms","birth_date":"2008-07-07","phone":"9982222222","high_school":"Prepa Dos","career":"DEMO-MED","consent":true}]'::jsonb, 'rt.csv', false)$q$, 'OK'),
-  ('alta manual: Forms completa vacíos y respeta nombre', 'P', $q$select phone = '9982222222' and birth_date = '2008-07-07' and high_school = 'Prepa Dos' and full_name = 'Fer Manual' from participants where id = ':FID'$q$, 'TRUE'),
+  -- In-person sign-up: every field required, career only from the active official catalog
+  ('alta presencial: falta fecha', 'S', $q$select create_participant_manual('{"email":"rt.fer@test.invalid","full_name":"Fer Manual","phone":"9984444444","high_school":"Prepa Cuatro","initial_career_id":":REAL","consent_confirmed":true}'::jsonb)$q$, 'ERR:BIRTH_DATE_REQUIRED'),
+  ('alta presencial: falta teléfono', 'S', $q$select create_participant_manual('{"email":"rt.fer@test.invalid","full_name":"Fer Manual","birth_date":"2008-07-07","high_school":"Prepa Cuatro","initial_career_id":":REAL","consent_confirmed":true}'::jsonb)$q$, 'ERR:PHONE_REQUIRED'),
+  ('alta presencial: falta preparatoria', 'S', $q$select create_participant_manual('{"email":"rt.fer@test.invalid","full_name":"Fer Manual","birth_date":"2008-07-07","phone":"9984444444","high_school":"  ","initial_career_id":":REAL","consent_confirmed":true}'::jsonb)$q$, 'ERR:HIGH_SCHOOL_REQUIRED'),
+  ('alta presencial: falta carrera', 'S', $q$select create_participant_manual('{"email":"rt.fer@test.invalid","full_name":"Fer Manual","birth_date":"2008-07-07","phone":"9984444444","high_school":"Prepa Cuatro","consent_confirmed":true}'::jsonb)$q$, 'ERR:CAREER_REQUIRED'),
+  ('alta presencial: carrera fuera del catálogo', 'S', $q$select create_participant_manual('{"email":"rt.fer@test.invalid","full_name":"Fer Manual","birth_date":"2008-07-07","phone":"9984444444","high_school":"Prepa Cuatro","initial_career_id":"00000000-0000-0000-0000-000000000000","consent_confirmed":true}'::jsonb)$q$, 'ERR:INVALID_CAREER'),
+  ('alta presencial: carrera inactiva', 'S', $q$select create_participant_manual('{"email":"rt.fer@test.invalid","full_name":"Fer Manual","birth_date":"2008-07-07","phone":"9984444444","high_school":"Prepa Cuatro","initial_career_id":":OFF","consent_confirmed":true}'::jsonb)$q$, 'ERR:INVALID_CAREER'),
+  ('alta presencial: carrera de prueba en alta real', 'S', $q$select create_participant_manual('{"email":"rt.fer@test.invalid","full_name":"Fer Manual","birth_date":"2008-07-07","phone":"9984444444","high_school":"Prepa Cuatro","initial_career_id":":DEMO","consent_confirmed":true}'::jsonb)$q$, 'ERR:INVALID_CAREER'),
+  ('alta presencial: sin consentimiento', 'S', $q$select create_participant_manual('{"email":"rt.fer@test.invalid","full_name":"Fer Manual","birth_date":"2008-07-07","phone":"9984444444","high_school":"Prepa Cuatro","initial_career_id":":REAL","consent_confirmed":false}'::jsonb)$q$, 'ERR:CONSENT_REQUIRED'),
+  ('alta presencial: completa (staff)', 'S', $q$select create_participant_manual('{"email":"rt.fer@test.invalid","full_name":"Fer Manual","birth_date":"2008-07-07","phone":"9984444444","high_school":"Prepa Cuatro","initial_career_id":":REAL","consent_confirmed":true}'::jsonb)$q$, 'OK'),
+  ('alta presencial: guarda todo con origen manual', 'P', $q$select origin = 'manual' and birth_date = '2008-07-07' and phone = '9984444444' and high_school = 'Prepa Cuatro' and initial_career_id = ':REAL'
+      and manual_consent_at is not null and manual_overrides ?& ARRAY['full_name','birth_date','phone','high_school','initial_career_id'] from participants where id = ':FID'$q$, 'TRUE'),
+  ('import 6 con datos distintos del alta', 'C', $q$select commit_participant_import('[{"row":2,"email":"rt.fer@test.invalid","full_name":"Fernanda Forms","birth_date":"2008-07-07","phone":"9982222222","high_school":"Prepa Dos","career":"DEMO-MED","consent":true}]'::jsonb, 'rt.csv', false)$q$, 'OK'),
+  ('alta presencial: recarga no reemplaza datos capturados ni duplica', 'P', $q$select phone = '9984444444' and high_school = 'Prepa Cuatro' and full_name = 'Fer Manual' and (select count(*) from participants where email = 'rt.fer@test.invalid') = 1 from participants where id = ':FID'$q$, 'TRUE'),
 
   -- Demo row
   ('import demo', 'C', $q$select commit_participant_import('[{"row":2,"email":"rt.demo@test.invalid","full_name":"Demo Prueba","birth_date":"2008-08-08","career":"DEMO-MED","consent":true}]'::jsonb, 'rt-demo.csv', true)$q$, 'OK'),
@@ -106,6 +178,11 @@ BEGIN
       from jsonb_path_query($LAST::jsonb, '$.rows[*] ? (@.email == "rt.ana2@test.invalid")') r$q$, 'TRUE'),
   ('export: fila manual con consentimiento', 'P', $q$select r->>'origin' = 'manual' and r->>'manual_consent_at' is not null and r->>'birth_date' = '2008-07-07' from jsonb_path_query($LAST::jsonb, '$.rows[*] ? (@.email == "rt.fer@test.invalid")') r$q$, 'TRUE'),
   ('export: columnas extra estables y legibles', 'P', $q$select jsonb_path_exists($LAST::jsonb, '$.extra_columns[*] ? (@.label == "¿Cómo te enteraste? (2)")') and jsonb_path_exists($LAST::jsonb, '$.extra_columns[*] ? (@.key == "¿como te enteraste?")')$q$, 'TRUE'),
+  ('export: extras alternos en su columna', 'P', $q$select jsonb_path_exists($LAST::jsonb, '$.extra_columns[*] ? (@.key == "pregunta (2)" && @.label == "Pregunta (2)")')
+      and (select r->'forms_extra'->>'pregunta (2)' = 'Respuesta B' and not (r->'forms_extra' ? 'pregunta') from jsonb_path_query($LAST::jsonb, '$.rows[*] ? (@.email == "rt.juli@test.invalid")') r)
+      and (select r->'forms_extra'->>'pregunta' = 'Respuesta A' and not (r->'forms_extra' ? 'pregunta (2)') from jsonb_path_query($LAST::jsonb, '$.rows[*] ? (@.email == "rt.ivan@test.invalid")') r)$q$, 'TRUE'),
+  ('export: carrera recibida en Forms', 'P', $q$select r->>'initial_career_received' = 'Medicina Veterinaria' and r->>'initial_career' = 'RT Carrera Real' from jsonb_path_query($LAST::jsonb, '$.rows[*] ? (@.email == "rt.carla@test.invalid")') r$q$, 'TRUE'),
+  ('export: indica estado del padrón', 'P', $q$select $LAST::jsonb->>'roster_status' = 'preparacion'$q$, 'TRUE'),
   ('exportar con demo', 'C', $q$select export_participants('prueba regresion', true)$q$, 'OK'),
   ('export: incluye demo cuando se pide', 'P', $q$select jsonb_path_exists($LAST::jsonb, '$.rows[*] ? (@.email == "rt.demo@test.invalid")')$q$, 'TRUE'),
 
@@ -113,6 +190,48 @@ BEGIN
   ('extras: coordinación los ve', 'C', $q$select jsonb_array_length(get_participant(':AID')->'forms_extra') >= 4$q$, 'TRUE'),
   ('extras: staff no los recibe', 'S', $q$select not (get_participant(':AID') ? 'forms_extra')$q$, 'TRUE'),
   ('correo: historial visible en expediente', 'S', $q$select jsonb_array_length(get_participant(':AID')->'email_history') = 1$q$, 'TRUE'),
+
+  -- Official roster
+  ('padrón: staff no lo declara', 'S', $q$select declare_official_roster('DECLARAR PADRÓN OFICIAL')$q$, 'ERR:NOT_AUTHORIZED'),
+  ('padrón: sorteo no lo declara', 'R', $q$select declare_official_roster('DECLARAR PADRÓN OFICIAL')$q$, 'ERR:NOT_AUTHORIZED'),
+  ('padrón: frase incorrecta', 'C', $q$select declare_official_roster('declarar')$q$, 'ERR:WRONG_PHRASE'),
+  ('padrón: coordinación lo declara', 'C', $q$select declare_official_roster('DECLARAR PADRÓN OFICIAL')$q$, 'OK'),
+  ('padrón: estado oficial con fecha', 'P', $q$select roster_status = 'oficial' and roster_declared_at is not null from editions where id = active_edition_id()$q$, 'TRUE'),
+  ('padrón: declaración auditada', 'P', $q$select count(*) = 1 from audit_log where action = 'roster.declared_official' and actor_user_id = '00000000-0000-4000-8000-0000000000c1'$q$, 'TRUE'),
+  ('padrón: no se declara dos veces', 'C', $q$select declare_official_roster('DECLARAR PADRÓN OFICIAL')$q$, 'ERR:ROSTER_ALREADY_OFFICIAL'),
+  ('padrón oficial: bloquea vista previa', 'C', $q$select preview_participant_import('[{"row":2,"email":"rt.kim@test.invalid","full_name":"Kim Tarde","birth_date":"2008-09-09","career":"DEMO-MED","consent":true}]'::jsonb, false)$q$, 'ERR:ROSTER_OFFICIAL'),
+  ('padrón oficial: bloquea carga directa por RPC', 'C', $q$select commit_participant_import('[{"row":2,"email":"rt.kim@test.invalid","full_name":"Kim Tarde","birth_date":"2008-09-09","career":"DEMO-MED","consent":true}]'::jsonb, 'tarde.csv', false)$q$, 'ERR:ROSTER_OFFICIAL'),
+  ('padrón oficial: bloquea también datos de prueba', 'C', $q$select commit_participant_import('[{"row":2,"email":"rt.kim@test.invalid","full_name":"Kim Tarde","birth_date":"2008-09-09","career":"DEMO-MED","consent":true}]'::jsonb, 'tarde.csv', true)$q$, 'ERR:ROSTER_OFFICIAL'),
+  ('padrón oficial: nada se cargó', 'P', $q$select count(*) = 0 from participants where email = 'rt.kim@test.invalid'$q$, 'TRUE'),
+  ('padrón oficial: alta presencial funciona', 'S', $q$select create_participant_manual('{"email":"rt.luis@test.invalid","full_name":"Luis Presencial","birth_date":"2008-10-10","phone":"9985555555","high_school":"Prepa Cinco","initial_career_id":":REAL","consent_confirmed":true}'::jsonb)$q$, 'OK'),
+  ('padrón oficial: alta presencial sigue validando', 'S', $q$select create_participant_manual('{"email":"rt.mar@test.invalid","full_name":"Mar Presencial","birth_date":"2008-10-11","phone":"9986666666","initial_career_id":":REAL","consent_confirmed":true}'::jsonb)$q$, 'ERR:HIGH_SCHOOL_REQUIRED'),
+  ('padrón oficial: alta presencial guardada', 'P', $q$select count(*) = 1 from participants where email = 'rt.luis@test.invalid' and origin = 'manual'$q$, 'TRUE'),
+  ('padrón oficial: edición manual funciona', 'C', $q$select update_participant(':FID', '{"phone":"9987777777"}'::jsonb)$q$, 'OK'),
+
+  -- Exceptional reopening
+  ('reapertura: staff no puede', 'S', $q$select reopen_roster_import('REABRIR IMPORTACIÓN', 'Llegó una corrección de Admisiones')$q$, 'ERR:NOT_AUTHORIZED'),
+  ('reapertura: cuenta desactivada no puede', 'D', $q$select reopen_roster_import('REABRIR IMPORTACIÓN', 'Llegó una corrección de Admisiones')$q$, 'ERR:NOT_AUTHORIZED'),
+  ('reapertura: motivo obligatorio', 'C', $q$select reopen_roster_import('REABRIR IMPORTACIÓN', '  ')$q$, 'ERR:REASON_REQUIRED'),
+  ('reapertura: motivo demasiado corto', 'C', $q$select reopen_roster_import('REABRIR IMPORTACIÓN', 'error')$q$, 'ERR:REASON_REQUIRED'),
+  ('reapertura: frase incorrecta', 'C', $q$select reopen_roster_import('reabrir', 'Llegó una corrección de Admisiones')$q$, 'ERR:WRONG_PHRASE'),
+  ('reapertura: sigue oficial tras intentos fallidos', 'P', $q$select roster_status = 'oficial' from editions where id = active_edition_id()$q$, 'TRUE'),
+  ('reapertura: coordinación reabre', 'C', $q$select reopen_roster_import('REABRIR IMPORTACIÓN', 'Llegó una corrección de Admisiones')$q$, 'OK'),
+  ('reapertura: vuelve a preparación', 'P', $q$select roster_status = 'preparacion' from editions where id = active_edition_id()$q$, 'TRUE'),
+  ('reapertura: auditada con quién y por qué', 'P', $q$select count(*) = 1 from audit_log where action = 'roster.reopened' and actor_user_id = '00000000-0000-4000-8000-0000000000c1'
+      and detail->>'reason' = 'Llegó una corrección de Admisiones' and detail->>'declared_at' is not null and created_at is not null$q$, 'TRUE'),
+  ('reapertura: no se reabre si no es oficial', 'C', $q$select reopen_roster_import('REABRIR IMPORTACIÓN', 'Llegó una corrección de Admisiones')$q$, 'ERR:ROSTER_NOT_OFFICIAL'),
+
+  -- Reload during preparation does not duplicate
+  ('recarga: contar antes', 'P', $q$select count(*) from participants where edition_id = active_edition_id() and email like 'rt.%@test.invalid'$q$, 'SHOW'),
+  ('recarga: mismo CSV completo otra vez', 'C', $q$select commit_participant_import('[
+    {"row":2,"email":"rt.beto@test.invalid","full_name":"Beto Dos","birth_date":"2008-01-01","career":"DEMO-MED","consent":true},
+    {"row":3,"email":"rt.ivan@test.invalid","full_name":"Ivan Alterno","birth_date":"2008-04-04","career":"DEMO-MED","consent":true,"extra":[{"col":9,"header":"Pregunta","value":"Respuesta A"},{"col":10,"header":"Pregunta","value":""}]},
+    {"row":4,"email":"rt.carla@test.invalid","full_name":"Carla Prueba","birth_date":"2008-02-02","career":"Medicina Veterinaria","consent":true},
+    {"row":5,"email":"rt.fer@test.invalid","full_name":"Fernanda Forms","birth_date":"2008-07-07","career":"DEMO-MED","consent":true},
+    {"row":6,"email":"RT.Ana@test.invalid","full_name":"Ana Prueba","birth_date":"2008-05-14","career":"DEMO-MED","consent":true}
+  ]'::jsonb, 'rt-recarga.csv', false, '{"medicina veterinaria":":REAL"}'::jsonb)$q$, 'OK'),
+  ('recarga: ninguna fila nueva', 'P', $q$select not jsonb_path_exists($LAST::jsonb, '$.** ? (@.status == "new")')$q$, 'TRUE'),
+  ('recarga: no duplica aspirantes', 'P', $q$select count(*) = 11 and count(distinct email) = count(*) from participants where edition_id = active_edition_id() and email like 'rt.%@test.invalid'$q$, 'TRUE'),
 
   -- Consent guard (student = participant A)
   ('vincular aspirante', 'P', $q$update participants set auth_user_id = '00000000-0000-4000-8000-0000000000c6' where id = ':AID'$q$, 'SHOW'),
@@ -122,6 +241,8 @@ BEGIN
   ('aviso: después de aceptar ya no lo exige', 'T', $q$select save_post_event_interests(array[(select id from careers where code = 'DEMO-MED')])$q$, 'NOT:PRIVACY_NOTICE_REQUIRED'),
   ('aspirante: no ve expedientes', 'T', $q$select get_participant(':AID')$q$, 'ERR:NOT_AUTHORIZED'),
   ('aspirante: no exporta', 'T', $q$select export_participants('x', false)$q$, 'ERR:NOT_AUTHORIZED'),
+  ('aspirante: no declara padrón', 'T', $q$select declare_official_roster('DECLARAR PADRÓN OFICIAL')$q$, 'ERR:NOT_AUTHORIZED'),
+  ('aspirante: no da altas', 'T', $q$select create_participant_manual('{"email":"rt.x@test.invalid","full_name":"X Prueba","birth_date":"2008-01-01","phone":"9981231234","high_school":"P","initial_career_id":":REAL","consent_confirmed":true}'::jsonb)$q$, 'ERR:NOT_AUTHORIZED'),
   ('aspirante: no recibe extras en su progreso', 'T', $q$select position('forms' in my_progress()::text) = 0$q$, 'TRUE'),
   ('sin participante: rechazado por la regla central', 'N', $q$select my_progress()$q$, 'ERR:NOT_AUTHORIZED'),
   ('sin participante: no guarda intereses', 'N', $q$select save_post_event_interests(array[]::uuid[])$q$, 'ERR:NOT_AUTHORIZED'),
@@ -137,8 +258,11 @@ BEGIN
   FOR st IN SELECT * FROM rt_steps ORDER BY seq LOOP
     v_aid := coalesce((SELECT participant_id::text FROM participant_by_email(ed, 'rt.ana@test.invalid')), '00000000-0000-0000-0000-000000000000');
     v_fid := coalesce((SELECT id::text FROM participants WHERE edition_id = ed AND email = 'rt.fer@test.invalid'), '00000000-0000-0000-0000-000000000000');
+    v_cid := coalesce((SELECT id::text FROM participants WHERE edition_id = ed AND email = 'rt.carla@test.invalid'), '00000000-0000-0000-0000-000000000000');
+    v_jid := coalesce((SELECT id::text FROM participants WHERE edition_id = ed AND email = 'rt.juli@test.invalid'), '00000000-0000-0000-0000-000000000000');
     v_act := coalesce((SELECT id::text FROM activities WHERE title = 'RT taller regresion' LIMIT 1), '00000000-0000-0000-0000-000000000000');
     v_q := replace(replace(replace(replace(replace(st.q, '$LAST', quote_literal(v_last)), ':AID', v_aid), ':FID', v_fid), ':ACT', v_act), ':ANY', v_any);
+    v_q := replace(replace(replace(replace(replace(v_q, ':CID', v_cid), ':JID', v_jid), ':REAL', v_real), ':OFF', v_off), ':DEMO', v_demo);
     v_uid := CASE st.who WHEN 'C' THEN c WHEN 'S' THEN s WHEN 'R' THEN r WHEN 'D' THEN d WHEN 'N' THEN n WHEN 'T' THEN t END;
     v_val := NULL; v_err := NULL;
     BEGIN

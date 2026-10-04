@@ -19,7 +19,16 @@ export type ImportRowResult = {
   note?: string | null;
   alert?: string | null;
 };
-export type ImportResult = { counts: Record<string, number>; rows: ImportRowResult[] };
+export type UnmatchedCareer = { key: string; value: string; count: number; target: string | null };
+export type ImportResult = { counts: Record<string, number>; rows: ImportRowResult[]; unmatched_careers?: UnmatchedCareer[] };
+export type ImportOptions = Record<string, unknown>;
+export type ReviewPanelContext = {
+  result: ImportResult;
+  options: ImportOptions;
+  isDemo: boolean;
+  busy: boolean;
+  apply: (options: ImportOptions) => Promise<void>;
+};
 
 type Props = {
   columns: CsvColumn[];
@@ -27,9 +36,12 @@ type Props = {
   templateName: string;
   buildRow: (record: Record<string, string>, row: number, extras: CsvExtraCell[]) => Record<string, unknown>;
   keepExtraColumns?: boolean;
-  preview: (rows: Record<string, unknown>[], isDemo: boolean) => Promise<ImportResult>;
-  commit: (rows: Record<string, unknown>[], fileName: string, isDemo: boolean) => Promise<ImportResult>;
+  preview: (rows: Record<string, unknown>[], isDemo: boolean, options: ImportOptions) => Promise<ImportResult>;
+  commit: (rows: Record<string, unknown>[], fileName: string, isDemo: boolean, options: ImportOptions) => Promise<ImportResult>;
   intro: ReactNode;
+  reviewPanel?: (ctx: ReviewPanelContext) => ReactNode;
+  commitBlockedReason?: (result: ImportResult) => string | null;
+  confirmLabel?: string;
 };
 
 const STATUS: Record<string, { label: string; tone: 'info' | 'success' | 'warning' | 'error' | 'neutral' }> = {
@@ -43,10 +55,22 @@ const STATUS: Record<string, { label: string; tone: 'info' | 'success' | 'warnin
 
 type Stage =
   | { kind: 'idle' }
-  | { kind: 'reviewing'; fileName: string; rows: Record<string, unknown>[]; result: ImportResult; unknown: string[] }
+  | { kind: 'reviewing'; fileName: string; rows: Record<string, unknown>[]; result: ImportResult; unknown: string[]; options: ImportOptions }
   | { kind: 'done'; result: ImportResult };
 
-export default function CsvImport({ columns, template, templateName, buildRow, keepExtraColumns = false, preview, commit, intro }: Props) {
+export default function CsvImport({
+  columns,
+  template,
+  templateName,
+  buildRow,
+  keepExtraColumns = false,
+  preview,
+  commit,
+  intro,
+  reviewPanel,
+  commitBlockedReason,
+  confirmLabel = 'Confirmar importación',
+}: Props) {
   const { edition } = useTheme();
   const canDemo = edition?.mode === 'preparacion';
   const [isDemo, setIsDemo] = useState(false);
@@ -79,9 +103,24 @@ export default function CsvImport({ columns, template, templateName, buildRow, k
       }
       if (!mapping.rows.length) throw new Error('CSV_EMPTY');
       const rows = mapping.rows.map((r, i) => buildRow(r, i + 2, mapping.extras[i] ?? []));
-      const result = await preview(rows, isDemo);
+      const result = await preview(rows, isDemo, {});
       if (!result || !Array.isArray(result.rows)) throw new Error('SERVER_ERROR');
-      setStage({ kind: 'reviewing', fileName: file.name, rows, result, unknown: mapping.unknownHeaders });
+      setStage({ kind: 'reviewing', fileName: file.name, rows, result, unknown: mapping.unknownHeaders, options: {} });
+    } catch (cause) {
+      setError(friendlyError(cause));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const applyOptions = async (options: ImportOptions) => {
+    if (stage.kind !== 'reviewing') return;
+    setBusy(true);
+    setError('');
+    try {
+      const result = await preview(stage.rows, isDemo, options);
+      if (!result || !Array.isArray(result.rows)) throw new Error('SERVER_ERROR');
+      setStage({ ...stage, result, options });
     } catch (cause) {
       setError(friendlyError(cause));
     } finally {
@@ -94,7 +133,7 @@ export default function CsvImport({ columns, template, templateName, buildRow, k
     setBusy(true);
     setError('');
     try {
-      const result = await commit(stage.rows, stage.fileName, isDemo);
+      const result = await commit(stage.rows, stage.fileName, isDemo, stage.options);
       if (!result || !result.counts) throw new Error('SERVER_ERROR');
       setStage({ kind: 'done', result });
     } catch (cause) {
@@ -110,6 +149,8 @@ export default function CsvImport({ columns, template, templateName, buildRow, k
     a.click();
     URL.revokeObjectURL(url);
   };
+
+  const blocked = stage.kind === 'reviewing' ? (commitBlockedReason?.(stage.result) ?? null) : null;
 
   return (
     <div className="space-y-6">
@@ -147,14 +188,22 @@ export default function CsvImport({ columns, template, templateName, buildRow, k
           isDemo={isDemo}
           filter={filter}
           setFilter={setFilter}
+          panel={reviewPanel?.({ result: stage.result, options: stage.options, isDemo, busy, apply: applyOptions })}
           footer={
-            <div className="flex flex-wrap gap-3">
-              <Button loading={busy} onClick={confirm} disabled={!stage.result.rows.some((r) => ['new', 'update', 'conflict'].includes(r.status))}>
-                Confirmar importación
-              </Button>
-              <Button variant="secondary" onClick={reset} disabled={busy}>
-                Cancelar
-              </Button>
+            <div className="space-y-3">
+              {blocked && <Alert tone="warning">{blocked}</Alert>}
+              <div className="flex flex-wrap gap-3">
+                <Button
+                  loading={busy}
+                  onClick={confirm}
+                  disabled={!!blocked || !stage.result.rows.some((r) => ['new', 'update', 'conflict'].includes(r.status))}
+                >
+                  {confirmLabel}
+                </Button>
+                <Button variant="secondary" onClick={reset} disabled={busy}>
+                  Cancelar
+                </Button>
+              </div>
             </div>
           }
         />
@@ -203,6 +252,7 @@ function Review({
   isDemo,
   filter,
   setFilter,
+  panel,
   footer,
 }: {
   result: ImportResult;
@@ -212,6 +262,7 @@ function Review({
   isDemo: boolean;
   filter: string;
   setFilter: (f: string) => void;
+  panel?: ReactNode;
   footer: ReactNode;
 }) {
   const rows = useMemo(() => result.rows.filter((r) => filter === 'all' || r.status === filter), [result.rows, filter]);
@@ -234,6 +285,7 @@ function Review({
           <Alert tone="warning">Estas columnas no se reconocieron y no se importarán: {unknown.join(', ')}.</Alert>
         ))}
       <Counts counts={result.counts} active={filter} onPick={setFilter} />
+      {panel}
 
       <div className="card overflow-hidden">
         <div className="max-h-[28rem] overflow-auto">

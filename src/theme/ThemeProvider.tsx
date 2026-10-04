@@ -20,6 +20,8 @@ export type Edition = {
   privacy_notice_version: string;
   privacy_notice_summary: string;
   privacy_notice_url: string | null;
+  roster_status: 'preparacion' | 'oficial';
+  roster_declared_at: string | null;
 };
 
 type ThemeContextValue = {

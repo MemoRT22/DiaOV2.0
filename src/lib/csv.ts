@@ -75,25 +75,25 @@ export function mapColumns(table: string[][], columns: CsvColumn[]): CsvMapping 
   }
   const indexOf = new Map(matched.map((m) => [m.column.key, m.index]));
   const width = Math.max(header.length, ...body.map((cells) => cells.length));
-  const extraCols = Array.from({ length: width }, (_, i) => i).filter((i) => !used.has(i));
+  const extraCols = Array.from({ length: width }, (_, i) => i).filter(
+    (i) => !used.has(i) && ((header[i] ?? '').trim() !== '' || body.some((cells) => (cells[i] ?? '').trim() !== '')),
+  );
   const rows = body.map((cells) => {
     const out: Record<string, string> = {};
     for (const [key, i] of indexOf) out[key] = (cells[i] ?? '').trim();
     return out;
   });
+  // Every row carries the full extra-column schema (empty values included) so the server
+  // numbers duplicate headers the same way for every row.
   const extras = body.map((cells) =>
-    extraCols
-      .map((i) => ({ col: i + 1, header: (header[i] ?? '').replace(/^\uFEFF/, ''), value: (cells[i] ?? '').trim() }))
-      .filter((c) => c.value !== ''),
+    extraCols.map((i) => ({ col: i + 1, header: (header[i] ?? '').replace(/^\uFEFF/, ''), value: (cells[i] ?? '').trim() })),
   );
   return {
     rows,
     extras,
     matched,
     missing: columns.filter((c) => c.required && !indexOf.has(c.key)),
-    unknownHeaders: extraCols
-      .filter((i) => body.some((cells) => (cells[i] ?? '').trim() !== '') || (header[i] ?? '').trim() !== '')
-      .map((i) => (header[i] ?? '').trim() || `Columna sin título ${i + 1}`),
+    unknownHeaders: extraCols.map((i) => (header[i] ?? '').trim() || `Columna sin título ${i + 1}`),
   };
 }
 

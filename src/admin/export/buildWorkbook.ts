@@ -8,6 +8,7 @@ export type ExportRow = {
   initial_career_code: string | null;
   initial_career: string | null;
   initial_division: string | null;
+  initial_career_received: string | null;
   origin: string;
   is_demo: boolean;
   forms_consent: boolean | null;
@@ -71,6 +72,7 @@ export async function buildWorkbook(payload: ExportPayload, reason: string, incl
     { header: 'Carrera de interés inicial', key: 'initial_career', width: 30 },
     { header: 'Código de carrera inicial', key: 'initial_career_code', width: 14 },
     { header: 'División de carrera inicial', key: 'initial_division', width: 24 },
+    { header: 'Carrera recibida en Forms (texto original)', key: 'initial_career_received', width: 30 },
     { header: 'Interés 1 después del evento', key: 'interest_1', width: 28 },
     { header: 'Interés 2 después del evento', key: 'interest_2', width: 28 },
     { header: 'Interés 3 después del evento', key: 'interest_3', width: 28 },
@@ -93,6 +95,7 @@ export async function buildWorkbook(payload: ExportPayload, reason: string, incl
       ...base,
       ...Object.fromEntries(extras.map((c, i) => [`forms_extra_${i}`, formsExtra?.[c.key] ?? ''])),
       previous_emails: r.previous_emails ?? '',
+      initial_career_received: r.initial_career_received ?? '',
       phone: r.phone ?? '',
       birth_date: birthDate(r.birth_date),
       origin: ORIGIN[r.origin] ?? r.origin,

@@ -5,6 +5,7 @@ import { Alert, Badge, Button, Spinner } from '../../components/ui';
 import { hasRole, useAuth } from '../../lib/auth';
 import { FIELD_LABELS, ORIGIN_LABELS, rpc } from '../../lib/adminApi';
 import { fetchCareers, formatDateTime, formatEventDate } from '../../lib/catalog';
+import { fold } from '../../lib/csv';
 import { friendlyError } from '../../lib/errors';
 import { useLoad } from '../../lib/useLoad';
 import AccessStatus, { type AccessState } from './AccessStatus';
@@ -19,6 +20,7 @@ type Detail = {
   phone: string | null;
   high_school: string | null;
   initial_career_id: string | null;
+  initial_career_raw: string | null;
   origin: string;
   is_demo: boolean;
   forms_consent: boolean | null;
@@ -60,13 +62,17 @@ export default function ParticipantDetail() {
 
   const { detail: p, careers } = data;
   const career = careers.find((c) => c.id === p.initial_career_id);
-  const rows: { key: string; value: string | null }[] = [
+  const raw = p.initial_career_raw?.trim() ?? '';
+  const rawDiffers =
+    !!raw && (!career || (fold(raw) !== fold(career.name) && raw.toUpperCase() !== career.code.toUpperCase()));
+  const rows: { key: string; label?: string; value: string | null }[] = [
     { key: 'email', value: p.email },
     { key: 'full_name', value: p.full_name },
     { key: 'birth_date', value: p.birth_date ? formatEventDate(p.birth_date) : null },
     { key: 'phone', value: p.phone },
     { key: 'high_school', value: p.high_school },
     { key: 'initial_career_id', value: career?.name ?? null },
+    ...(rawDiffers ? [{ key: 'initial_career_raw', label: 'Carrera recibida en Forms', value: raw }] : []),
   ];
 
   return (
@@ -109,20 +115,22 @@ export default function ParticipantDetail() {
 
       <section className="card divide-y divide-line">
         <h2 className="px-5 py-4 text-sm font-semibold uppercase tracking-wide text-ink-muted">Datos del registro</h2>
-        {rows.map(({ key, value }) => {
+        {rows.map(({ key, label, value }) => {
           const override = p.manual_overrides[key];
           return (
             <div key={key} className="grid gap-1 px-5 py-3 sm:grid-cols-[14rem_1fr_auto] sm:items-center sm:gap-4">
-              <p className="text-sm text-ink-muted">{FIELD_LABELS[key]}</p>
+              <p className="text-sm text-ink-muted">{label ?? FIELD_LABELS[key]}</p>
               <p className={`font-semibold ${value ? '' : 'text-ink-muted'}`}>{value ?? 'Sin dato'}</p>
               <p className="text-xs text-ink-muted">
                 {override
                   ? `${override.cleared ? 'Borrado' : 'Capturado o corregido'}${override.by ? ` por ${override.by}` : ''} · ${formatDateTime(override.at)}`
                   : key === 'email'
                     ? ''
-                    : value
-                      ? 'Del registro original'
-                      : 'Se completará con Forms si llega el dato'}
+                    : key === 'initial_career_raw'
+                      ? 'Texto original del archivo de Forms'
+                      : value
+                        ? 'Del registro original'
+                        : ''}
               </p>
             </div>
           );

@@ -63,13 +63,23 @@ export default function ParticipantForm({ participantId, initial, careers, onClo
     }
   };
 
-  const active = careers.filter((c) => c.is_active || c.id === initial.initial_career_id);
+  const active = editing
+    ? careers.filter((c) => c.is_active || c.id === initial.initial_career_id)
+    : careers.filter((c) => c.is_active && (isDemo || !c.is_demo));
+  const missingRequired =
+    !editing && (['email', 'full_name', 'birth_date', 'phone', 'high_school', 'initial_career_id'] as const).some((k) => !values[k].trim());
 
   return (
-    <Modal title={editing ? 'Corregir datos' : 'Dar de alta a un aspirante'} onClose={onClose}>
+    <Modal title={editing ? 'Corregir datos' : 'Alta presencial de aspirante'} onClose={onClose}>
       <form onSubmit={submit} className="space-y-4">
+        {!editing && (
+          <p className="text-sm text-ink-muted">
+            Para aspirantes que no hicieron el prerregistro. Todos los datos son obligatorios; con su correo y fecha de nacimiento podrá entrar
+            desde su teléfono en cuanto lo registres.
+          </p>
+        )}
         {editing && (
-          <Alert tone="info">Los campos que cambies quedan marcados como corrección manual. Una importación posterior no los reemplazará.</Alert>
+          <Alert tone="info">Los campos que cambies quedan marcados como corrección manual. Si el padrón se vuelve a cargar durante la preparación, no los reemplazará.</Alert>
         )}
         <Field label="Correo" type="email" required value={values.email} onChange={set('email')} autoComplete="off" />
         {emailChanged && (
@@ -79,7 +89,7 @@ export default function ParticipantForm({ participantId, initial, careers, onClo
             onChange={(e) => setEmailReason(e.target.value)}
             maxLength={300}
             placeholder="Ej. el aspirante escribió mal su correo en Forms"
-            hint="El correo anterior se guarda solo para reconocer al aspirante en futuras importaciones. No servirá para entrar."
+            hint="El correo anterior se guarda solo para reconocer al aspirante si el padrón se vuelve a cargar durante la preparación. No servirá para entrar."
           />
         )}
         <Field label="Nombre completo" required minLength={3} value={values.full_name} onChange={set('full_name')} autoComplete="off" />
@@ -87,15 +97,29 @@ export default function ParticipantForm({ participantId, initial, careers, onClo
           <Field
             label="Fecha de nacimiento"
             type="date"
+            required={!editing}
             value={values.birth_date}
             onChange={set('birth_date')}
             hint="Es necesaria para que el aspirante pueda entrar."
           />
-          <Field label="Teléfono" type="tel" inputMode="tel" value={values.phone} onChange={set('phone')} autoComplete="off" />
+          <Field
+            label="Teléfono"
+            type="tel"
+            inputMode="tel"
+            required={!editing}
+            value={values.phone}
+            onChange={set('phone')}
+            autoComplete="off"
+          />
         </div>
-        <Field label="Preparatoria" value={values.high_school} onChange={set('high_school')} autoComplete="off" />
-        <SelectField label="Carrera de interés inicial" value={values.initial_career_id} onChange={set('initial_career_id')}>
-          <option value="">Sin carrera</option>
+        <Field label="Preparatoria" required={!editing} value={values.high_school} onChange={set('high_school')} autoComplete="off" />
+        <SelectField
+          label="Carrera de interés inicial"
+          required={!editing}
+          value={values.initial_career_id}
+          onChange={set('initial_career_id')}
+        >
+          <option value="">{editing ? 'Sin carrera' : 'Elige una carrera del catálogo oficial…'}</option>
           {active.map((c) => (
             <option key={c.id} value={c.id}>
               {c.name}
@@ -106,11 +130,21 @@ export default function ParticipantForm({ participantId, initial, careers, onClo
           <div className="space-y-3 rounded-theme border border-line p-4">
             <label className="flex items-start gap-3 text-sm">
               <input type="checkbox" className="mt-0.5 h-4 w-4 accent-primary-500" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
-              <span>El aspirante leyó y aceptó el aviso de privacidad (versión {edition?.privacy_notice_version ?? 'vigente'}).</span>
+              <span>
+                Consentimiento presencial: el aspirante leyó y aceptó el aviso de privacidad (versión {edition?.privacy_notice_version ?? 'vigente'}).
+              </span>
             </label>
             {edition?.mode === 'preparacion' && (
               <label className="flex items-center gap-3 text-sm text-ink-muted">
-                <input type="checkbox" className="h-4 w-4 accent-primary-500" checked={isDemo} onChange={(e) => setIsDemo(e.target.checked)} />
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 accent-primary-500"
+                  checked={isDemo}
+                  onChange={(e) => {
+                    setIsDemo(e.target.checked);
+                    setValues((v) => ({ ...v, initial_career_id: '' }));
+                  }}
+                />
                 Es un registro de prueba
               </label>
             )}
@@ -121,7 +155,7 @@ export default function ParticipantForm({ participantId, initial, careers, onClo
           <Button type="button" variant="ghost" onClick={onClose}>
             Cancelar
           </Button>
-          <Button type="submit" loading={busy} disabled={!editing && !consent}>
+          <Button type="submit" loading={busy} disabled={!editing && (!consent || missingRequired)}>
             {editing ? 'Guardar cambios' : 'Dar de alta'}
           </Button>
         </div>
