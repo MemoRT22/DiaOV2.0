@@ -10,6 +10,7 @@ import {
   LogOut,
   Medal,
   Menu,
+  MonitorDot,
   Palette,
   Power,
   QrCode,
@@ -38,6 +39,7 @@ const NAV: { title: string; items: NavItem[] }[] = [
       { to: '/coordinacion/participantes', label: 'Participantes', icon: Users },
       { to: '/coordinacion/acceso', label: 'Ayuda de acceso', icon: LifeBuoy },
       { to: '/coordinacion/checkin', label: 'Check-in', icon: QrCode },
+      { to: '/coordinacion/operacion-en-vivo', label: 'Centro de Operación', icon: MonitorDot },
     ],
   },
   {

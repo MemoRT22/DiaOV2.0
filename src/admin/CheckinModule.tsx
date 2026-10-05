@@ -1,6 +1,7 @@
 import { ArrowLeft, Keyboard, Maximize2, Minimize2, Printer, QrCode, RefreshCw, Users } from 'lucide-react';
 import QRCode from 'qrcode';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Alert, Badge, Button, LoadError, PageSkeleton, Spinner } from '../components/ui';
 import { formatTime } from '../lib/catalog';
 import {
@@ -25,6 +26,18 @@ export default function CheckinModule() {
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<{ tone: 'success' | 'error'; msg: string } | null>(null);
   const [fullscreen, setFullscreen] = useState(false);
+  const [searchParams] = useSearchParams();
+  const autoOpenRef = useRef(false);
+
+  useEffect(() => {
+    if (autoOpenRef.current || !data || data.length === 0) return;
+    const sessionId = searchParams.get('session');
+    if (!sessionId) return;
+    const session = data.find((s) => s.session_id === sessionId);
+    if (!session) return;
+    autoOpenRef.current = true;
+    void openCredential(session);
+  }, [data, searchParams]);
 
   const openCredential = async (session: CheckinSession) => {
     setSelected(session);

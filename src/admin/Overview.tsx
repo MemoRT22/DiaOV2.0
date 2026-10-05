@@ -97,6 +97,19 @@ export default function Overview() {
           </div>
         ))}
       </div>
+
+      <div className="card p-5">
+        <h2 className="text-lg font-semibold">Operación del evento</h2>
+        <p className="mt-1 text-sm text-ink-muted">
+          Monitorea sesiones, aforo y asistencias en tiempo real durante el Día OV.
+        </p>
+        <Link
+          to="operacion-en-vivo"
+          className="mt-3 inline-flex min-h-11 items-center justify-center rounded-full bg-primary-500 px-6 text-sm font-semibold text-on-primary transition-all hover:bg-primary-400"
+        >
+          Abrir Centro de Operación
+        </Link>
+      </div>
     </div>
   );
 }

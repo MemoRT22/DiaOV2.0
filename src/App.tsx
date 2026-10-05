@@ -24,6 +24,7 @@ const CatalogImport = lazy(() => import('./admin/catalog/CatalogImport'));
 const ExportPage = lazy(() => import('./admin/export/ExportPage'));
 const StaffAccounts = lazy(() => import('./admin/staff/StaffAccounts'));
 const Operation = lazy(() => import('./admin/Operation'));
+const OperationsCenter = lazy(() => import('./admin/OperationsCenter'));
 const ThemeEditor = lazy(() => import('./admin/theme/ThemeEditor'));
 const RankRules = lazy(() => import('./admin/RankRules'));
 const ReservationRules = lazy(() => import('./admin/ReservationRules'));
@@ -38,7 +39,9 @@ function AdminHome() {
   const { staff } = useAuth();
   if (hasRole(staff, 'sorteo') && !hasRole(staff, 'coordinacion') && !hasRole(staff, 'staff'))
     return <Navigate to="sorteo" replace />;
-  return hasRole(staff, 'coordinacion') ? <Overview /> : <Navigate to="participantes" replace />;
+  if (hasRole(staff, 'coordinacion')) return <Overview />;
+  if (hasRole(staff, 'staff')) return <Navigate to="operacion-en-vivo" replace />;
+  return <Navigate to="participantes" replace />;
 }
 
 export default function App() {
@@ -61,6 +64,7 @@ export default function App() {
           <Route path="acceso" element={<AccessHelp />} />
           <Route path="cuenta" element={<Account />} />
           <Route path="checkin" element={<CheckinModule />} />
+          <Route path="operacion-en-vivo" element={<OperationsCenter />} />
           <Route path="sorteo" element={<RaffleOperator />} />
           <Route element={<CoordinationOnly />}>
             <Route path="importar" element={<ParticipantImport />} />
