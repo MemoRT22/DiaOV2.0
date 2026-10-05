@@ -8,6 +8,10 @@
 > 1. La reestructuración **no se pospone al después del evento**: Fase 9 no se retoma hasta haber reducido de forma sustancial y deliberada la superficie RPC administrativa (§9). Las rutas críticas siguen **congeladas salvo necesidad crítica** (§12).
 > 2. Los helpers que requieren las policies/Realtime **ya no cuentan como RPC de aplicación**: nueva categoría **P — helper/primitiva de infraestructura** (§4.10, §4.12, §6.2, §15).
 > 3. La deriva producción↔`main` de `workshop-intake` se resolverá en una **tarea separada de reconciliación** previa a las migraciones arquitectónicas (§1.5, §9).
+>
+> **Revisión 3 — dos correcciones técnicas surgidas del review:**
+> 1. **Patrón Edge → SQL corregido.** `supabase-js.rpc()` usa PostgREST y PostgREST solo ve funciones de schemas **expuestos**; `service_role` omite RLS pero no esa restricción. Una Edge Function **no puede** invocar `private.fn` directamente. Patrón principal: `Edge → puente SQL service-role-only → private.fn(p_actor, …) → tablas`. Los puentes **no cuentan** como RPC cliente (§6, §8.2.1). Quedan documentadas, sin decidir, dos alternativas: schema dedicado expuesto solo a `service_role` y conexión directa a PostgreSQL.
+> 2. **Feature flags corregidos.** Las variables `VITE_*` se fijan en el build: no hay rollback en runtime y no cambian los bundles ya cargados. Se sustituyen por **flags de runtime** (mecanismo a decidir en R1) con la RPC legacy viva hasta el final; el rollback por deployment es una segunda defensa, **no instantánea** (§10).
 
 ---
 
@@ -15,8 +19,8 @@
 
 1. **El diagnóstico es correcto, pero el matiz importa.** El backend es un "DB-as-API": las tablas de negocio no tienen privilegios para `anon`/`authenticated` y toda la lectura/escritura pasa por 73 funciones `SECURITY DEFINER` que autorizan al inicio con helpers centralizados (`require_*`). Eso es un diseño coherente y, en lo transaccional, correcto. Lo que **falta** no es "menos RPC": es una **capa HTTP de aplicación** (límites de payload, rate limiting, auditoría de lecturas de PII, descarga de archivos, orquestación, timeouts, observabilidad) para los workflows administrativos.
 2. **Clasificación de las 73 funciones ejecutables por `authenticated`:** **A = 15** (RPC de aplicación intencionales), **B = 34**, **C = 8**, **D = 4**, **E = 7** y **P = 5** (helpers/primitivas de infraestructura que policies o Realtime necesitan; **no son endpoints de aplicación deseables**, §4.12).
-3. **Estimación final, separando los cuatro conceptos** (detalle y criterio en §6.2/§15): **RPC de aplicación intencionales: 16–22** (hoy 15 + 7 por decidir); **helpers SQL de infraestructura: 4** (más `has_staff_role`, que ni siquiera lo requiere ninguna policy y puede pasar a interna de inmediato); **funciones SQL internas: ~92** (hoy 50); **Edge Functions: 8–9** servicios agrupados (hoy 2 + 1 pausada). Escrituras privilegiadas de Staff/Coordinación expuestas al navegador: de 32 a 4 (solo el sorteo en vivo). No se persigue un número: sale de la clasificación.
-4. **Hallazgo técnico clave (cambia la estrategia):** todas las funciones SQL toman la identidad de `auth.uid()`. Una Edge Function que use `service_role` verá `auth.uid() = NULL`; por eso "crear Edge + revocar RPC" **no funciona sin un rediseño de identidad**. Propongo el patrón **extraer-y-envolver** (lógica a una función interna con `p_actor` explícito; la RPC pública pasa a ser un wrapper de una línea) — conserva las reglas en SQL (una sola fuente de verdad) y permite strangler sin big-bang. Ver §8.
+3. **Estimación final, separando los cuatro conceptos** (detalle y criterio en §6.2/§15): **RPC de aplicación intencionales: 16–22** (hoy 15 + 7 por decidir); **helpers SQL de infraestructura: 4** (más `has_staff_role`, que ni siquiera lo requiere ninguna policy y puede pasar a interna de inmediato); **funciones SQL internas: ~92** (hoy 50); **Edge Functions: 8–9** servicios agrupados (hoy 2 + 1 pausada). Escrituras privilegiadas de Staff/Coordinación expuestas al navegador: de 32 a 4 (solo el sorteo en vivo). No se persigue un número: sale de la clasificación. Los **puentes service-role-only** entre Edge y SQL (~42, uno por operación migrada) son transporte: **no cuentan como RPC cliente** porque el navegador no puede ejecutarlos.
+4. **Hallazgo técnico clave (cambia la estrategia):** todas las funciones SQL toman la identidad de `auth.uid()`. Una Edge Function que use `service_role` verá `auth.uid() = NULL`; por eso "crear Edge + revocar RPC" **no funciona sin un rediseño de identidad**. Propongo el patrón **extraer-y-envolver** (lógica a una función en el schema privado con `p_actor` explícito; la RPC pública legacy pasa a ser un wrapper de una línea) — conserva las reglas en SQL (una sola fuente de verdad) y permite strangler sin big-bang. **Corrección de la revisión 3:** como PostgREST solo ve schemas expuestos, la Edge Function no llama a `private.fn` directamente sino a través de un **puente SQL accesible solo para `service_role`** (`Edge → puente → private.fn(p_actor, …)`). Ver §6 y §8.
 5. **Decisión de producto y calendario:** Fase 9 queda pausada **hasta sanear la arquitectura** (no "construir ahora → evento → corregir después"). El sistema está en `preparacion`, con 0 cuentas Staff reales, 3 participantes demo y 0 importaciones: es el momento de menor coste para reestructurar. El evento (2026-10-15) no cambia el plan; solo impone **reglas**: rutas críticas congeladas salvo necesidad crítica (reservas, check-in, sorteo y sus motores SQL), cada migración detrás de un flag con rollback, y una ventana de despliegue prudente alrededor del evento (§9.3). La secuencia propuesta (§9): reconciliación → staging/caracterización → higiene de permisos → deprecación segura → operaciones/configuración → participantes/PII → catálogo → import/export → dashboards y credenciales → reevaluar E → solo entonces valorar rutas críticas. **Criterio explícito para reanudar Fase 9 en §9.2.**
 6. **Hallazgos de seguridad principales:** (a) privilegios de tabla excesivos (`TRUNCATE`/`REFERENCES`/`TRIGGER` para `anon` y `authenticated` en 12 tablas, y DML completo en `participant_email_history`), protegidos hoy solo porque PostgREST no expone `TRUNCATE` y por RLS; (b) las pruebas de regresión corren contra el proyecto de producción; (c) 27 RPC de aplicación (sin contar helpers) no tienen ninguna prueba SQL; (d) sin throttling en `check_in` (códigos manuales de 30 bits con oráculo de validez); (e) las dos Edge Functions actuales duplican autorización en TS y hacen escrituras multi-paso no transaccionales.
 
@@ -82,7 +86,7 @@ El problema no es el RPC en sí; es que **los workflows administrativos viven si
 | Código compartido | CORS/`json()`/errores copiados | copiados |
 | Pruebas | ninguna | ninguna |
 
-**Veredicto:** no deben ser el estándar tal cual. Sí sirve el *patrón* de `student-access` ("Edge → service_role → función SQL interna `access_lock_state`"), que ya es la forma objetivo. El mejor punto de partida disponible es el **handler de `workshop-intake`** (handler/validación separados del runtime Deno, lista blanca de campos, tope de body, mapeo de errores sin filtrar internals, pruebas en Node) — hoy en la rama `claude/workshop-intake`, **sin merge a `main`**. Mejoras para el estándar: módulo `_shared/` (CORS, `json`, `Fail`, parseo seguro de body, verificación de JWT, `actor`), validación de esquema, logs solo con códigos, tests, y **no reimplementar autorización en TS** (§8.3).
+**Veredicto:** no deben ser el estándar tal cual. Sí sirve el *patrón* de `student-access` ("Edge → service_role → función SQL `access_lock_state`"): esa función ya es, de hecho, un **puente service-role-only en `public`** (EXECUTE solo para `service_role`, invocada con `supabase-js`), es decir, un precedente real del patrón objetivo (§8.2.1). El mejor punto de partida disponible es el **handler de `workshop-intake`** (handler/validación separados del runtime Deno, lista blanca de campos, tope de body, mapeo de errores sin filtrar internals, pruebas en Node) — hoy en la rama `claude/workshop-intake`, **sin merge a `main`**. Mejoras para el estándar: módulo `_shared/` (CORS, `json`, `Fail`, parseo seguro de body, verificación de JWT, `actor`), validación de esquema, logs solo con códigos, tests, y **no reimplementar autorización en TS** (§8.3).
 
 ### 1.5 Deriva producción ↔ `main` (importante)
 
@@ -303,7 +307,7 @@ Adicionales fuera de la matriz (no ejecutables por clientes): `get_pending_winne
 | `current_participant_id` | **Sí** | `ALTER POLICY` en 4 tablas + Realtime; ninguna función SQL lo llama | bajo-medio (3 de las 4 policies están inertes por falta de GRANT) |
 | `active_edition_id` | **Sí, pero el último** | 49 funciones lo llaman sin calificar (resuelto por `search_path = public`): añadir `private` al `search_path` de esas funciones o conservar un alias; `staff-accounts` debe dejar de usar `admin.rpc('active_edition_id')` | medio (radio amplio, beneficio mínimo: devuelve un UUID de dato público) |
 
-**Cautelas.** (1) Validar en staging que la policy de Realtime (`realtime.messages`) evalúa correctamente helpers de un schema no expuesto con el rol del usuario (suscripción real, no solo SQL). (2) Para que el beneficio sea permanente, combinar con `ALTER DEFAULT PRIVILEGES` (§8.4) en el schema `private`. (3) Esto es **hardening conceptual, no urgente**: ninguno devuelve datos sensibles (booleanos del propio usuario o un UUID público); por eso va en el bloque R9, después de lo administrativo.
+**Cautelas.** (1) Validar en staging que la policy de Realtime (`realtime.messages`) evalúa correctamente helpers de un schema no expuesto con el rol del usuario (suscripción real, no solo SQL). (2) Para que el beneficio sea permanente, combinar con `ALTER DEFAULT PRIVILEGES` (§8.4) en el schema `private`. (3) Esto es **hardening conceptual, no urgente**: ninguno devuelve datos sensibles (booleanos del propio usuario o un UUID público); por eso va en el bloque R9, después de lo administrativo. (4) **Alcance de esta técnica:** lo anterior vale para policies, triggers y funciones SQL (evaluación dentro de Postgres). **No** significa que una Edge Function pueda llamar funciones de un schema no expuesto con `supabase-js`: PostgREST no las ve, ni siquiera con `service_role` (ver §8.2.1).
 
 ---
 
@@ -376,22 +380,34 @@ React
      ├─ event-config ..................... tema, rangos, ventanas de reserva, config de sorteo
      ├─ checkin-admin .................... ver/regenerar credenciales QR (secretos)
      └─ public-intake (workshop-intake) .. frontera pública de propuestas (Fase 9, pausada)
+            │  Edge: valida JWT → actor; valida input; límites; orquestación
+            │  supabase-js .rpc()  ── PostgREST (solo ve schemas EXPUESTOS) ──
+            ▼
+   Puente SQL service-role-only   (en `public` al inicio; ~42, uno por operación migrada)
+   • EXECUTE: solo `service_role`  (PUBLIC, anon y authenticated revocados)
+   • recibe p_actor derivado del JWT validado por la Edge; sin reglas de negocio; delega de inmediato
+   • NO es una RPC cliente: el navegador no puede ejecutarlo  → no cuenta en el conteo de RPC
             │
             ▼
+   private.fn(p_actor, …)   schema NO expuesto — funciones reales
+   • reglas de negocio, locks, atomicidad, auditoría con actor
+   • re-validan el rol del actor contra las tablas (autorización final en SQL)
+            │
+            ▼
+         tablas
+
    Helpers SQL de infraestructura (P): is_operativo, is_coordinacion, current_participant_id, active_edition_id
-   → schema no expuesto; solo policies/Realtime los usan (has_staff_role: interna)
-   Funciones SQL internas (schema `public` hoy → `private` a mediano plazo)
-   • wrapper público fino = 1 línea → interna(auth.uid(), …)   [solo durante la transición]
-   • internas con p_actor explícito; re-validan el rol del actor contra las tablas
-   • reglas de negocio, locks, atomicidad y triggers: SE QUEDAN EN POSTGRES
+   → schema no expuesto; los usan policies/Realtime (evaluación dentro de Postgres); has_staff_role: interna
+   Durante la transición coexiste la RPC legacy (wrapper de una línea → private.fn(auth.uid(), …))
 ```
 
 ### 6.1 Principios
 1. **Postgres es dueño de las reglas** (atomicidad, constraints, locks, capacidad, unicidad, idempotencia). **Edge es dueño del protocolo** (HTTP, tamaño, formatos de archivo, orquestación de lotes, rate limit, auditoría de acceso, caché, secretos de integración).
 2. **No reimplementar reglas en TypeScript.** Si la regla ya está bien en SQL, se envuelve; no se reescribe.
-3. **Identidad explícita.** Edge verifica el JWT, obtiene el `actor`, y la función interna **vuelve a comprobar** que ese actor tiene el rol (no se confía ciegamente en Edge).
-4. **Deny-by-default también para funciones**: las internas viven donde `anon`/`authenticated` no pueden ejecutarlas por construcción (schema no expuesto) y no por `REVOKE` manual.
-5. **Una frontera por dominio**, no una por función.
+3. **Identidad explícita.** Edge verifica el JWT, obtiene el `actor` **solo del token validado (nunca del body)**, y la función real **vuelve a comprobar** que ese actor tiene el rol (no se confía ciegamente en Edge).
+4. **Deny-by-default también para funciones**: las funciones reales viven en un schema no expuesto (`private`), donde el navegador no puede alcanzarlas por construcción y no por `REVOKE` manual.
+5. **PostgREST es el transporte, y solo ve schemas expuestos.** Por eso la Edge Function no llama a `private.*`: llama a un **puente service-role-only** que delega en la función real. El puente es transporte, no lógica.
+6. **Una frontera por dominio**, no una por función.
 
 ### 6.2 Cantidades estimadas (con criterio) — cuatro conceptos distintos
 
@@ -401,6 +417,7 @@ React
 | **Helpers SQL de infraestructura (P)** | 5 expuestos como RPC | **4** (no endpoints; schema no expuesto) | `is_operativo`, `is_coordinacion`, `current_participant_id`, `active_edition_id`; `has_staff_role` pasa a interna de inmediato |
 | **Funciones SQL internas** (no ejecutables por clientes) | 50 | **~92** | +34 B +8 C +1 `has_staff_role`; −1 `get_pending_winner`; los 4 D se retiran |
 | **Edge Functions** | 2 (+1 pausada) | **8–9** | 6 nuevas + 2 existentes (+ intake) |
+| **Puentes SQL service-role-only** (transporte Edge → `private.fn`) | 0 (precedente: `access_lock_state`) | **~42** | uno por operación migrada de clase B/C; **no son RPC cliente y no entran en el conteo de RPC** (el navegador no puede ejecutarlos); pueden vivir en `public` al inicio |
 
 Métricas derivadas (informativas, no objetivos):
 
@@ -411,13 +428,13 @@ Métricas derivadas (informativas, no objetivos):
 | Escrituras privilegiadas Staff/Coord. expuestas al navegador | 32 | **4** (`draw_winner`, `confirm_winner`, `mark_no_show`, `invalidate_winner`) |
 | Escrituras totales expuestas | 38 | ~10 (las 4 anteriores + 6 del alumno) |
 
-No hay una cifra objetivo "a priori": sale de la clasificación. Si el sorteo en vivo tuviera también fachada (no recomendado, §12), el piso de RPC de aplicación sería 11–12.
+Los puentes se cuentan aparte a propósito: tienen `EXECUTE` solo para `service_role`, así que no forman parte de la superficie que un usuario puede invocar. La suite `security_surface` los verifica con una lista explícita (§11.2). No hay una cifra objetivo "a priori": sale de la clasificación. Si el sorteo en vivo tuviera también fachada (no recomendado, §12), el piso de RPC de aplicación sería 11–12.
 
 ---
 
 ## 7. Agrupación recomendada de Edge Functions
 
-| Servicio | Contrato (acciones) | SQL interna que envuelve | Ventajas | Desventajas / riesgos |
+| Servicio | Contrato (acciones) | SQL real (schema `private`) a la que llega vía puente | Ventajas | Desventajas / riesgos |
 |---|---|---|---|---|
 | `participant-admin` | `search`, `get`, `create`, `update`, `access_diagnosis`, `clear_access_lock` | `update_participant`, `create_participant_manual`, `get_participant`, `search_participants`, `access_*` (reglas de overrides, alias, historial) | autorización y registro de **lecturas de PII** en un punto; límites de resultados; errores uniformes | un hop más en el typeahead; `update_participant` es la pieza más compleja: no se reescribe |
 | `catalog-admin` | CRUD de divisiones/carreras/talleres/sesiones, `set_location`, carreras afines, `reservation_counts` | `save_*`, `delete_*`, `set_session_location` + triggers existentes | prerrequisito natural de la **publicación de propuestas (Fase 9)** (varios pasos: actividad + sesiones + carreras + credencial) | CRUD simple: la ganancia de seguridad es modesta; el valor es de orquestación futura |
@@ -439,36 +456,71 @@ No hay una cifra objetivo "a priori": sale de la clasificación. Si el sorteo en
 La secuencia es sensata en espíritu pero tiene **tres huecos**:
 
 1. **Falta el paso 0: caracterización.** 27 de las 73 RPC no tienen prueba (`access_diagnosis`, `activate_real_operation`, `clear_access_lock`, `commit/preview_catalog_import`, `coordination_summary`, `delete_activity`, `demo_purge_preview`, `emergency_unlock_theme`, `export_vocational`, `list/resolve_import_conflict(s)`, `my_raffle_status`, `publish/restore/relock/save_theme*`, `purge_demo_data`, `raffle_operator_view/pool_count/prizes_read`, `save_activity_careers/career/division`, `save_raffle_category`, `search_participants`, `update_rank_rules`). No se debe mover lo que no se puede verificar.
-2. **"Crear Edge equivalente + revocar" ignora la identidad.** Las funciones usan `auth.uid()`. Con `service_role`, `auth.uid()` es `NULL`: los guards fallarían y la auditoría perdería al actor.
-3. **Falta un mecanismo de rollback instantáneo** durante la convivencia (feature flag por módulo en el frontend).
+2. **"Crear Edge equivalente + revocar" ignora la identidad y el transporte.** Las funciones usan `auth.uid()`; con `service_role` es `NULL`, así que los guards fallarían y la auditoría perdería al actor. Y si además la lógica se mueve a un schema no expuesto, `supabase-js` (PostgREST) **no puede llamarla**, ni siquiera con `service_role`: hace falta un puente (§8.2.1).
+3. **Falta un mecanismo de rollback en runtime durante la convivencia.** La primera versión de este documento proponía `VITE_USE_EDGE_<MODULO>`; eso **no** es rollback rápido: se sustituye en el build y exige recompilar y redesplegar, y no afecta a pestañas ya abiertas. Se reemplaza por flags de runtime (§10).
 
 ### 8.2 Estrategia propuesta: "extraer y envolver" (strangler con identidad explícita)
 
-Por cada función de clase B/C:
+Por cada función de clase B/C (`private` = schema no expuesto; los nombres definitivos de puentes y funciones **no se fijan todavía**):
 
 | Paso | Acción | Cambia comportamiento | Reversible |
 |---|---|---|---|
 | 1 | **Caracterizar**: prueba SQL de entradas/salidas actuales (golden JSON) | no | — |
-| 2 | **Extraer**: mover el cuerpo a `internal.fn(p_actor uuid, …)`; la guard pasa a `require_*_for(p_actor)`; `write_audit` recibe actor | no | sí |
-| 3 | **Envolver**: la RPC pública pasa a `RETURN internal.fn(auth.uid(), …)` (1 línea). Misma firma, mismo resultado. Se corren las suites existentes | **no** | sí |
-| 4 | **Fachada Edge fase 1 (opcional)**: Edge llama a la RPC *con el JWT del usuario* (`Authorization` reenviado) → aporta límites, validación, logs, caché **sin cambiar autoridad** | no | sí |
-| 5 | **Fachada Edge fase 2**: Edge verifica JWT → `actor` → `internal.fn(actor, …)` con `service_role` | no (mismo contrato HTTP) | sí (flag) |
-| 6 | **Frontend**: un módulo a la vez detrás de un flag (`VITE_USE_EDGE_<MODULO>`), cliente tipado | no | sí (flag) |
-| 7 | **Equivalencia**: misma entrada por ambas rutas → mismo JSON | — | — |
-| 8 | **Observar** en producción un ciclo completo de uso | — | — |
-| 9 | **Revocar** `EXECUTE` del wrapper público a `authenticated` (queda para `service_role`) | sí | sí (re-grant) |
-| 10 | **Mantener** la interna; borrar el wrapper solo cuando ningún frontend antiguo lo use | — | — |
+| 2 | **Extraer**: mover el cuerpo a `private.fn(p_actor uuid, …)`; la guard pasa a una variante con actor (`require_*_for(p_actor)`); `write_audit` recibe el actor | no | sí |
+| 3 | **Envolver la RPC legacy**: queda con la misma firma y pasa a `RETURN private.fn(auth.uid(), …)` (1 línea). Se corren las suites existentes | **no** | sí |
+| 4 | **Crear el puente service-role-only**: `public.<puente>(p_actor, …)` que delega de inmediato en `private.fn(p_actor, …)`; `PUBLIC`/`anon`/`authenticated` sin `EXECUTE`, `service_role` con `EXECUTE`; sin reglas de negocio | no (nadie lo usa aún) | sí |
+| 5 | **Edge Function**: verifica el JWT, valida input, resuelve el `actor` del token, y llama al puente con `supabase-js` y `service_role`. Pruebas del handler + **equivalencia** legacy vs Edge | no (misma regla, nueva frontera) | sí |
+| 6 | **Frontend de doble ruta**: el cliente tipado trae **ambas** rutas (RPC legacy y Edge) y un **flag de runtime** (§10) decide cuál usa; por defecto, legacy | no | sí (flag, sin redeploy) |
+| 7 | **Equivalencia en vivo**: mismo resultado por ambas rutas en staging y luego en producción; activación gradual (por rol/ámbito) | — | sí (flag) |
+| 8 | **Edge pasa a ser el default** (cambio del flag) y **observación** durante un ciclo completo de uso | no | sí (flag) |
+| 9 | **Recién después, `REVOKE EXECUTE` de la RPC legacy** a `authenticated` (versión mínima de bundle soportada ya forzada, §10) | sí | sí (re-grant) |
+| 10 | **Más adelante, `DROP` de la RPC legacy** cuando no queden bundles antiguos; se conservan el puente y `private.fn` | — | — |
 
-Ventajas: una sola fuente de verdad de la regla (la interna); los pasos 2–3 se prueban con las suites que ya existen; compatibilidad "frontend viejo → RPC / frontend nuevo → Edge" durante todo el proceso; revocación como último paso.
+Ventajas: una sola fuente de verdad (la función en `private`); los pasos 2–3 se prueban con las suites que ya existen; la RPC legacy sigue viva y el flag decide el consumidor mientras se demuestra la equivalencia; la revocación es el último paso reversible.
+
+#### 8.2.1 Por qué hace falta un puente (restricción de PostgREST) y qué opciones hay
+
+`supabase-js.rpc()` llama a PostgREST, y PostgREST solo puede acceder a funciones de los **schemas expuestos** (hoy `public`). `service_role` omite RLS pero **no** esa restricción: una Edge Function no puede invocar `private.fn` directamente. La versión anterior de este documento lo daba por posible; era incorrecto.
+
+**Opción por defecto para la migración inicial: puente service-role-only + funciones reales en schema privado.**
+
+```
+React → Edge Function → puente SQL (solo service_role) → private.fn(p_actor, …) → tablas
+```
+
+Características del puente: puede permanecer temporalmente en `public` (o evaluarse luego un schema de API interno expuesto); `PUBLIC` revocado; `anon` sin `EXECUTE`; `authenticated` sin `EXECUTE`; `service_role` con `EXECUTE`; recibe `p_actor` derivado del JWT que la Edge Function ya validó; **no contiene reglas de negocio importantes** y delega de inmediato; **no se cuenta como RPC pública de aplicación**. Ejemplo conceptual (nombres no definitivos):
+
+```
+public.edge_update_participant_internal_bridge(p_actor uuid, p_payload jsonb)
+   → private.update_participant(p_actor, p_payload)
+```
+
+Por qué es la opción por defecto: mantiene `supabase-js`, **evita introducir credenciales directas de PostgreSQL** en las Edge Functions y mantiene una separación clara entre transporte (puente) y lógica (`private`). Hay precedente en producción: `access_lock_state` ya es una función de `public` solo ejecutable por `service_role` que `student-access` invoca así.
+
+**Salvaguardas del patrón:**
+- `p_actor` solo puede venir de la Edge Function (token validado), nunca del body del cliente; como el puente es service-role-only, el navegador no puede falsificarlo. La clave `service_role` jamás sale del runtime de la función. `private.fn` **re-valida** el rol del actor contra las tablas, de modo que un error de la Edge no concede privilegios por sí solo.
+- Los puentes viven en `public`, donde Supabase otorga `EXECUTE` por defecto a `anon`/`authenticated`: cada uno exige `REVOKE` explícito, y `ALTER DEFAULT PRIVILEGES` (R2) elimina ese riesgo para los nuevos. `security_surface` verifica con una lista explícita (o una marca estable, p. ej. un `COMMENT`) que **todo puente sea service-role-only** y que ninguna función de `private` sea ejecutable por clientes.
+- Detalle de diseño pendiente (R1): puente `SECURITY INVOKER` (corre como `service_role`, con `USAGE` en `private` y `EXECUTE` solo sobre las funciones concretas) frente a `SECURITY DEFINER`; se prefiere `INVOKER` para que el puente no sea otro punto de elevación de privilegios.
+- Sin coste de duplicación: durante la transición existen la RPC legacy (con `auth.uid()`) y el puente (con `p_actor`), pero ambos delegan en la misma `private.fn`.
+
+**Alternativas documentadas (no son la decisión actual):**
+
+| Alternativa | Cómo sería | A favor | En contra |
+|---|---|---|---|
+| **A. Schema dedicado expuesto solo a `service_role`** | un schema de API interno añadido a los schemas expuestos de PostgREST; `USAGE` y `EXECUTE` únicamente para `service_role`; `supabase-js` con `db: { schema }` | saca los puentes de `public`; reduce la clase de error por defaults | requiere cambiar la configuración de la API (schemas expuestos); más piezas que mantener; el schema aparece en la configuración de PostgREST |
+| **B. Conexión directa PostgreSQL desde la Edge Function** | cliente Postgres con una credencial de base de datos (idealmente un rol dedicado, vía pooler); `SET LOCAL` de claims o llamada directa a `private.fn` | no necesita puentes; transacciones multi-sentencia reales; mejor para trabajos largos (importaciones, exportaciones) | introduce **credenciales de base de datos** como secreto de las Edge Functions; gestión de conexiones/pooling; se aparta de `supabase-js`; requiere un rol de base de datos dedicado y bien acotado |
+
+La opción B puede reevaluarse específicamente para `data-io` en R1/R7 si los tiempos por llamada (PostgREST, 8 s en `authenticator`/`authenticated`; efecto exacto para `service_role` por validar) obligan a lotes demasiado pequeños.
 
 ### 8.3 Autorización en la fachada
-Edge **no reimplementa** `require_coordinacion` en TS: verifica el JWT, extrae `actor`, y la función interna **re-valida** el rol del `actor` contra `staff_roles`/`staff_members` (misma lógica SQL actual, con parámetro). Así `staff-accounts` también debería migrar a "Edge → interna con `p_actor`" (hoy duplica la regla en TS).
+Edge **no reimplementa** `require_coordinacion` en TS: verifica el JWT, extrae el `actor` del token validado, llama al puente con ese `actor`, y la función en `private` **re-valida** el rol del `actor` contra `staff_roles`/`staff_members` (misma lógica SQL actual, con parámetro). Así `staff-accounts` también debería migrar a "Edge → puente → `private` con `p_actor`" (hoy duplica la regla en TS).
 
 ### 8.4 Cambios estructurales de apoyo (propuestos, no hechos)
-1. **Schema `private`** para funciones internas; `public` solo con la superficie intencional. Las policies pueden llamar helpers en `private` si `authenticated` tiene `USAGE` y `EXECUTE` en esos helpers.
-2. **`ALTER DEFAULT PRIVILEGES … REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC, anon, authenticated`** (y revocar privilegios de tabla sobrantes): elimina la clase de error de §5.2/§5.1.
-3. **Cliente tipado en el frontend**: sustituir `rpc<T>(name)` por módulos `src/lib/api/<dominio>.ts` con tipos generados (`supabase gen types`) y una regla ESLint que prohíba `supabase.rpc`/`from()` fuera de `src/lib/api/**`: obliga a que nuevas superficies sean una decisión explícita.
+1. **Schema `private`** para las funciones reales; `public` solo con la superficie intencional **más los puentes service-role-only** (transitoriamente). Las policies pueden llamar helpers en `private` si `authenticated` tiene `USAGE` y `EXECUTE` sobre ellos (evaluación dentro de Postgres); la Edge Function accede a `private` **solo a través de puentes** (§8.2.1).
+2. **`ALTER DEFAULT PRIVILEGES … REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC, anon, authenticated`** (y revocar privilegios de tabla sobrantes): elimina la clase de error de §5.2/§5.1, incluida la de olvidar el `REVOKE` de un puente.
+3. **Cliente tipado en el frontend**: sustituir `rpc<T>(name)` por módulos `src/lib/api/<dominio>.ts` con tipos generados (`supabase gen types`) y una regla ESLint que prohíba `supabase.rpc`/`from()` fuera de `src/lib/api/**`: obliga a que nuevas superficies sean una decisión explícita. Estos módulos traen la **doble ruta** (legacy/Edge) gobernada por el flag de runtime.
 4. **Entorno de pruebas aislado** (rama/proyecto de staging de Supabase) y un runner (psql/`supabase db query` en CI) en lugar de pegar SQL en producción.
+5. **Mecanismo de flags de runtime** (§10): se decide en R1.
 
 ---
 
@@ -485,7 +537,7 @@ pausar Fase 9 → sanear la arquitectura de forma incremental → retomar desarr
 y **no** "seguir construyendo → evento → corregir después". Esto **no** implica tocar indiscriminadamente las rutas críticas:
 
 - **Congeladas salvo necesidad crítica:** `reserve_session`, `change_reservation`, `cancel_reservation`, `check_in`, `draw_winner`, `confirm_winner`, `mark_no_show`, `invalidate_winner` y los motores SQL transaccionales relacionados (`assert_reservable`, `expire_past_reservation`, `session_reserved_count`, `active_reservation_count`, `broadcast_availability`, `resolve_credential` y demás credenciales, y los helpers de selección/sorteo).
-- Todo lo demás se sanea por bloques, cada uno con: caracterización previa, extraer-y-envolver, flag de rollback, equivalencia, y revocación como último paso reversible (§8).
+- Todo lo demás se sanea por bloques, cada uno con: caracterización previa, extraer-y-envolver (con puente service-role-only, §8.2.1), flag de runtime para elegir consumidor, equivalencia, y revocación como último paso reversible (§8, §10). El rollback por deployment es una segunda defensa, no instantánea.
 
 ### 9.2 Bloques
 
@@ -494,13 +546,13 @@ El orden recibido se adopta, con **ajustes** señalados con ▲ (justificados en
 | Bloque | Contenido | Riesgo | Gate de salida |
 |---|---|---|---|
 | **R-0 ▲ Reconciliación `workshop-intake`** (tarea separada) | decidir mergear/congelar, desactivar o retirar la función, tablas y funciones SQL de la Fase 9; alinear `main` y producción; corregir el `EXECUTE` de `PUBLIC` de su trigger | bajo | `main` ≡ producción (esquema, funciones, Edge); política "nada se despliega sin estar en `main`" |
-| **R1 — Baseline, staging y caracterización** | proyecto/rama de **staging** de Supabase; runner de pruebas que ya no pega SQL en producción; correr las 14 suites existentes como línea base; **caracterización de las 27 RPC sin cobertura** (empezando por `purge_demo_data`, `activate_real_operation`, tema, catálogo, conflictos, `export_vocational`); `regression_security_surface.sql` en modo informe; cliente tipado + regla ESLint (andamiaje, sin cambio de comportamiento) | muy bajo | staging verde; línea base registrada; 27 caracterizadas |
+| **R1 — Baseline, staging y caracterización** | proyecto/rama de **staging** de Supabase; runner de pruebas que ya no pega SQL en producción; correr las 14 suites existentes como línea base; **caracterización de las 27 RPC sin cobertura** (empezando por `purge_demo_data`, `activate_real_operation`, tema, catálogo, conflictos, `export_vocational`); `regression_security_surface.sql` en modo informe; cliente tipado + regla ESLint (andamiaje, sin cambio de comportamiento); **decisiones de diseño de R1:** (a) mecanismo de **flags de runtime** (§10), (b) convención de puentes service-role-only (nombres, marca, `INVOKER`/`DEFINER`, §8.2.1) y su verificación en `security_surface`, (c) evaluar la alternativa B (conexión directa) para `data-io` | muy bajo | staging verde; línea base registrada; 27 caracterizadas; mecanismo de flags y convención de puentes decididos |
 | **R2 — Higiene de permisos y default privileges** | revocar `TRUNCATE`/`REFERENCES`/`TRIGGER` a `anon`/`authenticated`; cerrar `participant_email_history`; revocar `SELECT` residual en `post_event_interests`; `ALTER DEFAULT PRIVILEGES` (funciones y tablas) para que lo nuevo nazca sin acceso de clientes; revocar `has_staff_role` a `authenticated`. **Primero en staging**, luego producción | bajo (no afecta a la Data API ni a contratos) | `security_surface` en modo bloqueante y verde |
 | **R3 ▲ Deprecación/eliminación claramente segura (D)** | **deprecar = revocar `EXECUTE` (reversible)** de `get_my_initial_interests`, `session_credential_display`, `regenerate_session_credential`, `session_checkin_overview`; retirar `get_pending_winner`, tabla `session_credentials`, alias de `my_progress`; retirar la parte legacy de `regression_asistencia.sql`. Verificar ausencia de llamadas reales con `pg_stat_statements` antes de borrar | bajo | 0 funciones D ejecutables; suites verdes |
-| **R4 — Operaciones y configuración administrativa de bajo volumen** | `operations` (zona de peligro: `purge_demo_data`, `activate_real_operation`, `emergency_unlock_theme`; roster `declare/reopen`) y `event-config` (tema, rangos, ventanas de reserva, config de sorteo); ▲ aquí también se **endurece `staff-accounts`** al estándar `_shared` (autorización por actor en SQL, sin escrituras multi-paso no atómicas) | medio (pocas llamadas, alto impacto) → caracterizadas en R1 | B de estos grupos no ejecutable por `authenticated`; flags retirables |
+| **R4 — Operaciones y configuración administrativa de bajo volumen** | `operations` (zona de peligro: `purge_demo_data`, `activate_real_operation`, `emergency_unlock_theme`; roster `declare/reopen`) y `event-config` (tema, rangos, ventanas de reserva, config de sorteo); ▲ aquí también se **endurece `staff-accounts`** al estándar `_shared` (autorización por actor en SQL, sin escrituras multi-paso no atómicas) | medio (pocas llamadas, alto impacto) → caracterizadas en R1 | B de estos grupos no ejecutable por `authenticated`; flags de runtime retirables |
 | **R5 — Participantes / PII** | `participant-admin` (`search`, `get`, `create`, `update`, diagnóstico y desbloqueo de acceso) con auditoría de lecturas de PII | medio-alto (`update_participant`: se envuelve, no se reescribe) | idem |
 | **R6 — Catálogo** | `catalog-admin` (divisiones, carreras, talleres, sesiones, carreras afines, ubicación, conteos) | bajo-medio | idem; prerrequisito técnico de la publicación de propuestas (Fase 9) |
-| **R7 ▲ Import/export** | `data-io`: **exportaciones primero** (solo lectura), luego previews/conflictos, luego commits **al final y tras un dry-run completo en staging con archivos reales**; ▲ el cut-over del `commit_participant_import` se hace con el flag apagado por defecto y se enciende solo cuando la carga del roster real no dependa de esa ruta o ya esté probada con el archivo real | alto en commits | equivalencia de preview/commit; lotes e idempotencia |
+| **R7 ▲ Import/export** | `data-io`: **exportaciones primero** (solo lectura), luego previews/conflictos, luego commits **al final y tras un dry-run completo en staging con archivos reales**; ▲ el cut-over del `commit_participant_import` se hace con el flag de runtime en *legacy* por defecto y se cambia solo cuando la carga del roster real no dependa de esa ruta o ya esté probada con el archivo real | alto en commits | equivalencia de preview/commit; lotes e idempotencia |
 | **R8 — Dashboards y credenciales administrativas** | `operations` (overview/summary/checkin overview, caché corta) y `checkin-admin` (`activity_credential_display`, `regenerate_activity_credential`) | bajo | idem |
 | **R9 ▲ Reevaluación de las clases E y de P** | decidir las 6 lecturas del sorteo (consolidar o mantener), `session_to_activity` (D si ya no existen rutas por `session_id`); mover los helpers P a schema no expuesto (§4.12), `active_edition_id` el último | medio (Realtime) | superficie final medida |
 | **R10 — Rutas críticas (solo valoración)** | **solo después** de R1–R9: evaluar si algo de reservas/check-in/sorteo justifica fachada; el único candidato con argumento hoy es el **throttle de `check_in`** (§5.4), preferiblemente **en SQL**. Si el riesgo se considerara crítico antes, sería una **excepción explícita** al congelamiento, no un bloque del plan | alto | decisión documentada |
@@ -514,23 +566,75 @@ El orden recibido se adopta, con **ajustes** señalados con ▲ (justificados en
 3. **R2 después de staging, no antes.** Aunque es de bajo riesgo, los `REVOKE`/`DEFAULT PRIVILEGES` deben ensayarse donde se pueda comprobar login, roles, Realtime y todas las suites.
 4. **R3: deprecar antes que borrar.** Revocar es reversible con un `GRANT`; borrar no. `pg_stat_statements` está instalado y permite comprobar llamadas reales.
 5. **R4 incluye `staff-accounts`.** Es la única Edge Function administrativa existente y comparte el patrón que queremos corregir (§1.4); no tiene sentido crear servicios nuevos con el estándar nuevo y dejar el viejo sin alinear.
-6. **R7: los commits de importación al final y con flag.** El roster real se carga con esa ruta antes del evento; el cut-over solo se hace con equivalencia demostrada en staging con el archivo real.
+6. **R7: los commits de importación al final y con flag de runtime.** El roster real se carga con esa ruta antes del evento; el cut-over solo se hace con equivalencia demostrada en staging con el archivo real.
 7. **R9 agrupa E y P; R10 es solo valoración.** Coincide con el orden recibido (reevaluar E; solo después valorar rutas críticas) y evita tocar Realtime hasta que lo administrativo esté estable.
 
-**Regla de ventana de despliegue (propuesta, no un aplazamiento del plan):** como el evento es el 2026-10-15, conviene no encender cut-overs (flags) ni aplicar migraciones de privilegios en las ~72 h previas ni durante el evento; los bloques continúan fuera de esa ventana. Las rutas críticas permanecen congeladas todo el tiempo salvo necesidad crítica.
+**Regla de ventana de despliegue (propuesta, no un aplazamiento del plan):** como el evento es el 2026-10-15, conviene no cambiar el consumidor por defecto (flags de runtime) ni aplicar migraciones de privilegios en las ~72 h previas ni durante el evento; los bloques continúan fuera de esa ventana. Las rutas críticas permanecen congeladas todo el tiempo salvo necesidad crítica.
 
 **Órdenes alternativos considerados:** empezar por `data-io` (mayor valor técnico) → descartado por riesgo; empezar por catálogo (más simple) → válido, pero operaciones/configuración tienen mejor relación valor/riesgo y hoy cero cobertura.
 
 ---
 
-## 10. Compatibilidad temporal
+## 10. Compatibilidad temporal y flags de runtime
 
-- **Invariantes:** (1) la RPC antigua mantiene firma y resultado hasta el paso 9; (2) un solo lugar con la regla (la interna); (3) cambios de contrato y de backend nunca en el mismo paso; (4) nada se borra antes de migrar *todos* los consumidores.
-- **Frontend nuevo → Edge / frontend viejo → RPC:** posible porque el wrapper público se conserva (pasos 3–8).
-- **Flags** `VITE_USE_EDGE_*` por módulo para volver atrás en segundos.
-- **Versionado de contrato Edge** (`/v1` o campo `version`) para poder evolucionar sin romper clientes en caché (PWA/pestañas abiertas durante el evento).
+### 10.1 Invariantes
+(1) la RPC legacy mantiene firma y resultado hasta el paso 9 de §8.2; (2) un solo lugar con la regla (`private.fn`); (3) cambios de contrato y de backend nunca en el mismo paso; (4) nada se revoca ni se borra antes de migrar *todos* los consumidores y observar.
+
+### 10.2 Por qué `VITE_*` no sirve como rollback
+Las variables `VITE_*` se sustituyen **durante el build**: cambiar el valor exige recompilar y redesplegar, y no afecta a los bundles que ya cargaron las pestañas abiertas. Sirven para configuración de despliegue, no para conmutar comportamiento en runtime. Esta estrategia **sustituye** a la propuesta original (`VITE_USE_EDGE_<MODULO>`).
+
+### 10.3 Flag de runtime
+Conceptualmente:
+
+```
+frontend arranca → obtiene configuración runtime → decide Edge vs RPC legacy (por módulo)
+```
+
+El valor debe poder cambiar **sin recompilar** el frontend. Opciones apropiadas para este sistema (el mecanismo definitivo se decide en R1; no se implementa todavía):
+
+| Opción | Cómo | A favor | En contra |
+|---|---|---|---|
+| **A. Configuración remota de edición** | una columna/objeto de configuración en `editions` (el frontend ya lee `editions` al arrancar, `ThemeProvider`) | cero peticiones extra; encaja con el modelo actual; editable por SQL o por una pantalla de Coordinación | legible por `anon` (la tabla es pública): el estado de la migración sería visible, sin secretos; granularidad limitada (sin por-rol salvo convención); necesita refresco para afectar pestañas abiertas |
+| **B. Tabla de feature flags de lectura controlada** | tabla `(clave, valor, ámbito/rol, actualizado)` con policy de lectura por rol | granular por módulo y por rol (Staff antes que Coordinación, etc.); auditable; permite activación gradual | pieza nueva (tabla, policy, pantalla); otra superficie a cubrir en `security_surface` |
+| **C. Endpoint de configuración runtime** | una Edge Function `runtime-config` (GET) que combina flags y versión mínima y puede decidir por usuario | decisión por usuario/porcentaje; un solo contrato; puede incluir "versión mínima soportada" | un salto más al arrancar y un servicio más; si cae, hay que definir el valor por defecto |
+
+Orientación inicial (no decisión): A para empezar, evolucionable a B si se necesita granularidad por rol; C solo si se requiere decisión por usuario.
+
+**Propiedades exigidas, sea cual sea el mecanismo:**
+- Cambia **sin recompilar** y **sin redesplegar**.
+- Se lee al arrancar **y se refresca** (al volver el foco a la pestaña, cada cierto intervalo, o antes de una acción crítica) para alcanzar pestañas abiertas; en operaciones de escritura se consulta el valor **al momento de la acción**, no solo al inicio.
+- Es **por módulo** (no global) y permite volver a *legacy* de forma inmediata (interruptor de emergencia).
+- Valor por defecto seguro si no se puede leer la configuración: ruta *legacy*.
+- Estable durante un flujo (no cambiar de ruta a mitad de un asistente de varios pasos).
+- Los cambios del flag quedan **auditados**; no contiene secretos.
+- Incluye una **versión mínima de bundle soportada**: antes de revocar la RPC legacy, los clientes viejos reciben la instrucción de recargar (si no, dejarían de funcionar).
+- El cliente trae **ambas rutas en el mismo bundle** desde antes del primer cut-over; un bundle "solo Edge" no podría volver atrás.
+- Cualquier *fallback* automático (Edge falla → RPC legacy) solo es válido para operaciones idempotentes o con clave de idempotencia; en escrituras no idempotentes podría duplicar efectos.
+
+### 10.4 Secuencia de transición
+
+```
+RPC legacy sigue viva
++ Edge nueva disponible
++ flag de runtime decide el consumidor (default: legacy)
++ equivalencia comprobada
++ Edge se vuelve default (cambio del flag)
++ observación
++ recién después REVOKE de la RPC legacy (y DROP más adelante)
+```
+
+### 10.5 Rollback: dos defensas, con límites distintos
+
+| Defensa | Velocidad | Alcance |
+|---|---|---|
+| **Flag de runtime → *legacy*** | **inmediata** (sin recompilar) en cuanto los clientes refrescan la configuración | pestañas abiertas incluidas, si implementan el refresco de §10.3 |
+| **Rollback por deployment** (volver a un bundle/Edge anterior) | **no instantáneo**: requiere redesplegar, y los bundles ya cargados siguen ejecutándose hasta recargar | segunda defensa, no el mecanismo principal |
+| Re-grant de la RPC legacy (tras el paso 9) | inmediato en base de datos (1 sentencia) | solo útil si el flag aún puede enviar tráfico a *legacy* |
+
+### 10.6 Otros puntos de compatibilidad
+- **Versionado de contrato Edge** (`/v1` o campo `version`) para evolucionar sin romper clientes en caché (PWA/pestañas abiertas durante el evento).
 - **Realtime y reservas** no cambian de frontera: no hay convivencia que gestionar.
-- **Respuesta a un rollback:** re-grant del wrapper (1 sentencia) + flag.
+- **Frontend nuevo → Edge / frontend viejo → RPC legacy**: posible porque la RPC legacy se conserva hasta el paso 9 y el flag decide el consumidor.
 
 ---
 
@@ -554,6 +658,8 @@ El orden recibido se adopta, con **ajustes** señalados con ▲ (justificados en
 3. **Pruebas de equivalencia** por función migrada: misma entrada por la RPC pública y por la interna/Edge → mismo JSON y mismos efectos (incluida la fila de auditoría con el actor correcto).
 4. **Pruebas del handler Edge** (Node, patrón de `workshop-intake`): método, content-type, tamaño, JSON, campos desconocidos, errores sin filtrar detalles.
 5. **Smoke E2E por rol** (participante / staff / coordinación / sorteo) contra Edge, siguiendo el estilo de `concurrency_*.mjs`.
+6. **Verificación de puentes en `security_surface`:** todo puente tiene `EXECUTE` solo para `service_role`; ninguna función de `private` es ejecutable por `anon`/`authenticated` (salvo los helpers P que las policies requieren); ningún puente contiene reglas (delegación pura, revisable por tamaño/forma).
+7. **Pruebas del flag de runtime:** valor por defecto seguro, refresco en pestaña abierta, interruptor de emergencia a *legacy*, versión mínima de bundle, y equivalencia legacy vs Edge con el flag en cada posición.
 
 ### 11.3 Qué ejecutar tras cada bloque
 
@@ -613,20 +719,23 @@ Los identificadores corresponden a los bloques de §9.2. Las suites de reservaci
 
 | # | Riesgo | Mitigación |
 |---|---|---|
-| 1 | **Identidad perdida** al pasar a `service_role` (`auth.uid()=NULL`) | patrón `p_actor` + re-validación del rol en SQL (§8.3); prueba de auditoría del actor |
+| 1 | **Identidad perdida** al pasar a `service_role` (`auth.uid()=NULL`) | patrón `p_actor` derivado del JWT validado + re-validación del rol en SQL (§8.3); prueba de auditoría del actor |
 | 2 | **Regresión en reglas complejas** (imports, `update_participant`) | envolver, no reescribir; caracterización + equivalencia por función |
-| 3 | **Calendario**: evento el 2026-10-15 con la reestructuración en curso | rutas críticas congeladas; flags con rollback; ventana de despliegue prudente alrededor del evento (§9.3); cada bloque cierra con suites verdes en staging |
+| 3 | **Calendario**: evento el 2026-10-15 con la reestructuración en curso | rutas críticas congeladas; flags de runtime con rollback inmediato (el rollback por deployment es una segunda defensa, no instantánea); ventana de despliegue prudente alrededor del evento (§9.3); cada bloque cierra con suites verdes en staging |
 | 4 | **Doble fuente de verdad** (TS y SQL) | prohibido reimplementar reglas en TS; revisión de diseño por función |
 | 5 | **Timeouts** no resueltos por Edge (`authenticator` 8 s al usar PostgREST) | lotes; si se requiere trabajo largo, conexión directa a Postgres desde Edge |
 | 6 | **Pruebas contra producción** | staging/rama de Supabase antes de ampliar suites |
 | 7 | **Mini-monolitos por servicio** | handler/validación por acción, módulos compartidos `_shared/` |
-| 8 | **Clientes antiguos** (pestañas/PWA abiertas) | versionado de contrato, wrapper vivo hasta observar |
+| 8 | **Clientes antiguos** (pestañas/PWA abiertas) | versionado de contrato; RPC legacy viva hasta observar; versión mínima de bundle en la configuración runtime; refresco del flag en pestañas abiertas (§10.3) |
 | 9 | **Hop extra** en rutas calientes | por eso reservas/check-in/sorteo quedan fuera |
 | 10 | **Deriva** producción↔`main` (intake desplegado sin merge) | tarea separada R-0 antes de cualquier migración (§1.5, §9); política "nada se despliega sin estar en `main`" |
 | 11 | **Revocar demasiado pronto** | revocación = último paso, reversible (re-grant) |
 | 12 | **Función nueva sin guard** | prueba automática de superficie (§11.2-1) |
 | 13 | **Presión por retomar Fase 9** antes de terminar el saneamiento | criterio de reanudación explícito y medible (§9.2) |
 | 14 | **Mover helpers P a un schema no expuesto** rompe policies/Realtime si se hace mal | solo en R9, tras ensayo con suscripción Realtime real en staging; `is_*` siguen siendo `SECURITY DEFINER` (§4.12) |
+| 15 | **Asumir que Edge puede llamar a `private.*` con `supabase-js`** (PostgREST solo ve schemas expuestos) | patrón con puente service-role-only (§8.2.1); alternativas A/B documentadas; verificación temprana en staging |
+| 16 | **Puente mal protegido** (olvidar el `REVOKE` en `public` → ejecutable por clientes con `p_actor` arbitrario) | `ALTER DEFAULT PRIVILEGES` (R2), verificación en `security_surface`, convención de puentes decidida en R1, `private.fn` re-valida el rol del actor |
+| 17 | **Flag de runtime mal diseñado** (no refresca, valor por defecto inseguro, fallback duplica escrituras) | propiedades exigidas en §10.3; pruebas del flag (§11.2-7) |
 
 ---
 
@@ -655,6 +764,9 @@ Se separan cuatro conceptos que antes se mezclaban. No se persigue un número: e
 ### 15.3 Funciones SQL internas
 ~**92** (hoy 50): +34 (B) +8 (C) +1 (`has_staff_role`) −1 (`get_pending_winner`). Siguen siendo `SECURITY DEFINER` donde corresponda, no ejecutables por clientes.
 
+### 15.3b Puentes SQL service-role-only (no son RPC cliente)
+~**42**, uno por operación migrada de clase B/C (hoy 0; precedente: `access_lock_state`). Viven en `public` al inicio (o en un schema de API interno si se adopta la alternativa A de §8.2.1). `EXECUTE` solo para `service_role`; el navegador no puede ejecutarlos, por lo que **no forman parte del conteo de RPC cliente** ni de la reducción de superficie de §15.6.
+
 ### 15.4 Edge Functions / servicios
 **8–9** (hoy 2 + 1 pausada): `student-access`, `staff-accounts` (endurecer), `participant-admin`, `catalog-admin`, `data-io`, `operations`, `event-config`, `checkin-admin` y, tras R-0 y según se decida, `public-intake` (`workshop-intake`).
 
@@ -673,5 +785,6 @@ Hoy 73 funciones ejecutables por `authenticated`. Objetivo: 16–22 RPC de aplic
 - Consumidores: búsqueda literal de `rpc('nombre')` y `.from('tabla')` en `src/` (más el único caso dinámico) y revisión de las Edge Functions.
 - No se leyó el cuerpo completo de cada una de las 124 funciones; la clasificación **E** marca donde falta evidencia (sorteo-lecturas, `session_to_activity`).
 - No se ejecutaron ni se modificaron pruebas.
+- Revisión 3: la restricción de PostgREST (solo schemas expuestos, también para `service_role`) proviene del review y de la documentación de Supabase; el diseño del puente y de los flags no se ha implementado ni probado y debe ensayarse en staging (R1) antes de fijar nombres y convenciones.
 - Revisión 2: recuentos de llamadores de helpers (`active_edition_id` 49, `has_staff_role` 12, `is_operativo` 5, `is_coordinacion` 2, `current_participant_id` 0) obtenidos con búsqueda textual en `pg_proc.prosrc`; deben confirmarse en staging antes de revocar `has_staff_role` o mover helpers de schema (en particular, que todos los llamadores de `has_staff_role` sean `SECURITY DEFINER`).
 - `statement_timeout` por rol proviene de `pg_roles.rolconfig`; su efecto exacto para llamadas de `service_role` vía PostgREST debería validarse empíricamente antes de diseñar `data-io`.
