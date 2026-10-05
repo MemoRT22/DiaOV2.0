@@ -182,7 +182,9 @@ BEGIN
   ('seg: Staff ve cred', 'S', 'select (activity_credential_display(' || quote_literal(v_act1) || '::uuid)->>''qr_token'') is not null', 'TRUE'),
   ('seg: Coord ve cred', 'C', 'select (activity_credential_display(' || quote_literal(v_act1) || '::uuid)->>''qr_token'') is not null', 'TRUE'),
   ('seg: overview talleres', 'S', 'select jsonb_array_length(activity_checkin_overview()) >= 1', 'TRUE'),
-  ('seg: Sorteo no ve cred', 'R', 'select activity_credential_display(' || quote_literal(v_act1) || '::uuid)', 'ERR:NOT_AUTHORIZED');
+  ('seg: Sorteo no ve cred', 'R', 'select activity_credential_display(' || quote_literal(v_act1) || '::uuid)', 'ERR:NOT_AUTHORIZED'),
+  -- Sentinel: regenera act1 durante el loop (después de que todas las pruebas con v_token1 hayan corrido)
+  ('REGEN_ACT1', 'P', 'REGEN_ACT1', 'OK');
 
   FOR st IN SELECT * FROM rt_steps ORDER BY seq LOOP
     v_q := st.q;
@@ -196,7 +198,13 @@ BEGIN
         PERFORM set_config('request.jwt.claims', json_build_object('sub', v_uid, 'role', 'authenticated')::text, true);
         PERFORM set_config('role', 'authenticated', true);
       END IF;
-      IF v_q ~* '^(update|insert|create)' THEN EXECUTE v_q; ELSE EXECUTE v_q INTO v_val; END IF;
+      IF st.name = 'REGEN_ACT1' THEN
+        PERFORM set_config('request.jwt.claims', json_build_object('sub', c, 'role', 'authenticated')::text, true);
+        PERFORM set_config('role', 'authenticated', true);
+        SELECT (result->>'qr_token') INTO v_new_token1
+          FROM regenerate_activity_credential(v_act1, 'motivo test regeneracion act1') AS result;
+        v_val := 'ok';
+      ELSIF v_q ~* '^(update|insert|create)' THEN EXECUTE v_q; ELSE EXECUTE v_q INTO v_val; END IF;
     EXCEPTION WHEN others THEN v_err := SQLERRM; END;
     PERFORM set_config('role', 'postgres', true);
     PERFORM set_config('request.jwt.claims', '', true);
@@ -207,6 +215,15 @@ BEGIN
     END;
     IF v_ok THEN v_pass := v_pass + 1;
     ELSE v_fail := v_fail + 1; v_res_str := v_res_str || st.name || '[' || coalesce('err:' || v_err, 'val:' || coalesce(v_val, 'null')) || '] '; END IF;
+    IF st.name = 'REGEN_ACT1' AND v_err IS NULL THEN
+      INSERT INTO rt_steps (name, who, q, expect) VALUES
+      ('regen: nuevo token capturado', 'P', 'select ' || quote_literal(v_new_token1) || ' is not null', 'TRUE'),
+      ('regen: token anterior act1 inválido', 'A', 'select check_in(' || quote_literal(v_token1) || ')', 'ERR:INVALID_CREDENTIAL'),
+      ('regen: Ana check-in con token nuevo', 'A', 'select (check_in(' || quote_literal(v_new_token1) || ')->>''already_registered'') = ''true''', 'TRUE'),
+      ('regen: Ana sigue en sesión 1b', 'P', 'select count(*) = 1 from attendances where participant_id = ' || quote_literal(v_pid) || '::uuid and session_id = ' || quote_literal(v_s1b) || '::uuid', 'TRUE'),
+      ('regen: Ana 1 sola asistencia', 'P', 'select count(*) = 1 from attendances where participant_id = ' || quote_literal(v_pid) || '::uuid', 'TRUE'),
+      ('regen: Ana créditos correctos', 'P', 'select credits_granted = 1 from attendances where participant_id = ' || quote_literal(v_pid) || '::uuid', 'TRUE');
+    END IF;
   END LOOP;
   RAISE EXCEPTION E'% ok % fail: %', v_pass, v_fail, v_res_str;
 END
