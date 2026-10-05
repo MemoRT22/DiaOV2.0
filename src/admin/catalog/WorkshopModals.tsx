@@ -1,8 +1,9 @@
 import { useState, type FormEvent } from 'react';
 import { Alert, Button, Field, Modal, SelectField } from '../../components/ui';
 import { rpc } from '../../lib/adminApi';
-import { eventTimestamp, formatTime, ACTIVITY_TYPE_LABELS, SESSION_STATUS_LABELS, type Activity, type ActivityType, type Division, type Session, type SessionStatus } from '../../lib/catalog';
+import { eventTimestamp, formatTime, ACTIVITY_TYPE_LABELS, SESSION_STATUS_LABELS, type Activity, type ActivityType, type Career, type Division, type Session, type SessionStatus } from '../../lib/catalog';
 import { friendlyError } from '../../lib/errors';
+import { saveActivityCareers } from '../../lib/recommendationsApi';
 import { DemoCheckbox } from './DemoCheckbox';
 
 function useSave(save: () => Promise<unknown>, onSaved: () => void) {
@@ -89,6 +90,62 @@ export function ActivityModal({ initial, divisions, onClose, onSaved }: Activity
   );
 }
 
+type CareersProps = {
+  activity: Activity;
+  careers: Career[];
+  initialCareerIds: string[];
+  onClose: () => void;
+  onSaved: () => void;
+};
+
+export function CareersModal({ activity, careers, initialCareerIds, onClose, onSaved }: CareersProps) {
+  const [selected, setSelected] = useState<string[]>(initialCareerIds);
+  const { busy, error, submit } = useSave(
+    () => saveActivityCareers(activity.id, selected),
+    onSaved,
+  );
+
+  const eligible = careers.filter((c) => c.is_active && c.is_demo === activity.is_demo);
+  const toggle = (id: string) =>
+    setSelected((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
+
+  return (
+    <Modal title={`Carreras relacionadas · ${activity.title}`} onClose={onClose}>
+      <form onSubmit={submit} className="space-y-4">
+        <p className="text-sm text-ink-muted">
+          Selecciona las carreras que se relacionan con este taller. Los aspirantes que marquen interés en estas carreras
+          verán el taller como recomendado.
+        </p>
+        {eligible.length === 0 ? (
+          <Alert>No hay carreras activas del mismo entorno para relacionar.</Alert>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {eligible.map((c) => {
+              const isOn = selected.includes(c.id);
+              return (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => toggle(c.id)}
+                  aria-pressed={isOn}
+                  className={`inline-flex min-h-11 items-center gap-2 rounded-full border px-4 text-sm transition-all ${
+                    isOn
+                      ? 'border-primary-500 bg-primary-500/15 font-semibold text-ink'
+                      : 'border-line bg-surface text-ink-muted hover:border-secondary-400 hover:text-ink'
+                  }`}
+                >
+                  {c.name}
+                </button>
+              );
+            })}
+          </div>
+        )}
+        <Footer busy={busy} error={error} onClose={onClose} />
+      </form>
+    </Modal>
+  );
+}
+
 type SessionProps = {
   initial: Partial<Session>;
   reserved: number;
@@ -147,7 +204,7 @@ export function SessionModal({ initial, reserved, activityLocation, eventDate, o
           value={location}
           onChange={(e) => setLocation(e.target.value)}
           disabled={locked}
-          hint={locked ? 'Con reservaciones, usa “Cambiar ubicación” en la lista de horarios.' : 'Si lo dejas vacío se usa la ubicación del taller.'}
+          hint={locked ? 'Con reservaciones, usa "Cambiar ubicación" en la lista de horarios.' : 'Si lo dejas vacío se usa la ubicación del taller.'}
         />
         <SelectField label="Estado" value={status} onChange={(e) => setStatus(e.target.value as SessionStatus)}>
           {(Object.keys(SESSION_STATUS_LABELS) as SessionStatus[]).map((s) => (
@@ -158,13 +215,13 @@ export function SessionModal({ initial, reserved, activityLocation, eventDate, o
         </SelectField>
         {locked && status === 'cancelada' && initial.status !== 'cancelada' && (
           <Alert tone="error">
-            Al guardar se darán de baja {reserved} {reserved === 1 ? 'reservación' : 'reservaciones'}. Cada aspirante verá “Sesión cancelada” y podrá
+            Al guardar se darán de baja {reserved} {reserved === 1 ? 'reservación' : 'reservaciones'}. Cada aspirante verá "Sesión cancelada" y podrá
             elegir otro horario.
           </Alert>
         )}
         <p className="text-xs text-ink-muted">
           Solo los horarios publicados son visibles para los aspirantes. Ocultar conserva las reservaciones existentes; cancelar las da de baja y
-          el aspirante verá “Sesión cancelada”. Reactivar no las recupera.
+          el aspirante verá "Sesión cancelada". Reactivar no las recupera.
         </p>
         <Footer busy={busy} error={error} onClose={onClose} />
       </form>

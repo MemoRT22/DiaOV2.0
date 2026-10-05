@@ -112,8 +112,8 @@ export default function Interests() {
           <h1 className="text-2xl font-extrabold">Tu Brújula Vocacional</h1>
         </div>
         <p className="mt-1 text-sm text-ink-muted">
-          Después de lo que exploraste hoy, estas son las conexiones que encontramos entre tus actividades y las carreras
-          que podrías considerar.
+          Selecciona las carreras que te llaman la atención y te ayudaremos a encontrar talleres relacionados durante el evento.
+          También revisa las conexiones entre lo que has explorado y las carreras que podrías considerar.
         </p>
       </header>
 
@@ -203,14 +203,14 @@ export default function Interests() {
 
       <section className="card p-4" aria-label="Mis opciones después del Día OV">
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-sm font-semibold">Mis opciones después del Día OV</h2>
+          <h2 className="text-sm font-semibold">Carreras que me llaman la atención</h2>
           <span className="text-xs text-ink-muted">
             {selected.length} de {MAX}
           </span>
         </div>
         {selected.length === 0 ? (
           <p className="py-2 text-sm text-ink-muted">
-            Toca una carrera de la lista para agregarla. Puedes elegir hasta {MAX} opciones, ordenadas por tu preferencia.
+            Toca una carrera de la lista para agregarla. Selecciona hasta {MAX} y te recomendaremos talleres relacionados.
           </p>
         ) : (
           <ol className="space-y-2">

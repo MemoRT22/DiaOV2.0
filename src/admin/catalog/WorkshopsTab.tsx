@@ -1,24 +1,27 @@
-import { Clock, MapPin, Pencil, Plus, Trash2 } from 'lucide-react';
+import { Briefcase, Clock, MapPin, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { Alert, Badge, Button, Spinner } from '../../components/ui';
 import { rpc } from '../../lib/adminApi';
-import { fetchActivities, fetchDivisions, formatTime, SESSION_STATUS_LABELS, type Activity, type Session } from '../../lib/catalog';
+import { fetchActivities, fetchCareers, fetchDivisions, formatTime, SESSION_STATUS_LABELS, type Activity, type Career, type Session } from '../../lib/catalog';
 import { friendlyError } from '../../lib/errors';
+import { fetchActivityCareers } from '../../lib/recommendationsApi';
 import { fetchSessionCounts } from '../../lib/reservations';
 import { useLoad } from '../../lib/useLoad';
 import { useTheme } from '../../theme/ThemeProvider';
-import { ActivityModal, LocationModal, SessionModal } from './WorkshopModals';
+import { ActivityModal, CareersModal, LocationModal, SessionModal } from './WorkshopModals';
 
 export default function WorkshopsTab() {
   const { edition } = useTheme();
   const editionId = edition?.id ?? '';
   const { data, error, loading, reload } = useLoad(
-    () => Promise.all([fetchDivisions(), fetchActivities(editionId), fetchSessionCounts()]),
+    () => Promise.all([fetchDivisions(), fetchActivities(editionId), fetchSessionCounts(), fetchCareers()]),
     [editionId],
   );
   const [activity, setActivity] = useState<Partial<Activity> | null>(null);
   const [session, setSession] = useState<Partial<Session> | null>(null);
   const [moving, setMoving] = useState<Session | null>(null);
+  const [careersModal, setCareersModal] = useState<{ activity: Activity; careerIds: string[] } | null>(null);
+  const [careersBusy, setCareersBusy] = useState(false);
   const [actionError, setActionError] = useState('');
 
   if (loading && !data) return <Spinner />;
@@ -32,7 +35,7 @@ export default function WorkshopsTab() {
       </Alert>
     );
 
-  const [divisions, activities, counts] = data;
+  const [divisions, activities, counts, careers] = data;
   const reservedOf = (id?: string) => (id && counts.get(id)) || 0;
 
   const remove = async (kind: 'activity' | 'session', id: string, label: string) => {
@@ -46,10 +49,23 @@ export default function WorkshopsTab() {
     }
   };
 
+  const openCareers = async (a: Activity) => {
+    setCareersBusy(true);
+    try {
+      const ids = await fetchActivityCareers(a.id);
+      setCareersModal({ activity: a, careerIds: ids });
+    } catch (cause) {
+      setActionError(friendlyError(cause));
+    } finally {
+      setCareersBusy(false);
+    }
+  };
+
   const done = () => {
     setActivity(null);
     setSession(null);
     setMoving(null);
+    setCareersModal(null);
     reload();
   };
 
@@ -77,6 +93,15 @@ export default function WorkshopsTab() {
                     </p>
                     <p className="text-sm text-ink-muted">{a.location || 'Sin ubicación'}</p>
                   </div>
+                  <button
+                    onClick={() => openCareers(a)}
+                    disabled={careersBusy}
+                    className="rounded-full p-2 text-ink-muted hover:bg-surface-raised hover:text-ink"
+                    aria-label={`Carreras relacionadas de ${a.title}`}
+                    title="Carreras relacionadas"
+                  >
+                    <Briefcase className="h-4 w-4" />
+                  </button>
                   <button onClick={() => setActivity(a)} className="rounded-full p-2 text-ink-muted hover:bg-surface-raised hover:text-ink" aria-label={`Editar ${a.title}`}>
                     <Pencil className="h-4 w-4" />
                   </button>
@@ -143,6 +168,15 @@ export default function WorkshopsTab() {
         />
       )}
       {moving && <LocationModal session={moving} reserved={reservedOf(moving.id)} onClose={() => setMoving(null)} onSaved={done} />}
+      {careersModal && (
+        <CareersModal
+          activity={careersModal.activity}
+          careers={careers as Career[]}
+          initialCareerIds={careersModal.careerIds}
+          onClose={() => setCareersModal(null)}
+          onSaved={done}
+        />
+      )}
     </section>
   );
 }

@@ -1,4 +1,4 @@
-import { Check, Compass, Lock, Sparkles, Ticket, Trophy, X } from 'lucide-react';
+import { Check, Compass, Lock, Sparkles, Target, Ticket, Trophy, X } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ProgressRing, ThemedTitle } from '../components/themed';
@@ -147,6 +147,21 @@ export default function Passport() {
           </p>
           <Link to="/destinos" className={buttonClasses('primary', 'mt-4')}>
             Abrir mi Brújula
+          </Link>
+        </section>
+      )}
+
+      {progress.interests_prompt && !showPrompt && interests.length > 0 && progress.attended_workshops < 4 && (
+        <section className="card animate-fade-up p-4">
+          <div className="flex items-center gap-2">
+            <Target className="h-5 w-5 text-secondary-300" aria-hidden />
+            <h2 className="text-sm font-semibold">Encuentra tu siguiente taller</h2>
+          </div>
+          <p className="mt-1 text-sm text-ink-muted">
+            Tienes carreras de interés. Te ayudamos a encontrar talleres relacionados.
+          </p>
+          <Link to="/misiones" className={buttonClasses('secondary', 'mt-3')}>
+            Ver recomendados
           </Link>
         </section>
       )}
