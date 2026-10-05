@@ -194,6 +194,7 @@ export default function OperationsCenter() {
               session={session}
               status={status}
               signals={signals}
+              serverTime={serverTime}
               onCheckin={() => navigate(`/coordinacion/checkin?session=${session.session_id}`)}
             />
           ))}
@@ -236,16 +237,17 @@ function SessionCard({
   session,
   status,
   signals,
+  serverTime,
   onCheckin,
 }: {
   session: OperationsSession;
   status: TemporalStatus;
   signals: { label: string; tone: 'error' | 'warning' | 'neutral' }[];
+  serverTime: number;
   onCheckin: () => void;
 }) {
   const rate = attendanceRate(session);
   const pct = reservationPercent(session);
-  const serverTime = Date.now();
   const soon = isUpcomingSoon(session, serverTime);
 
   return (
