@@ -1,4 +1,4 @@
-import { ArrowLeft, Keyboard, Maximize2, Minimize2, Printer, QrCode, RefreshCw, Users } from 'lucide-react';
+import { ArrowLeft, Clock, Keyboard, Maximize2, Minimize2, Printer, QrCode, RefreshCw, Users } from 'lucide-react';
 import QRCode from 'qrcode';
 import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
@@ -6,10 +6,12 @@ import { Alert, Badge, Button, LoadError, PageSkeleton, Spinner } from '../compo
 import { formatTime } from '../lib/catalog';
 import {
   fetchCheckinOverview,
-  fetchCredentialDisplay,
-  regenerateCredential,
+  fetchActivityCredentialDisplay,
+  regenerateActivityCredential,
+  resolveSessionToActivity,
+  type CheckinActivity,
   type CheckinSession,
-  type CredentialDisplay,
+  type ActivityCredentialDisplay,
 } from '../lib/checkin';
 import { friendlyError } from '../lib/errors';
 import { hasRole, useAuth } from '../lib/auth';
@@ -19,8 +21,8 @@ export default function CheckinModule() {
   const { staff } = useAuth();
   const isCoord = hasRole(staff, 'coordinacion');
   const { data, error, loading, reload } = useLoad(() => fetchCheckinOverview(), []);
-  const [selected, setSelected] = useState<CheckinSession | null>(null);
-  const [cred, setCred] = useState<CredentialDisplay | null>(null);
+  const [selected, setSelected] = useState<CheckinActivity | null>(null);
+  const [cred, setCred] = useState<ActivityCredentialDisplay | null>(null);
   const [qrUrl, setQrUrl] = useState('');
   const [showCred, setShowCred] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -32,24 +34,39 @@ export default function CheckinModule() {
   useEffect(() => {
     if (autoOpenRef.current || !data || data.length === 0) return;
     const sessionId = searchParams.get('session');
-    if (!sessionId) return;
-    const session = data.find((s) => s.session_id === sessionId);
-    if (!session) return;
+    const activityId = searchParams.get('activity');
+    if (!sessionId && !activityId) return;
     autoOpenRef.current = true;
-    void openCredential(session);
+    if (activityId) {
+      const activity = data.find((a) => a.activity_id === activityId);
+      if (activity) void openCredential(activity);
+    } else if (sessionId) {
+      void resolveAndOpen(sessionId);
+    }
   }, [data, searchParams]);
 
-  const openCredential = async (session: CheckinSession) => {
-    setSelected(session);
+  const resolveAndOpen = async (sessionId: string) => {
+    try {
+      const activityId = await resolveSessionToActivity(sessionId);
+      if (!activityId) return;
+      const activity = data?.find((a) => a.activity_id === activityId);
+      if (activity) void openCredential(activity);
+    } catch {
+      // Session not found or error — silently ignore
+    }
+  };
+
+  const openCredential = async (activity: CheckinActivity) => {
+    setSelected(activity);
     setShowCred(true);
     setStatus(null);
     setBusy(true);
     try {
-      const display = await fetchCredentialDisplay(session.session_id);
+      const display = await fetchActivityCredentialDisplay(activity.activity_id);
       setCred(display);
       const url = await QRCode.toDataURL(display.qr_token, { width: 400, margin: 1 });
       setQrUrl(url);
-      await reload();
+      void reload();
     } catch (cause) {
       setStatus({ tone: 'error', msg: friendlyError(cause) });
     } finally {
@@ -62,7 +79,7 @@ export default function CheckinModule() {
     setBusy(true);
     setStatus(null);
     try {
-      const display = await regenerateCredential(selected.session_id, reason);
+      const display = await regenerateActivityCredential(selected.activity_id, reason);
       setCred(display);
       const url = await QRCode.toDataURL(display.qr_token, { width: 400, margin: 1 });
       setQrUrl(url);
@@ -80,7 +97,7 @@ export default function CheckinModule() {
   if (showCred && selected) {
     return (
       <CredentialView
-        session={selected}
+        activity={selected}
         cred={cred}
         qrUrl={qrUrl}
         busy={busy}
@@ -98,38 +115,35 @@ export default function CheckinModule() {
   return (
     <div className="max-w-3xl space-y-6">
       <header>
-        <h1 className="text-2xl font-extrabold">Check-in</h1>
+        <h1 className="text-2xl font-extrabold">Check-in por taller</h1>
         <p className="mt-1 text-sm text-ink-muted">
-          Sesiones de la edición activa. Abre el QR al final del taller para que los aspirantes registren su asistencia.
+          Cada taller tiene un único QR y código de respaldo válidos para todos sus horarios. Abre un taller para ver e imprimir su credencial.
         </p>
       </header>
 
       <div className="space-y-2">
-        {data.length === 0 && <p className="text-sm text-ink-muted">No hay sesiones en la edición activa.</p>}
-        {data.map((s) => (
+        {data.length === 0 && <p className="text-sm text-ink-muted">No hay talleres en la edición activa.</p>}
+        {data.map((a) => (
           <button
-            key={s.session_id}
-            onClick={() => openCredential(s)}
+            key={a.activity_id}
+            onClick={() => openCredential(a)}
             className="card flex w-full items-center gap-4 p-4 text-left transition-colors hover:bg-surface-raised"
           >
             <div className="flex-1">
-              <p className="font-semibold">{s.title}</p>
+              <p className="font-semibold">{a.title}</p>
               <p className="text-xs text-ink-muted">
-                {formatTime(s.starts_at)} — {formatTime(s.ends_at)} · {s.location}
+                {a.sessions.length} {a.sessions.length === 1 ? 'horario' : 'horarios'} · {a.location}
               </p>
             </div>
             <div className="flex items-center gap-4 text-sm">
               <div className="text-center">
-                <p className="font-display font-extrabold">{s.reserved}</p>
+                <p className="font-display font-extrabold">{a.total_reserved}</p>
                 <p className="text-xs text-ink-muted">Reservados</p>
               </div>
               <div className="text-center">
-                <p className="font-display font-extrabold text-success">{s.attended}</p>
+                <p className="font-display font-extrabold text-success">{a.total_attended}</p>
                 <p className="text-xs text-ink-muted">Asistencias</p>
               </div>
-              <Badge tone={s.status === 'activa' ? 'success' : s.status === 'cancelada' ? 'error' : 'warning'}>
-                {s.status === 'activa' ? 'Publicada' : s.status === 'cancelada' ? 'Cancelada' : 'Oculta'}
-              </Badge>
               <QrCode className="h-5 w-5 text-primary-400" aria-hidden />
             </div>
           </button>
@@ -140,8 +154,8 @@ export default function CheckinModule() {
 }
 
 type CredentialViewProps = {
-  session: CheckinSession;
-  cred: CredentialDisplay | null;
+  activity: CheckinActivity;
+  cred: ActivityCredentialDisplay | null;
   qrUrl: string;
   busy: boolean;
   status: { tone: 'success' | 'error'; msg: string } | null;
@@ -154,7 +168,7 @@ type CredentialViewProps = {
 };
 
 function CredentialView(props: CredentialViewProps) {
-  const { session, cred, qrUrl, busy, status, isCoord, onRegenerate, onBack, onPrint, fullscreen, onToggleFullscreen } = props;
+  const { activity, cred, qrUrl, busy, status, isCoord, onRegenerate, onBack, onPrint, fullscreen, onToggleFullscreen } = props;
   const [showRegen, setShowRegen] = useState(false);
   const [reason, setReason] = useState('');
 
@@ -186,18 +200,15 @@ function CredentialView(props: CredentialViewProps) {
           <button onClick={onBack} className="rounded-full p-2 text-ink-muted hover:bg-surface-raised hover:text-ink">
             <ArrowLeft className="h-5 w-5" aria-hidden />
           </button>
-          <h1 className="text-xl font-extrabold">{session.title}</h1>
+          <h1 className="text-xl font-extrabold">{activity.title}</h1>
         </div>
       )}
 
       {status && !fullscreen && <Alert tone={status.tone}>{status.msg}</Alert>}
 
       <div className={`card print-area text-center ${fullscreen ? 'max-w-md' : ''}`}>
-        <p className="text-sm font-semibold">{session.title}</p>
-        <p className="text-xs text-ink-muted">
-          {formatTime(cred.starts_at)} — {formatTime(cred.ends_at)} · {cred.location}
-        </p>
-        <p className="mt-1 text-xs text-ink-muted">Válido solo al final de la sesión</p>
+        <p className="text-sm font-semibold">{activity.title}</p>
+        <p className="text-xs text-ink-muted">QR único del taller · válido para todos los horarios</p>
 
         {qrUrl && (
           <img src={qrUrl} alt="QR de check-in" className="mx-auto mt-4 h-64 w-64 rounded-theme border border-line bg-white p-2" />
@@ -211,14 +222,25 @@ function CredentialView(props: CredentialViewProps) {
         <div className="mt-4 flex items-center justify-center gap-6 text-sm">
           <span className="flex items-center gap-1">
             <Users className="h-4 w-4 text-ink-muted" aria-hidden />
-            {session.reserved} reservados
+            {activity.total_reserved} reservados
           </span>
           <span className="flex items-center gap-1 text-success">
-            <span className="font-display font-extrabold">{session.attended}</span>
+            <span className="font-display font-extrabold">{activity.total_attended}</span>
             asistencias
           </span>
         </div>
       </div>
+
+      {!fullscreen && cred.sessions.length > 0 && (
+        <div className="card space-y-2 p-4">
+          <p className="text-sm font-semibold">Horarios</p>
+          <div className="space-y-1">
+            {cred.sessions.map((s) => (
+              <SessionRow key={s.session_id} session={s} />
+            ))}
+          </div>
+        </div>
+      )}
 
       {!fullscreen && (
         <div className="flex flex-wrap gap-3">
@@ -262,6 +284,26 @@ function CredentialView(props: CredentialViewProps) {
           </Button>
         </div>
       )}
+    </div>
+  );
+}
+
+function SessionRow({ session }: { session: CheckinSession }) {
+  const fullness = session.capacity > 0 ? Math.round((session.reserved / session.capacity) * 100) : 0;
+  return (
+    <div className="flex items-center gap-3 rounded-theme px-3 py-2 text-sm hover:bg-surface-sunken">
+      <Clock className="h-4 w-4 text-ink-muted" aria-hidden />
+      <span className="tabular-nums">{formatTime(session.starts_at)} — {formatTime(session.ends_at)}</span>
+      <span className="text-ink-muted">
+        {session.reserved}/{session.capacity}
+      </span>
+      <span className="text-success">{session.attended} check-ins</span>
+      <Badge tone={session.status === 'activa' ? 'success' : session.status === 'cancelada' ? 'error' : 'warning'}>
+        {session.status === 'activa' ? 'Publicada' : session.status === 'cancelada' ? 'Cancelada' : 'Oculta'}
+      </Badge>
+      <div className="ml-auto h-1.5 w-16 overflow-hidden rounded-full bg-surface-sunken">
+        <div className="h-full rounded-full bg-primary-400" style={{ width: `${fullness}%` }} />
+      </div>
     </div>
   );
 }
