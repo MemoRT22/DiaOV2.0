@@ -1,0 +1,1 @@
+GRANT EXECUTE ON FUNCTION active_edition_id() TO service_role;
