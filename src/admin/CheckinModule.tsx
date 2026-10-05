@@ -13,6 +13,7 @@ import {
   type CheckinSession,
   type ActivityCredentialDisplay,
 } from '../lib/checkin';
+// regenerateActivityCredential returns a partial result; we re-fetch full display after it.
 import { friendlyError } from '../lib/errors';
 import { hasRole, useAuth } from '../lib/auth';
 import { useLoad } from '../lib/useLoad';
@@ -79,7 +80,8 @@ export default function CheckinModule() {
     setBusy(true);
     setStatus(null);
     try {
-      const display = await regenerateActivityCredential(selected.activity_id, reason);
+      await regenerateActivityCredential(selected.activity_id, reason);
+      const display = await fetchActivityCredentialDisplay(selected.activity_id);
       setCred(display);
       const url = await QRCode.toDataURL(display.qr_token, { width: 400, margin: 1 });
       setQrUrl(url);

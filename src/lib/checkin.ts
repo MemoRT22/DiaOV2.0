@@ -49,8 +49,14 @@ export type ActivityCredentialDisplay = {
 export const fetchActivityCredentialDisplay = (activityId: string) =>
   rpc<ActivityCredentialDisplay>('activity_credential_display', { p_activity: activityId });
 
+export type RegenerateResult = {
+  activity_id: string;
+  qr_token: string;
+  manual_code: string;
+};
+
 export const regenerateActivityCredential = (activityId: string, reason: string) =>
-  rpc<ActivityCredentialDisplay>('regenerate_activity_credential', { p_activity: activityId, p_reason: reason });
+  rpc<RegenerateResult>('regenerate_activity_credential', { p_activity: activityId, p_reason: reason });
 
 export const resolveSessionToActivity = (sessionId: string) =>
   rpc<string>('session_to_activity', { p_session: sessionId });
