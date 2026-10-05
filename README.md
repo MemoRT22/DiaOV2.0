@@ -20,6 +20,38 @@ Staff y Coordinación registran a quien llega el mismo día (`create_participant
 
 `my_progress()` puede leerse antes de aceptar el aviso de privacidad, a propósito, para mostrar la bienvenida. **Toda operación privada futura** (reservaciones, cambios de ruta, check-in) debe empezar con `require_participant(true)`, que exige el aviso aceptado.
 
+## Bootstrap operacional
+
+### Edición activa
+
+La migración `20261005003000_bootstrap_edition_and_coordinator` crea la edición "Día OV 2026" (`code = 'DIAOV2026'`) en modo `preparacion`, siembra las 6 categorías de sorteo (Baja, Media, Mayor en real y demo) y deja los rangos vacíos para que Coordinación los configure desde la interfaz.
+
+### Primer Coordinador
+
+No existe ningún usuario de Auth ni personal administrativo al inicio. El primer Coordinador se crea con este procedimiento de una sola vez:
+
+1. En Supabase Dashboard → Authentication → Users → Add user. Crear un usuario con correo y contraseña elegidos (las credenciales nunca se guardan en el repositorio).
+2. Copiar el UUID del usuario creado.
+3. En Supabase Dashboard → SQL Editor, ejecutar:
+
+   ```sql
+   SELECT bootstrap_first_coordinator('<uuid>', 'Nombre Completo');
+   ```
+
+4. A partir de ese momento, el panel de administración funciona. El resto del personal se crea desde la aplicación vía `staff-accounts`.
+
+La función `bootstrap_first_coordinator` no tiene permisos para ningún rol (`PUBLIC`, `anon`, `authenticated`): se ejecuta exclusivamente desde SQL Editor con privilegios administrativos. Cualquier segundo intento devuelve `ALREADY_BOOTSTRAPPED`.
+
+### Edge Functions
+
+- `student-access`: acceso del aspirante por correo + fecha de nacimiento. `verify_jwt = false` (valida identidad internamente).
+- `staff-accounts`: administración de personal. `verify_jwt = true` (requiere sesión de Coordinación).
+- `service_role` nunca llega al frontend.
+
+### Aviso de privacidad
+
+La edición tiene `privacy_notice_version = 'v1'` con contenido pendiente. Antes de activar `operacion_real`, el aviso definitivo es un requisito de preparación que se revisa aparte.
+
 ## Seguridad
 
 - Toda escritura pasa por funciones `SECURITY DEFINER` con `search_path` fijo, sin permiso para `anon`.
