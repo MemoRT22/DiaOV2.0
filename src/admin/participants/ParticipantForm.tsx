@@ -12,9 +12,10 @@ export type ParticipantValues = {
   phone: string;
   high_school: string;
   initial_career_id: string;
+  initial_career_id_2: string;
 };
 
-export const EMPTY_VALUES: ParticipantValues = { email: '', full_name: '', birth_date: '', phone: '', high_school: '', initial_career_id: '' };
+export const EMPTY_VALUES: ParticipantValues = { email: '', full_name: '', birth_date: '', phone: '', high_school: '', initial_career_id: '', initial_career_id_2: '' };
 
 type Props = {
   participantId?: string;
@@ -65,6 +66,9 @@ export default function ParticipantForm({ participantId, initial, careers, onClo
 
   const active = editing
     ? careers.filter((c) => c.is_active || c.id === initial.initial_career_id)
+    : careers.filter((c) => c.is_active && (isDemo || !c.is_demo));
+  const activeForSecond = editing
+    ? careers.filter((c) => c.is_active || c.id === initial.initial_career_id_2)
     : careers.filter((c) => c.is_active && (isDemo || !c.is_demo));
   const missingRequired =
     !editing && (['email', 'full_name', 'birth_date', 'phone', 'high_school', 'initial_career_id'] as const).some((k) => !values[k].trim());
@@ -126,6 +130,20 @@ export default function ParticipantForm({ participantId, initial, careers, onClo
             </option>
           ))}
         </SelectField>
+        <SelectField
+          label="Segunda carrera de interés (opcional)"
+          value={values.initial_career_id_2}
+          onChange={set('initial_career_id_2')}
+          disabled={!values.initial_career_id}
+          hint={values.initial_career_id ? '' : 'Primero elige la carrera principal'}
+        >
+          <option value="">{editing ? 'Sin segunda carrera' : 'Opcional…'}</option>
+          {activeForSecond.filter((c) => c.id !== values.initial_career_id).map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </SelectField>
         {!editing && (
           <div className="space-y-3 rounded-theme border border-line p-4">
             <label className="flex items-start gap-3 text-sm">
@@ -142,7 +160,7 @@ export default function ParticipantForm({ participantId, initial, careers, onClo
                   checked={isDemo}
                   onChange={(e) => {
                     setIsDemo(e.target.checked);
-                    setValues((v) => ({ ...v, initial_career_id: '' }));
+                    setValues((v) => ({ ...v, initial_career_id: '', initial_career_id_2: '' }));
                   }}
                 />
                 Es un registro de prueba

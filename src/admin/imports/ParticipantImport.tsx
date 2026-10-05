@@ -13,6 +13,7 @@ const COLUMNS: CsvColumn[] = [
   { key: 'phone', label: 'Teléfono', aliases: ['telefono', 'celular', 'telefono celular', 'whatsapp', 'numero de celular'] },
   { key: 'high_school', label: 'Preparatoria', aliases: ['escuela de procedencia', 'bachillerato', 'prepa', 'escuela'] },
   { key: 'career', label: 'Carrera de interés', aliases: ['carrera', 'carrera de interes', 'carrera inicial', 'codigo carrera', 'licenciatura'] },
+  { key: 'career_2', label: 'Segunda carrera de interés', aliases: ['carrera 2', 'segunda carrera', 'carrera de interes 2', 'segunda licenciatura', 'licenciatura 2'] },
   {
     key: 'consent',
     label: 'Aviso de privacidad',
@@ -23,10 +24,11 @@ const COLUMNS: CsvColumn[] = [
 ];
 
 const TEMPLATE =
-  'Marca temporal,Correo,Nombre completo,Fecha de nacimiento,Teléfono,Preparatoria,Carrera de interés,Aviso de privacidad\n' +
-  '04/10/2026 10:15:00,ana.lopez@ejemplo.com,Ana López Pérez,15/03/2008,9981234567,Colegio Ejemplo,Psicología,Sí\n';
+  'Marca temporal,Correo,Nombre completo,Fecha de nacimiento,Teléfono,Preparatoria,Carrera de interés,Segunda carrera de interés,Aviso de privacidad\n' +
+  '04/10/2026 10:15:00,ana.lopez@ejemplo.com,Ana López Pérez,15/03/2008,9981234567,Colegio Ejemplo,Psicología,Negocios,Sí\n';
 
 const careerMap = (options: ImportOptions) => (options.careerMap as Record<string, string> | undefined) ?? {};
+const careerMap2 = (options: ImportOptions) => (options.careerMap2 as Record<string, string> | undefined) ?? {};
 
 export default function ParticipantImport() {
   const { edition } = useTheme();
@@ -77,12 +79,13 @@ export default function ParticipantImport() {
           phone: r.phone ?? '',
           high_school: r.high_school ?? '',
           career: r.career ?? '',
+          career_2: r.career_2 ?? '',
           consent: toBool(r.consent ?? '') === true,
           submitted_at: r.submitted_at ? toIsoTimestamp(r.submitted_at) : '',
           extra: extras,
         })}
         preview={(rows, isDemo, options) =>
-          rpc<ImportResult>('preview_participant_import', { p_rows: rows, p_is_demo: isDemo, p_career_map: careerMap(options) })
+          rpc<ImportResult>('preview_participant_import', { p_rows: rows, p_is_demo: isDemo, p_career_map: careerMap(options), p_career_map_2: careerMap2(options) })
         }
         commit={(rows, fileName, isDemo, options) =>
           rpc<ImportResult>('commit_participant_import', {
@@ -90,11 +93,13 @@ export default function ParticipantImport() {
             p_file_name: fileName,
             p_is_demo: isDemo,
             p_career_map: careerMap(options),
+            p_career_map_2: careerMap2(options),
           })
         }
         reviewPanel={(ctx) => <CareerMappingPanel {...ctx} />}
         commitBlockedReason={(result) => {
-          const pending = (result.unmatched_careers ?? []).filter((u) => !u.target).length;
+          const pending = (result.unmatched_careers ?? []).filter((u) => !u.target).length
+            + (result.unmatched_careers_2 ?? []).filter((u) => !u.target).length;
           return pending ? `Relaciona ${pending === 1 ? 'la carrera no reconocida' : `las ${pending} carreras no reconocidas`} antes de cargar el padrón.` : null;
         }}
         confirmLabel="Cargar padrón"

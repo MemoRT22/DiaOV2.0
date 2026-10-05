@@ -12,6 +12,14 @@ import AccessStatus, { type AccessState } from './AccessStatus';
 import ParticipantForm from './ParticipantForm';
 import { EmailHistory, FormsExtra, type EmailHistoryEntry, type FormsExtraEntry } from './ParticipantExtraSections';
 
+type InitialInterest = {
+  preference: number;
+  career_id: string;
+  career_name: string;
+  career_code: string;
+  career_raw: string | null;
+};
+
 type Detail = {
   id: string;
   full_name: string;
@@ -21,6 +29,7 @@ type Detail = {
   high_school: string | null;
   initial_career_id: string | null;
   initial_career_raw: string | null;
+  initial_interests?: InitialInterest[];
   origin: string;
   is_demo: boolean;
   forms_consent: boolean | null;
@@ -65,14 +74,20 @@ export default function ParticipantDetail() {
   const raw = p.initial_career_raw?.trim() ?? '';
   const rawDiffers =
     !!raw && (!career || (fold(raw) !== fold(career.name) && raw.toUpperCase() !== career.code.toUpperCase()));
+  const initialInterests = p.initial_interests ?? [];
+  const interest1 = initialInterests.find((i) => i.preference === 1);
+  const interest2 = initialInterests.find((i) => i.preference === 2);
   const rows: { key: string; label?: string; value: string | null }[] = [
     { key: 'email', value: p.email },
     { key: 'full_name', value: p.full_name },
     { key: 'birth_date', value: p.birth_date ? formatEventDate(p.birth_date) : null },
     { key: 'phone', value: p.phone },
     { key: 'high_school', value: p.high_school },
-    { key: 'initial_career_id', value: career?.name ?? null },
-    ...(rawDiffers ? [{ key: 'initial_career_raw', label: 'Carrera recibida en Forms', value: raw }] : []),
+    { key: 'initial_career_id', label: 'Carrera inicial 1 (prerregistro)', value: interest1?.career_name ?? career?.name ?? null },
+    ...(rawDiffers ? [{ key: 'initial_career_raw', label: 'Carrera 1 recibida en Forms', value: raw }] : []),
+    { key: 'initial_career_id_2', label: 'Carrera inicial 2 (prerregistro)', value: interest2?.career_name ?? null },
+    ...(interest2?.career_raw && interest2.career_raw.trim() && fold(interest2.career_raw.trim()) !== fold(interest2.career_name)
+      ? [{ key: 'initial_career_2_raw', label: 'Carrera 2 recibida en Forms', value: interest2.career_raw.trim() }] : []),
   ];
 
   return (
@@ -126,11 +141,13 @@ export default function ParticipantDetail() {
                   ? `${override.cleared ? 'Borrado' : 'Capturado o corregido'}${override.by ? ` por ${override.by}` : ''} · ${formatDateTime(override.at)}`
                   : key === 'email'
                     ? ''
-                    : key === 'initial_career_raw'
+                    : key === 'initial_career_raw' || key === 'initial_career_2_raw'
                       ? 'Texto original del archivo de Forms'
-                      : value
-                        ? 'Del registro original'
-                        : ''}
+                      : key === 'initial_career_id_2'
+                        ? 'Segunda carrera del prerregistro'
+                        : value
+                          ? 'Del registro original'
+                          : ''}
               </p>
             </div>
           );
@@ -173,6 +190,7 @@ export default function ParticipantDetail() {
             phone: p.phone ?? '',
             high_school: p.high_school ?? '',
             initial_career_id: p.initial_career_id ?? '',
+            initial_career_id_2: interest2?.career_id ?? '',
           }}
           onClose={() => setEditing(false)}
           onSaved={() => {

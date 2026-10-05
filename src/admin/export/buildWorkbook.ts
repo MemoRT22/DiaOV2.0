@@ -9,6 +9,11 @@ export type ExportRow = {
   initial_career: string | null;
   initial_division: string | null;
   initial_career_received: string | null;
+  initial_career_1: string | null;
+  initial_career_1_code: string | null;
+  initial_career_2: string | null;
+  initial_career_2_code: string | null;
+  initial_career_2_received: string | null;
   origin: string;
   is_demo: boolean;
   forms_consent: boolean | null;
@@ -69,10 +74,13 @@ export async function buildWorkbook(payload: ExportPayload, reason: string, incl
     { header: 'Teléfono', key: 'phone', width: 16, style: { numFmt: '@' } },
     { header: 'Fecha de nacimiento', key: 'birth_date', width: 18, style: { numFmt: date } },
     { header: 'Preparatoria', key: 'high_school', width: 28 },
-    { header: 'Carrera de interés inicial', key: 'initial_career', width: 30 },
-    { header: 'Código de carrera inicial', key: 'initial_career_code', width: 14 },
-    { header: 'División de carrera inicial', key: 'initial_division', width: 24 },
-    { header: 'Carrera recibida en Forms (texto original)', key: 'initial_career_received', width: 30 },
+    { header: 'Carrera inicial 1', key: 'initial_career_1', width: 30 },
+    { header: 'Código carrera inicial 1', key: 'initial_career_1_code', width: 14 },
+    { header: 'Carrera inicial 1 (texto de Forms)', key: 'initial_career_received', width: 30 },
+    { header: 'Carrera inicial 2', key: 'initial_career_2', width: 30 },
+    { header: 'Código carrera inicial 2', key: 'initial_career_2_code', width: 14 },
+    { header: 'Carrera inicial 2 (texto de Forms)', key: 'initial_career_2_received', width: 30 },
+    { header: 'División de carrera inicial 1', key: 'initial_division', width: 24 },
     { header: 'Interés 1 después del evento', key: 'interest_1', width: 28 },
     { header: 'Interés 2 después del evento', key: 'interest_2', width: 28 },
     { header: 'Interés 3 después del evento', key: 'interest_3', width: 28 },
@@ -96,6 +104,11 @@ export async function buildWorkbook(payload: ExportPayload, reason: string, incl
       ...Object.fromEntries(extras.map((c, i) => [`forms_extra_${i}`, formsExtra?.[c.key] ?? ''])),
       previous_emails: r.previous_emails ?? '',
       initial_career_received: r.initial_career_received ?? '',
+      initial_career_1: r.initial_career_1 ?? r.initial_career ?? '',
+      initial_career_1_code: r.initial_career_1_code ?? r.initial_career_code ?? '',
+      initial_career_2: r.initial_career_2 ?? '',
+      initial_career_2_code: r.initial_career_2_code ?? '',
+      initial_career_2_received: r.initial_career_2_received ?? '',
       phone: r.phone ?? '',
       birth_date: birthDate(r.birth_date),
       origin: ORIGIN[r.origin] ?? r.origin,

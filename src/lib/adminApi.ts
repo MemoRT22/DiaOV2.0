@@ -34,6 +34,8 @@ export const FIELD_LABELS: Record<string, string> = {
   phone: 'Teléfono',
   high_school: 'Preparatoria',
   initial_career_id: 'Carrera de interés inicial',
+  initial_career_id_2: 'Segunda carrera de interés',
+  initial_career_raw: 'Carrera recibida en Forms',
   forms_extra: 'Información adicional de Forms',
 };
 

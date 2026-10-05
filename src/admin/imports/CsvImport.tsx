@@ -20,7 +20,12 @@ export type ImportRowResult = {
   alert?: string | null;
 };
 export type UnmatchedCareer = { key: string; value: string; count: number; target: string | null };
-export type ImportResult = { counts: Record<string, number>; rows: ImportRowResult[]; unmatched_careers?: UnmatchedCareer[] };
+export type ImportResult = {
+  counts: Record<string, number>;
+  rows: ImportRowResult[];
+  unmatched_careers?: UnmatchedCareer[];
+  unmatched_careers_2?: UnmatchedCareer[];
+};
 export type ImportOptions = Record<string, unknown>;
 export type ReviewPanelContext = {
   result: ImportResult;

@@ -29,6 +29,7 @@ export interface RecommendedActivity {
 
 export interface RecommendationsResult {
   recommendations: RecommendedActivity[];
+  interest_career_ids: string[];
   attended_activity_ids: string[];
 }
 
