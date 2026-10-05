@@ -5,7 +5,7 @@ import { Link } from 'react-router-dom';
 import { ProgressRing, ThemedTitle } from '../components/themed';
 import { buttonClasses, LoadError, PageSkeleton } from '../components/ui';
 import { useAuth } from '../lib/auth';
-import { fetchDivisions, fetchMyInterests, fetchProgress } from '../lib/catalog';
+import { fetchDivisions, fetchProgress } from '../lib/catalog';
 import { fetchMyRaffleStatus } from '../lib/raffleApi';
 import { useLoad } from '../lib/useLoad';
 import ScanButton from './ScanButton';
@@ -17,7 +17,7 @@ export default function Passport() {
   const { theme, term, text, rankName } = useTheme();
   const { profile } = useAuth();
   const { data, error, loading, reload } = useLoad(
-    () => Promise.all([fetchProgress(), fetchDivisions(), fetchMyInterests(), fetchMyRaffleStatus().catch(() => null)]),
+    () => Promise.all([fetchProgress(), fetchDivisions(), fetchMyRaffleStatus().catch(() => null)]),
     [],
   );
   const [dismissed, setDismissed] = useState(() => sessionStorage.getItem(DISMISS_KEY) === '1');
@@ -25,12 +25,14 @@ export default function Passport() {
   if (loading && !data) return <PageSkeleton />;
   if (error || !data) return <LoadError error={error} onRetry={reload} />;
 
-  const [progress, divisions, interests, raffle] = data;
+  const [progress, divisions, raffle] = data;
   const visited = new Set(progress.division_ids);
   const rank = theme.ranks[progress.level - 1];
-  const showPrompt = progress.interests_prompt && progress.interests_open && interests.length === 0 && !dismissed;
-  const finished = progress.level === 5 || interests.length > 0;
-  const showInterestsLink = progress.interests_prompt && progress.interests_open;
+  const interestsDone = progress.post_event_interests_completed;
+  const showPrompt =
+    progress.post_event_interests_prompt && progress.post_event_interests_open && !interestsDone && !dismissed;
+  const finished = progress.level === 5 || interestsDone;
+  const showInterestsLink = progress.post_event_interests_prompt && progress.post_event_interests_open;
 
   const remainingStamps = progress.next ? Math.max(progress.next.required_attendances - progress.stamps, 0) : 0;
   const remainingDivisions = progress.next ? Math.max(progress.next.required_divisions - visited.size, 0) : 0;
@@ -142,17 +144,16 @@ export default function Passport() {
             <X className="h-4 w-4" />
           </button>
           <Compass className="h-6 w-6 text-primary-400" aria-hidden />
-          <h2 className="mt-2 pr-6 text-lg font-extrabold">¿Qué carreras te llaman la atención?</h2>
-          <p className="mt-1 text-sm text-ink-muted">
-            Selecciona hasta tres carreras y te mostraremos talleres relacionados durante el Día OV.
-          </p>
+          <p className="mt-2 pr-6 text-xs font-semibold uppercase tracking-wide text-ink-muted">Después de vivir el Día OV…</p>
+          <h2 className="text-lg font-extrabold">{text('interestsPromptTitle')}</h2>
+          <p className="mt-1 text-sm text-ink-muted">{text('interestsPromptBody')}</p>
           <Link to="/destinos" className={buttonClasses('primary', 'mt-4')}>
             Elegir carreras
           </Link>
         </section>
       )}
 
-      {progress.interests_prompt && !showPrompt && interests.length > 0 && progress.attended_workshops < 4 && (
+      {progress.post_event_interests_prompt && !showPrompt && interestsDone && progress.attended_workshops < 4 && (
         <section className="card animate-fade-up p-4">
           <div className="flex items-center gap-2">
             <Target className="h-5 w-5 text-secondary-300" aria-hidden />
@@ -234,7 +235,7 @@ export default function Passport() {
           {showInterestsLink && (
             <Link to="/destinos" className={buttonClasses('secondary', 'mt-4')}>
               <Compass className="mr-1.5 h-4 w-4" />
-              Revisar mis carreras de interés
+              Revisar mis intereses
             </Link>
           )}
         </section>

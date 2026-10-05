@@ -1,7 +1,7 @@
 import { ArrowDown, ArrowUp, Check, Search, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Alert, Button, LoadError, PageSkeleton } from '../components/ui';
-import { fetchCareers, fetchDivisions, fetchMyInterests, fetchProgress } from '../lib/catalog';
+import { fetchCareers, fetchDivisions, fetchPostEventInterests } from '../lib/catalog';
 import { friendlyError } from '../lib/errors';
 import { supabase } from '../lib/supabase';
 import { useLoad } from '../lib/useLoad';
@@ -18,7 +18,7 @@ const normalize = (s: string) =>
 export default function Interests() {
   const { theme, text } = useTheme();
   const { data, error, loading, reload } = useLoad(
-    () => Promise.all([fetchCareers(), fetchDivisions(), fetchMyInterests(), fetchProgress()]),
+    () => Promise.all([fetchCareers(), fetchDivisions(), fetchPostEventInterests()]),
     [],
   );
   const [selected, setSelected] = useState<string[]>([]);
@@ -29,12 +29,12 @@ export default function Interests() {
 
   useEffect(() => {
     if (data) {
-      setSelected(data[2]);
-      setSaved(data[2]);
+      setSelected(data[2].career_ids);
+      setSaved(data[2].career_ids);
     }
   }, [data]);
 
-  const [careers, divisions, , progress] = data ?? [[], [], [], null] as const;
+  const [careers, divisions, interests] = data ?? [[], [], null] as const;
   const careerById = useMemo(() => new Map(careers.map((c) => [c.id, c])), [careers]);
   const groups = useMemo(() => {
     const q = normalize(query.trim());
@@ -47,9 +47,12 @@ export default function Interests() {
   }, [careers, divisions, query]);
 
   if (loading && !data) return <PageSkeleton />;
-  if (error || !data || !progress) return <LoadError error={error} onRetry={reload} />;
+  if (error || !data || !interests) return <LoadError error={error} onRetry={reload} />;
 
-  const closed = !progress.interests_open;
+  // Only editable while the question is enabled and its window is open; a closed window is read-only.
+  const closed = !interests.post_event_interests_open;
+  const notYet = !interests.post_event_interests_prompt && !interests.post_event_interests_completed;
+  const editable = interests.post_event_interests_can_edit;
   const dirty = selected.join() !== saved.join();
 
   const toggle = (id: string) => {
@@ -86,24 +89,29 @@ export default function Interests() {
   return (
     <div className="space-y-5">
       <header className="animate-fade-up">
-        <h1 className="text-2xl font-extrabold">¿Qué carreras te llaman la atención?</h1>
-        <p className="mt-1 text-sm text-ink-muted">
-          Selecciona hasta tres carreras y te mostraremos talleres relacionados durante el Día OV.
-        </p>
+        <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Después de vivir el Día OV…</p>
+        <h1 className="text-2xl font-extrabold">{text('interestsTitle')}</h1>
+        <p className="mt-1 text-sm text-ink-muted">{text('interestsBody')}</p>
       </header>
 
+      {notYet && (
+        <Alert tone="info">Esta pregunta se habilita después de participar en el evento. Aún no necesitas responderla.</Alert>
+      )}
       {closed && <Alert tone="warning">{text('interestsClosed')}</Alert>}
 
-      <section className="card p-4" aria-label="Carreras que me llaman la atención">
+      {!notYet && (
+      <section className="card p-4" aria-label="Carreras que más me interesaron">
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-sm font-semibold">Carreras que me llaman la atención</h2>
-          <span className="text-xs text-ink-muted">
-            {selected.length} de {MAX}
+          <h2 className="text-sm font-semibold">Mis carreras de interés</h2>
+          <span className="text-xs text-ink-muted" aria-live="polite">
+            {selected.length} de {MAX} seleccionadas
           </span>
         </div>
         {selected.length === 0 ? (
           <p className="py-2 text-sm text-ink-muted">
-            Toca una carrera de la lista para agregarla. Selecciona hasta {MAX} y te recomendaremos talleres relacionados.
+            {editable
+              ? `Toca una carrera de la lista para agregarla. Puedes elegir hasta ${MAX} y ordenarlas por preferencia.`
+              : 'No registraste carreras.'}
           </p>
         ) : (
           <ol className="space-y-2">
@@ -118,7 +126,7 @@ export default function Interests() {
                 <span className="min-w-0 flex-1 text-sm font-semibold">
                   {careerById.get(id)?.name ?? 'Carrera no disponible'}
                 </span>
-                {!closed && (
+                {editable && (
                   <div className="flex shrink-0 items-center">
                     <button
                       onClick={() => move(idx, -1)}
@@ -154,14 +162,15 @@ export default function Interests() {
             {status.msg}
           </Alert>
         )}
-        {!closed && (
+        {editable && (
           <Button className="mt-4 w-full" onClick={onSave} loading={saving} disabled={!dirty}>
-            {dirty ? 'Guardar selección' : 'Selección guardada'}
+            Guardar mis intereses
           </Button>
         )}
       </section>
+      )}
 
-      {!closed && (
+      {editable && (
         <>
           <label className="relative block">
             <span className="sr-only">Buscar carrera</span>

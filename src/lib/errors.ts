@@ -21,6 +21,7 @@ const MESSAGES: Record<string, string> = {
   DEMO_DATA_REMAINS: 'Aún hay datos de prueba. Retíralos antes de activar la operación real.',
   NO_PUBLISHED_THEME: 'Publica una temática antes de activar la operación real.',
   INTERESTS_CLOSED: 'La selección de carreras ya cerró.',
+  INTERESTS_NOT_AVAILABLE: 'Esta pregunta se habilita después de participar en el evento.',
   TOO_MANY_INTERESTS: 'Puedes elegir máximo tres carreras.',
   DUPLICATE_INTEREST: 'No repitas carreras.',
   INVALID_CAREER: 'Alguna carrera ya no está disponible.',

@@ -36,8 +36,21 @@ export type Progress = {
   division_ids: string[];
   next: { level: number; required_attendances: number; required_divisions: number } | null;
   consent_accepted: boolean;
-  interests_prompt: boolean;
-  interests_open: boolean;
+  /** Post-event interests ("¿qué carreras te interesaron más?"), independent from the initial interests. */
+  post_event_interests_prompt: boolean;
+  post_event_interests_open: boolean;
+  post_event_interests_completed: boolean;
+};
+
+export type PostEventInterests = {
+  post_event_interests_prompt: boolean;
+  post_event_interests_open: boolean;
+  post_event_interests_completed: boolean;
+  post_event_interests_can_edit: boolean;
+  max_interests: number;
+  /** Selected career ids ordered by preference (1st, 2nd, 3rd). */
+  career_ids: string[];
+  items: { career_id: string; preference: number }[];
 };
 
 export async function fetchDivisions(): Promise<Division[]> {
@@ -74,10 +87,11 @@ export async function fetchProgress(): Promise<Progress> {
   return data as Progress;
 }
 
-export async function fetchMyInterests(): Promise<string[]> {
-  const { data, error } = await supabase.from('post_event_interests').select('preference, career_id').order('preference');
+export async function fetchPostEventInterests(): Promise<PostEventInterests> {
+  const { data, error } = await supabase.rpc('my_post_event_interests');
   if (error) throw error;
-  return (data ?? []).map((r) => r.career_id as string);
+  if (!data || !Array.isArray(data.career_ids)) throw new Error('INVALID_INTERESTS');
+  return data as PostEventInterests;
 }
 
 const TZ = 'America/Cancun';
