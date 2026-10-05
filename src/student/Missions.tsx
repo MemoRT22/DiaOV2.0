@@ -43,7 +43,7 @@ export default function Missions() {
 
   const divisionById = new Map(divisions.data.map((d) => [d.id, d]));
   const visible = filter ? workshops.filter((w) => w[0].division_id === filter) : workshops;
-  const active = board.reservations.filter((r) => r.status === 'vigente').length;
+  const active = board.active_reservation_count;
 
   const recommendations = recs.data?.recommendations ?? [];
   const recommendedIds = new Set(recommendations.map((r) => r.activity_id));

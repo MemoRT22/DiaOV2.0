@@ -233,7 +233,7 @@ BEGIN
   ('sorteo: sin conteos de Coordinación', 'R', $q$select session_reservation_counts()$q$, 'ERR:NOT_AUTHORIZED'),
   ('aislamiento: aspirante no actualiza reservaciones', 'A', $q$update reservations set status = 'vigente' where participant_id = {PA}$q$, 'ERR:permission denied'),
   ('sellos: configurables por sesión', 'A', $q$select (x->>'credits')::int = 2 from jsonb_array_elements(my_reservation_board()->'sessions') x where x->>'id' = {S7}::text$q$, 'TRUE'),
-  ('invariante: ninguna sesión supera su cupo', 'P', $q$select bool_and(n <= capacity) from (select x.capacity, count(r.id) n from activity_sessions x left join reservations r on r.session_id = x.id and r.status = 'vigente' group by x.id, x.capacity) q$q$, 'TRUE'),
+  ('invariante: ninguna sesión supera su cupo', 'P', $q$select bool_and(n <= capacity) from (select x.capacity, count(r.id) n from activity_sessions x left join reservations r on r.session_id = x.id and r.status in ('vigente', 'expirada') group by x.id, x.capacity) q$q$, 'TRUE'),
   ('invariante: una vigente por participante y taller', 'P', $q$select not exists (select 1 from reservations where status = 'vigente' group by participant_id, activity_id having count(*) > 1)$q$, 'TRUE');
 
   FOR st IN SELECT * FROM rt_steps ORDER BY seq LOOP

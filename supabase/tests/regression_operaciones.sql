@@ -95,7 +95,9 @@ BEGIN
   ('metric: reservados = 2', 'C', 'select (s->>''reserved'')::int = 2 from jsonb_array_elements(event_operations_overview()->''sessions'') s where s->>''location'' = ''Salon RO''', 'TRUE'),
   ('metric: disponibles = 8', 'C', 'select (s->>''remaining'')::int = 8 from jsonb_array_elements(event_operations_overview()->''sessions'') s where s->>''location'' = ''Salon RO''', 'TRUE'),
   ('metric: asistencias = 1', 'C', 'select (s->>''attended'')::int = 1 from jsonb_array_elements(event_operations_overview()->''sessions'') s where s->>''location'' = ''Salon RO''', 'TRUE'),
-  ('metric: participantes con reservacion >= 2', 'C', 'select (event_operations_overview()->''summary''->>''participants_with_reservations'')::int >= 2', 'TRUE'),
+  -- 8C: summary cuenta compromisos activos. Ana ya asistio (no cuenta); Beto sigue comprometido.
+  ('metric: participantes con compromiso activo >= 1', 'C', 'select (event_operations_overview()->''summary''->>''participants_with_reservations'')::int >= 1', 'TRUE'),
+  ('metric: reservaciones activas >= 1', 'C', 'select (event_operations_overview()->''summary''->>''active_reservations'')::int >= 1', 'TRUE'),
   ('metric: participantes con asistencia >= 1', 'C', 'select (event_operations_overview()->''summary''->>''unique_attended_participants'')::int >= 1', 'TRUE'),
   -- ===== 3. ESTADOS TEMPORALES =====
   -- El RPC devuelve starts_at, ends_at y status. El frontend deriva el estado temporal.

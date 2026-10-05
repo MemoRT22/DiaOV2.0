@@ -45,6 +45,7 @@ export type Board = {
   max_reservations: number;
   active_reservation_count: number;
   travel_buffer_minutes: number;
+  checkin_close_after_minutes: number;
   sessions: BoardSession[];
   reservations: MyReservation[];
 };
@@ -103,8 +104,21 @@ export function isFewPlaces(s: Pick<BoardSession, 'remaining' | 'capacity'>) {
   return s.remaining > 0 && s.remaining <= Math.max(3, Math.ceil(s.capacity * FEW_PLACES_RATIO));
 }
 
+/**
+ * Commitment: counts toward the personal limit (`active_reservation_count`) and toward schedule conflicts.
+ * A session in progress is still a commitment even though it can no longer be modified.
+ */
 export function isActiveReservation(r: MyReservation): boolean {
-  return r.status === 'vigente' && r.derived_status === 'active';
+  return r.status === 'vigente' && (r.derived_status === 'active' || r.derived_status === 'in_progress');
+}
+
+/**
+ * The reservation still "owns" its workshop: SAME_WORKSHOP applies until the check-in window closes.
+ * After `ends_at` it no longer counts toward the limit, but it may still produce a valid attendance
+ * (derived_status `ended`), so another session of the same workshop cannot be reserved yet.
+ */
+export function holdsWorkshop(r: MyReservation): boolean {
+  return isActiveReservation(r) || (r.status === 'vigente' && r.derived_status === 'ended');
 }
 
 /**
@@ -119,10 +133,8 @@ export function sessionState(board: Board, s: BoardSession, replacing?: MyReserv
   if (board.window === 'not_open') return 'not_open';
   if (board.window === 'closed') return 'closed';
   if (s.remaining <= 0) return 'full';
-  const active = board.reservations.filter(
-    (r) => isActiveReservation(r) && r.id !== replacing?.id,
-  );
-  if (active.some((r) => r.activity_id === s.activity_id)) return 'same_workshop';
+  const holding = board.reservations.filter((r) => holdsWorkshop(r) && r.id !== replacing?.id);
+  if (holding.some((r) => r.activity_id === s.activity_id)) return 'same_workshop';
   if (s.conflicts_with.some((id) => id !== replacing?.id)) return 'conflict';
   const activeCount = replacing
     ? board.active_reservation_count - (isActiveReservation(replacing) ? 1 : 0)
@@ -133,6 +145,7 @@ export function sessionState(board: Board, s: BoardSession, replacing?: MyReserv
 
 export const isSelectable = (state: SessionState) => state === 'available' || state === 'few';
 
+/** Modifiable is narrower than committed: a session in progress still commits the student but cannot change. */
 export function canModify(board: Board, s: BoardSession, r: MyReservation) {
   const editable = r.status === 'vigente' && !s.started && r.derived_status === 'active';
   return { cancel: editable, change: editable && board.window === 'open' };

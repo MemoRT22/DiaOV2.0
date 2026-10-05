@@ -14,7 +14,7 @@ const DERIVED_BADGE: Record<string, { label: string; tone: 'info' | 'success' | 
   active: { label: 'Reservada', tone: 'info' },
   in_progress: { label: 'En curso', tone: 'info' },
   completed: { label: 'Completada', tone: 'success' },
-  ended: { label: 'Horario finalizado', tone: 'neutral' },
+  ended: { label: 'Registra tu asistencia', tone: 'warning' },
   expired: { label: 'Horario finalizado', tone: 'neutral' },
   cancelled: { label: 'Sesión cancelada', tone: 'error' },
 };
@@ -70,7 +70,8 @@ export default function MyRoute() {
             const badge = DERIVED_BADGE[ds] || { label: r.status, tone: 'neutral' as const };
             const isCancelled = ds === 'cancelled';
             const isCompleted = ds === 'completed';
-            const isEnded = ds === 'ended' || ds === 'expired';
+            const isCheckinOpen = ds === 'ended';
+            const isEnded = ds === 'expired';
             const allowed = canModify(board, s, r);
             return (
               <li key={r.id} className="animate-fade-up relative" style={{ animationDelay: `${Math.min(i, 8) * 50}ms` }}>
@@ -109,6 +110,11 @@ export default function MyRoute() {
                     {isCancelled && (
                       <p className="mt-2 text-sm text-ink-muted">
                         Coordinación canceló este horario. Tu lugar ya no cuenta en tu ruta; elige otra sesión.
+                      </p>
+                    )}
+                    {isCheckinOpen && (
+                      <p className="mt-2 text-sm text-ink-muted">
+                        El horario terminó. Aún puedes registrar tu asistencia con el QR del taller; mientras tanto no puedes reservar otro horario de este taller.
                       </p>
                     )}
                     {isEnded && (
