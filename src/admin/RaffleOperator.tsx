@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Check, X } from 'lucide-react';
 import { Alert, Button, LoadError, Spinner } from '../components/ui';
 import { friendlyError } from '../lib/errors';
-import { confirmWinner, drawWinner, fetchOperatorView, fetchPrizes, markNoShow, type DrawResult, type RaffleCategory, type RafflePrize } from '../lib/raffleApi';
+import { confirmWinner, drawWinner, fetchOperatorView, fetchPendingSelection, fetchPrizes, markNoShow, type DrawResult, type RaffleCategory, type RafflePrize } from '../lib/raffleApi';
 import { useLoad } from '../lib/useLoad';
 
 type Phase = 'idle' | 'spinning' | 'result' | 'confirmed';
@@ -27,6 +27,31 @@ export default function RaffleOperator() {
     setPrizesLoading(true); setSelectedPrize(null); setPhase('idle'); setDrawResult(null);
     fetchPrizes(selectedCat).then(setPrizes).catch((e) => setActionError(friendlyError(e))).finally(() => setPrizesLoading(false));
   }, [selectedCat]);
+
+  const handleSelectPrize = useCallback(async (prize: RafflePrize) => {
+    setSelectedPrize(prize);
+    setPhase('idle');
+    setDrawResult(null);
+    setActionError('');
+    try {
+      const pending = await fetchPendingSelection(prize.id);
+      if (pending.winner_id) {
+        setDrawResult({
+          winner_id: pending.winner_id,
+          participant_id: '',
+          display_name: pending.display_name ?? 'Participante',
+          prize_id: prize.id,
+          prize_name: pending.prize_name ?? prize.name,
+          category_id: '',
+          category_name: pending.category_name ?? '',
+          status: 'seleccionado',
+          pool_size: 0,
+          idempotent: false,
+        });
+        setPhase('result');
+      }
+    } catch { /* premio sin seleccion pendente */ }
+  }, []);
 
   const handleDraw = useCallback(async () => {
     if (!selectedPrize) return;
@@ -84,7 +109,7 @@ export default function RaffleOperator() {
           <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-muted">Premios de {categories.find((c) => c.id === selectedCat)?.name ?? ''}</h2>
           <div className="grid gap-3 sm:grid-cols-2">
             {prizes.map((p) => (
-              <button key={p.id} onClick={() => { setSelectedPrize(p); setPhase('idle'); setDrawResult(null); }} disabled={p.available <= 0 || !p.is_active}
+              <button key={p.id} onClick={() => handleSelectPrize(p)} disabled={p.available <= 0 || !p.is_active}
                 className={`card p-4 text-left transition-all disabled:opacity-50 ${selectedPrize?.id === p.id ? 'border-primary-500 ring-2 ring-primary-500/30' : 'hover:border-secondary-400'}`}>
                 <p className="font-semibold">{p.name}</p>
                 <p className="text-sm text-ink-muted">{p.available} de {p.quantity} disponibles</p>
