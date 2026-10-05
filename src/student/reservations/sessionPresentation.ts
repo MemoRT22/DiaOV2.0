@@ -14,4 +14,5 @@ export const STATE_LABELS: Record<SessionState, { label: string; tone: Tone }> =
   reserved: { label: 'Reservada', tone: 'info' },
   not_open: { label: 'Aún no abre', tone: 'neutral' },
   closed: { label: 'Reservas cerradas', tone: 'neutral' },
+  already_attended: { label: 'Ya completada', tone: 'success' },
 };

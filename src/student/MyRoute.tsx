@@ -1,4 +1,4 @@
-import { CalendarPlus, Clock, MapPin } from 'lucide-react';
+import { CalendarPlus, Clock, MapPin, Award } from 'lucide-react';
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Badge, buttonClasses, LoadError, PageSkeleton } from '../components/ui';
@@ -9,6 +9,15 @@ import { useReservationBoard } from '../lib/useReservationBoard';
 import { useTheme } from '../theme/ThemeProvider';
 import ConfirmSheet, { type ConfirmRequest } from './reservations/ConfirmSheet';
 import WindowNotice from './reservations/WindowNotice';
+
+const DERIVED_BADGE: Record<string, { label: string; tone: 'info' | 'success' | 'neutral' | 'error' | 'warning' }> = {
+  active: { label: 'Reservada', tone: 'info' },
+  in_progress: { label: 'En curso', tone: 'info' },
+  completed: { label: 'Completada', tone: 'success' },
+  ended: { label: 'Horario finalizado', tone: 'neutral' },
+  expired: { label: 'Horario finalizado', tone: 'neutral' },
+  cancelled: { label: 'Sesión cancelada', tone: 'error' },
+};
 
 export default function MyRoute() {
   const { theme, edition, term } = useTheme();
@@ -24,20 +33,20 @@ export default function MyRoute() {
   const divisionById = new Map(divisions.data.map((d) => [d.id, d]));
   const sessionById = new Map(board.sessions.map((s) => [s.id, s]));
   const items = board.reservations
-    .filter((r) => r.status === 'vigente' || !r.resolved)
+    .filter((r) => r.status === 'vigente' || r.status === 'expirada' || !r.resolved)
     .flatMap((r) => {
       const s = sessionById.get(r.session_id);
       return s ? [{ r, s }] : [];
     })
     .sort((a, b) => a.s.starts_at.localeCompare(b.s.starts_at));
-  const activeCount = board.reservations.filter((r) => r.status === 'vigente').length;
+  const activeCount = board.active_reservation_count;
 
   return (
     <div className="space-y-5">
       <header className="animate-fade-up">
         <h1 className="text-2xl font-extrabold">{term('route')}</h1>
         <p className="mt-1 text-sm text-ink-muted">
-          {activeCount} de {board.max_reservations} talleres · {board.travel_buffer_minutes} min para trasladarte entre sesiones
+          {activeCount} de {board.max_reservations} talleres activos · {board.travel_buffer_minutes} min para trasladarte entre sesiones
         </p>
       </header>
 
@@ -57,16 +66,20 @@ export default function MyRoute() {
           {items.map(({ r, s }, i) => {
             const division = divisionById.get(s.division_id);
             const color = (division && theme.divisions[division.code]?.color) || theme.colors.secondary;
-            const cancelled = r.status === 'cancelada_sesion';
+            const ds = r.derived_status || r.status;
+            const badge = DERIVED_BADGE[ds] || { label: r.status, tone: 'neutral' as const };
+            const isCancelled = ds === 'cancelled';
+            const isCompleted = ds === 'completed';
+            const isEnded = ds === 'ended' || ds === 'expired';
             const allowed = canModify(board, s, r);
             return (
               <li key={r.id} className="animate-fade-up relative" style={{ animationDelay: `${Math.min(i, 8) * 50}ms` }}>
                 <span
                   className="absolute -left-[27px] top-5 h-3 w-3 rounded-full ring-4 ring-surface-sunken"
-                  style={{ background: cancelled ? 'rgb(var(--c-error-500))' : color }}
+                  style={{ background: isCancelled ? 'rgb(var(--c-error-500))' : isCompleted ? 'rgb(var(--c-success-500))' : color }}
                   aria-hidden
                 />
-                <div className={`card overflow-hidden ${cancelled ? 'border-error-500/50' : ''}`}>
+                <div className={`card overflow-hidden ${isCancelled ? 'border-error-500/50' : ''}`}>
                   <div className="h-1" style={{ background: color }} />
                   <div className="p-4">
                     <div className="flex items-start justify-between gap-3">
@@ -75,9 +88,9 @@ export default function MyRoute() {
                         {formatTime(s.starts_at)}
                         <span className="text-sm font-normal text-ink-muted">· {durationMinutes(s)} min</span>
                       </p>
-                      {cancelled ? <Badge tone="error">Sesión cancelada</Badge> : s.started ? <Badge tone="neutral">Ya inició</Badge> : <Badge tone="info">Reservada</Badge>}
+                      <Badge tone={badge.tone}>{badge.label}</Badge>
                     </div>
-                    <h2 className={`mt-1 text-base font-semibold ${cancelled ? 'text-ink-muted line-through' : ''}`}>{s.title}</h2>
+                    <h2 className={`mt-1 text-base font-semibold ${isCancelled ? 'text-ink-muted line-through' : ''}`}>{s.title}</h2>
                     <p className="mt-1 text-xs font-semibold uppercase tracking-wide" style={{ color }}>
                       {division?.name}
                     </p>
@@ -87,12 +100,23 @@ export default function MyRoute() {
                         {s.location}
                       </p>
                     )}
-                    {cancelled && (
+                    {isCompleted && r.credits_granted != null && (
+                      <p className="mt-2 inline-flex items-center gap-1 text-sm font-semibold" style={{ color: 'rgb(var(--c-success-600))' }}>
+                        <Award className="h-4 w-4" aria-hidden />
+                        {r.credits_granted} {r.credits_granted === 1 ? 'sello' : 'sellos'} obtenidos
+                      </p>
+                    )}
+                    {isCancelled && (
                       <p className="mt-2 text-sm text-ink-muted">
                         Coordinación canceló este horario. Tu lugar ya no cuenta en tu ruta; elige otra sesión.
                       </p>
                     )}
-                    {cancelled && board.window === 'open' && (
+                    {isEnded && (
+                      <p className="mt-2 text-sm text-ink-muted">
+                        El horario finalizó. Puedes reservar otra sesión de este taller si hay disponibles.
+                      </p>
+                    )}
+                    {(isCancelled || isEnded) && board.window === 'open' && (
                       <Link to="/misiones" className={buttonClasses('primary', 'mt-3 w-full')}>
                         Elegir otra sesión
                       </Link>

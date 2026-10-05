@@ -2,7 +2,8 @@ import { rpc } from './adminApi';
 import type { SessionStatus } from './catalog';
 
 export type ReservationWindow = 'not_open' | 'open' | 'closed';
-export type ReservationStatus = 'vigente' | 'cancelada_sesion';
+export type ReservationStatus = 'vigente' | 'cancelada_sesion' | 'expirada';
+export type DerivedStatus = 'active' | 'in_progress' | 'completed' | 'ended' | 'expired' | 'cancelled' | string;
 
 export type BoardSession = {
   id: string;
@@ -19,6 +20,7 @@ export type BoardSession = {
   reserved: number;
   remaining: number;
   started: boolean;
+  attended: boolean;
   my_reservation_id: string | null;
   conflicts_with: string[];
 };
@@ -31,6 +33,8 @@ export type MyReservation = {
   created_at: string;
   ended_at: string | null;
   resolved: boolean;
+  derived_status: DerivedStatus;
+  credits_granted: number | null;
 };
 
 export type Board = {
@@ -39,6 +43,7 @@ export type Board = {
   opens_at: string | null;
   closes_at: string | null;
   max_reservations: number;
+  active_reservation_count: number;
   travel_buffer_minutes: number;
   sessions: BoardSession[];
   reservations: MyReservation[];
@@ -89,12 +94,17 @@ export type SessionState =
   | 'conflict'
   | 'max'
   | 'few'
-  | 'available';
+  | 'available'
+  | 'already_attended';
 
 const FEW_PLACES_RATIO = 0.15;
 
 export function isFewPlaces(s: Pick<BoardSession, 'remaining' | 'capacity'>) {
   return s.remaining > 0 && s.remaining <= Math.max(3, Math.ceil(s.capacity * FEW_PLACES_RATIO));
+}
+
+export function isActiveReservation(r: MyReservation): boolean {
+  return r.status === 'vigente' && r.derived_status === 'active';
 }
 
 /**
@@ -103,22 +113,28 @@ export function isFewPlaces(s: Pick<BoardSession, 'remaining' | 'capacity'>) {
  */
 export function sessionState(board: Board, s: BoardSession, replacing?: MyReservation | null): SessionState {
   if (s.status === 'cancelada') return 'cancelled';
+  if (s.attended) return 'already_attended';
   if (s.my_reservation_id) return 'reserved';
   if (s.started) return 'started';
   if (board.window === 'not_open') return 'not_open';
   if (board.window === 'closed') return 'closed';
   if (s.remaining <= 0) return 'full';
-  const active = board.reservations.filter((r) => r.status === 'vigente' && r.id !== replacing?.id);
+  const active = board.reservations.filter(
+    (r) => isActiveReservation(r) && r.id !== replacing?.id,
+  );
   if (active.some((r) => r.activity_id === s.activity_id)) return 'same_workshop';
   if (s.conflicts_with.some((id) => id !== replacing?.id)) return 'conflict';
-  if (active.length >= board.max_reservations) return 'max';
+  const activeCount = replacing
+    ? board.active_reservation_count - (isActiveReservation(replacing) ? 1 : 0)
+    : board.active_reservation_count;
+  if (activeCount >= board.max_reservations) return 'max';
   return isFewPlaces(s) ? 'few' : 'available';
 }
 
 export const isSelectable = (state: SessionState) => state === 'available' || state === 'few';
 
 export function canModify(board: Board, s: BoardSession, r: MyReservation) {
-  const editable = r.status === 'vigente' && !s.started;
+  const editable = r.status === 'vigente' && !s.started && r.derived_status === 'active';
   return { cancel: editable, change: editable && board.window === 'open' };
 }
 

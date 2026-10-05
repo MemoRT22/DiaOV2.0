@@ -251,6 +251,7 @@ function RecommendedCard({
                 started: s.started,
                 my_reservation_id: rec.already_reserved ? 'rec' : null,
                 conflicts_with: [],
+                attended: rec.already_attended ?? false,
               };
               return (
                 <SessionRow
