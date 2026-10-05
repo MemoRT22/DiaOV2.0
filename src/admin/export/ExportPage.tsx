@@ -1,11 +1,10 @@
-import { Compass, FileSpreadsheet, ShieldCheck } from 'lucide-react';
+import { FileSpreadsheet, ListChecks, ShieldCheck } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import { Alert, Button, Field } from '../../components/ui';
 import { rpc } from '../../lib/adminApi';
 import { friendlyError } from '../../lib/errors';
-import { exportVocational } from '../../lib/vocationalApi';
 import { useTheme } from '../../theme/ThemeProvider';
-import { buildVocationalWorkbook } from './buildVocationalWorkbook';
+import { buildVocationalWorkbook, type VocationalExportPayload } from './buildVocationalWorkbook';
 import { buildWorkbook, type ExportPayload } from './buildWorkbook';
 
 export default function ExportPage() {
@@ -44,20 +43,20 @@ export default function ExportPage() {
     }
   };
 
-  const submitVocational = async (e: FormEvent) => {
+  const submitInterests = async (e: FormEvent) => {
     e.preventDefault();
     setVocBusy(true);
     setVocError('');
     setVocDone(null);
     try {
       const demo = preparing && includeDemo;
-      const payload = await exportVocational(reason.trim(), demo);
+      const payload = await rpc<VocationalExportPayload>('export_vocational', { p_reason: reason.trim(), p_include_demo: demo });
       if (!payload || !Array.isArray(payload.rows)) throw new Error('SERVER_ERROR');
       const blob = await buildVocationalWorkbook(payload);
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `vocacional-${payload.edition_code}-${new Date().toISOString().slice(0, 10)}.xlsx`;
+      a.download = `intereses-asistencias-${payload.edition_code}-${new Date().toISOString().slice(0, 10)}.xlsx`;
       a.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
       setVocDone(payload.count);
@@ -119,23 +118,23 @@ export default function ExportPage() {
       <div className="card space-y-5 p-6">
         <div>
           <h2 className="flex items-center gap-2 text-lg font-extrabold">
-            <Compass className="h-5 w-5 text-primary-400" aria-hidden />
-            Exportación vocacional
+            <ListChecks className="h-5 w-5 text-primary-400" aria-hidden />
+            Intereses y asistencias
           </h2>
           <p className="mt-1 text-sm text-ink-muted">
-            Descarga un Excel con el resumen vocacional de cada aspirante: interés inicial, opciones posteriores, talleres
-            asistidos y divisiones visitadas. No incluye calificación de afinidad.
+            Descarga un Excel con el resumen de cada aspirante: interés inicial, opciones posteriores, talleres
+            asistidos y divisiones visitadas.
           </p>
         </div>
         {vocError && <Alert tone="error">{vocError}</Alert>}
         {vocDone !== null && (
           <Alert tone="success">
-            Listo. Se descargó el archivo vocacional con {vocDone} participante{vocDone === 1 ? '' : 's'}.
+            Listo. Se descargó el archivo con {vocDone} participante{vocDone === 1 ? '' : 's'}.
           </Alert>
         )}
-        <Button onClick={submitVocational} loading={vocBusy} variant="secondary">
-          <Compass className="h-4 w-4" aria-hidden />
-          {vocBusy ? 'Generando…' : 'Generar Excel vocacional'}
+        <Button onClick={submitInterests} loading={vocBusy} variant="secondary">
+          <ListChecks className="h-4 w-4" aria-hidden />
+          {vocBusy ? 'Generando…' : 'Generar Excel de intereses'}
         </Button>
       </div>
     </div>

@@ -1,4 +1,26 @@
-import type { VocationalExportPayload } from '../../lib/vocationalApi';
+export interface VocationalExportRow {
+  participant_id: string;
+  full_name: string;
+  is_demo: boolean;
+  initial_career_code: string;
+  initial_career: string;
+  initial_division: string;
+  interest_1: string;
+  interest_2: string;
+  interest_3: string;
+  attended_count: number;
+  divisions_visited: string;
+  attended_workshops: string;
+}
+
+export interface VocationalExportPayload {
+  edition: string;
+  edition_code: string;
+  generated_at: string;
+  generated_by: string;
+  count: number;
+  rows: VocationalExportRow[];
+}
 
 export async function buildVocationalWorkbook(payload: VocationalExportPayload): Promise<Blob> {
   const ExcelJS = await import('exceljs');
@@ -6,7 +28,7 @@ export async function buildVocationalWorkbook(payload: VocationalExportPayload):
   wb.creator = 'Día OV';
   wb.created = new Date();
 
-  const ws = wb.addWorksheet('Vocacional');
+  const ws = wb.addWorksheet('Intereses y asistencias');
   ws.views = [{ state: 'frozen', ySplit: 1 }];
 
   const headers = [
@@ -56,7 +78,7 @@ export async function buildVocationalWorkbook(payload: VocationalExportPayload):
   info.addRow(['Generado', new Date(payload.generated_at).toLocaleString('es-MX')]);
   info.addRow(['Generado por', payload.generated_by]);
   info.addRow(['Participantes', payload.count]);
-  info.addRow(['Uso', 'Archivo con datos vocacionales para Atención Preuniversitaria. No incluye calificación de afinidad.']);
+  info.addRow(['Uso', 'Archivo con intereses y asistencias para Atención Preuniversitaria.']);
 
   const buf = await wb.xlsx.writeBuffer();
   return new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
