@@ -1,0 +1,276 @@
+// Estado, validación y mensajes del asistente de registro de talleres.
+// La validación REUTILIZA la de la Edge Function (mismo módulo) para no duplicar reglas: lo que el formulario
+// acepta es exactamente lo que el servidor acepta. El servidor y la base de datos siguen siendo la autoridad final.
+import {
+  LIMITS,
+  normalizeLine,
+  validateSubmission,
+  type FieldError,
+  type SubmissionPayload,
+} from '../../supabase/functions/workshop-intake/validation.ts';
+import { IntakeError } from './workshopIntakeApi';
+
+export { LIMITS };
+
+export const ROOM_TBD = 'Por confirmar';
+
+export type FormState = {
+  facilitator_name: string;
+  facilitator_email: string;
+  facilitator_phone: string;
+  division_id: string;
+  activity_type: '' | 'academica' | 'liderazgo';
+  title: string;
+  student_pitch: string;
+  why_join: string;
+  objective: string;
+  student_experience: string;
+  takeaway: string;
+  keywords: string[];
+  session_duration_minutes: string;
+  capacity_per_session: string;
+  operating_start_time: string;
+  operating_end_time: string;
+  break_minutes: string;
+  building: string;
+  room_space: string;
+  room_tbd: boolean;
+  requirements: string;
+  notes: string;
+  career_ids: string[];
+};
+
+export const emptyForm = (): FormState => ({
+  facilitator_name: '',
+  facilitator_email: '',
+  facilitator_phone: '',
+  division_id: '',
+  activity_type: '',
+  title: '',
+  student_pitch: '',
+  why_join: '',
+  objective: '',
+  student_experience: '',
+  takeaway: '',
+  keywords: [],
+  session_duration_minutes: '',
+  capacity_per_session: '',
+  operating_start_time: '',
+  operating_end_time: '',
+  break_minutes: '',
+  building: '',
+  room_space: '',
+  room_tbd: false,
+  requirements: '',
+  notes: '',
+  career_ids: [],
+});
+
+export type StepDef = { id: string; title: string; short: string; fields: readonly string[] };
+
+/** Pasos del asistente, en lenguaje natural. El último (revisión) valida todo el formulario. */
+export const STEPS: readonly StepDef[] = [
+  { id: 'responsable', title: 'Tus datos', short: 'Tus datos', fields: ['facilitator_name', 'facilitator_email', 'facilitator_phone'] },
+  { id: 'taller', title: 'Tu taller', short: 'Taller', fields: ['division_id', 'activity_type', 'title', 'student_pitch'] },
+  {
+    id: 'experiencia',
+    title: 'La experiencia del alumno',
+    short: 'Experiencia',
+    fields: ['why_join', 'objective', 'student_experience', 'takeaway', 'keywords'],
+  },
+  {
+    id: 'operacion',
+    title: 'Horarios y logística',
+    short: 'Logística',
+    fields: [
+      'session_duration_minutes',
+      'capacity_per_session',
+      'operating_start_time',
+      'operating_end_time',
+      'break_minutes',
+      'building',
+      'room_space',
+      'requirements',
+      'notes',
+    ],
+  },
+  { id: 'carreras', title: 'Carreras relacionadas', short: 'Carreras', fields: ['career_ids'] },
+  { id: 'revision', title: 'Revisa y envía', short: 'Revisión', fields: [] },
+];
+
+export const fieldId = (field: string) => `wf-${field}`;
+
+/** Construye el borrador que entiende `validateSubmission` a partir del estado del formulario. */
+export function buildDraft(f: FormState): Record<string, unknown> {
+  const num = (v: string): number | string | undefined => {
+    const t = v.trim();
+    if (t === '') return undefined;
+    return /^-?\d+$/.test(t) ? Number(t) : t;
+  };
+  const orNull = (v: string) => (v.trim() === '' ? null : v);
+  return {
+    facilitator_name: f.facilitator_name,
+    facilitator_email: f.facilitator_email,
+    facilitator_phone: orNull(f.facilitator_phone),
+    division_id: f.division_id || undefined,
+    activity_type: f.activity_type || undefined,
+    title: f.title,
+    student_pitch: f.student_pitch,
+    why_join: f.why_join,
+    objective: f.objective,
+    student_experience: f.student_experience,
+    takeaway: f.takeaway,
+    keywords: f.keywords,
+    session_duration_minutes: num(f.session_duration_minutes),
+    capacity_per_session: num(f.capacity_per_session),
+    operating_start_time: f.operating_start_time || undefined,
+    operating_end_time: f.operating_end_time || undefined,
+    break_minutes: num(f.break_minutes),
+    building: f.building,
+    room_space: f.room_tbd ? ROOM_TBD : f.room_space,
+    requirements: orNull(f.requirements),
+    notes: orNull(f.notes),
+    career_ids: f.career_ids,
+  };
+}
+
+const baseField = (field: string) => field.replace(/\[\d+\]$/, '');
+
+const range = (min: number, max: number) => `entre ${min} y ${max}`;
+const LENGTHS: Record<string, { min: number; max: number }> = {
+  facilitator_name: LIMITS.facilitatorName,
+  title: LIMITS.title,
+  student_pitch: LIMITS.studentPitch,
+  why_join: LIMITS.whyJoin,
+  objective: LIMITS.objective,
+  student_experience: LIMITS.studentExperience,
+  takeaway: LIMITS.takeaway,
+  building: LIMITS.building,
+  room_space: LIMITS.roomSpace,
+  requirements: { min: 0, max: LIMITS.requirementsMax },
+  notes: { min: 0, max: LIMITS.notesMax },
+};
+const NUMBERS: Record<string, { min: number; max: number }> = {
+  session_duration_minutes: LIMITS.sessionDurationMinutes,
+  capacity_per_session: LIMITS.capacityPerSession,
+  break_minutes: LIMITS.breakMinutes,
+};
+
+/** Mensaje en lenguaje natural para un código de validación (de la Edge Function o de este formulario). */
+export function messageFor(field: string, code: string): string {
+  const f = baseField(field);
+  switch (code) {
+    case 'REQUIRED':
+      return 'Este dato es obligatorio.';
+    case 'INVALID_TYPE':
+      return NUMBERS[f] ? 'Escribe solo un número entero.' : 'Revisa este dato.';
+    case 'TOO_SHORT':
+      return `Escribe un poco más (mínimo ${LENGTHS[f]?.min ?? 3} caracteres).`;
+    case 'TOO_LONG':
+      return f === 'keywords'
+        ? `Cada palabra clave puede tener hasta ${LIMITS.keywords.maxLength} caracteres.`
+        : `Es demasiado largo (máximo ${LENGTHS[f]?.max ?? 1000} caracteres).`;
+    case 'INVALID_EMAIL':
+      return 'Escribe un correo válido, por ejemplo nombre@dominio.com.';
+    case 'INVALID_PHONE':
+      return 'Escribe un teléfono válido (solo números, espacios, + o guiones).';
+    case 'INVALID_DIVISION':
+      return 'Elige la escuela o división que organiza el taller.';
+    case 'INVALID_ACTIVITY_TYPE':
+      return 'Elige el tipo de experiencia.';
+    case 'TOO_FEW_KEYWORDS':
+      return `Agrega al menos ${LIMITS.keywords.minCount} palabras clave.`;
+    case 'TOO_MANY_KEYWORDS':
+      return `Puedes agregar hasta ${LIMITS.keywords.maxCount} palabras clave.`;
+    case 'EMPTY_KEYWORD':
+      return 'Hay una palabra clave vacía.';
+    case 'DUPLICATE_KEYWORD':
+      return 'Hay palabras clave repetidas (aunque cambien mayúsculas o acentos).';
+    case 'TOO_LOW':
+    case 'TOO_HIGH':
+      return NUMBERS[f] ? `Debe estar ${range(NUMBERS[f].min, NUMBERS[f].max)}.` : 'El valor está fuera de rango.';
+    case 'INVALID_TIME':
+      return 'Elige una hora válida.';
+    case 'END_BEFORE_START':
+      return 'La hora de fin debe ser posterior a la de inicio.';
+    case 'CAREERS_REQUIRED':
+      return 'Elige al menos una carrera relacionada.';
+    case 'INVALID_CAREER':
+      return 'Alguna de las carreras elegidas ya no está disponible.';
+    case 'DUPLICATE_CAREER':
+      return 'Hay carreras repetidas.';
+    default:
+      return 'Revisa este dato.';
+  }
+}
+
+export type FieldErrors = Record<string, string>;
+
+function collect(errors: FieldError[]): FieldErrors {
+  const out: FieldErrors = {};
+  for (const e of errors) {
+    const key = baseField(e.field);
+    if (!(key in out)) out[key] = messageFor(e.field, e.code);
+  }
+  return out;
+}
+
+/** Valida todo el formulario; devuelve errores por campo (vacío = válido) y, si es válido, el payload final. */
+export function validateForm(f: FormState): { errors: FieldErrors; payload: SubmissionPayload | null } {
+  const result = validateSubmission(buildDraft(f));
+  if (result.ok) return { errors: {}, payload: result.value };
+  if (result.kind === 'unknown_fields') return { errors: { _form: 'Hay datos que no reconocemos. Recarga la página.' }, payload: null };
+  return { errors: collect(result.errors), payload: null };
+}
+
+/** Errores de un paso concreto. La revisión (último paso) valida todo. */
+export function validateStep(f: FormState, stepIndex: number): FieldErrors {
+  const { errors } = validateForm(f);
+  const step = STEPS[stepIndex];
+  if (step.fields.length === 0) return errors;
+  const out: FieldErrors = {};
+  for (const field of step.fields) if (errors[field]) out[field] = errors[field];
+  return out;
+}
+
+export const stepOfField = (field: string): number => STEPS.findIndex((s) => s.fields.includes(baseField(field)));
+
+/** Carreras sin acentos ni mayúsculas, para el filtro de búsqueda. */
+export const foldSearch = (s: string) => normalizeLine(s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+
+export type SubmitFailure = {
+  message: string;
+  fieldErrors: FieldErrors;
+  /** El catálogo cambió: conviene recargarlo. */
+  reloadCatalog?: boolean;
+  /** El registro no está disponible (sin edición activa). */
+  unavailable?: boolean;
+};
+
+/** Traduce los códigos del backend a mensajes humanos. Nunca muestra SQL, constraints ni detalles internos. */
+export function describeSubmitError(err: unknown): SubmitFailure {
+  if (!(err instanceof IntakeError)) return { message: 'Ocurrió un problema inesperado. Inténtalo de nuevo en unos minutos.', fieldErrors: {} };
+  if (err.kind === 'network') {
+    return { message: 'No pudimos conectarnos. Revisa tu conexión a internet e inténtalo de nuevo.', fieldErrors: {} };
+  }
+  switch (err.code) {
+    case 'VALIDATION_FAILED':
+      return { message: 'Revisa los campos marcados: hay datos que debemos corregir.', fieldErrors: collect(err.fieldErrors) };
+    case 'NO_ACTIVE_EDITION':
+      return { message: 'El registro aún no está disponible. Vuelve a intentarlo más tarde.', fieldErrors: {}, unavailable: true };
+    case 'INVALID_CAREER':
+    case 'CATALOG_MISMATCH':
+    case 'INVALID_DIVISION':
+    case 'DUPLICATE_CAREER':
+    case 'CAREERS_REQUIRED':
+      return {
+        message: 'El catálogo de escuelas y carreras se actualizó. Recarga las opciones y vuelve a elegir.',
+        fieldErrors: {},
+        reloadCatalog: true,
+      };
+    case 'PAYLOAD_TOO_LARGE':
+      return { message: 'El contenido es demasiado extenso. Acorta los textos e inténtalo de nuevo.', fieldErrors: {} };
+    default:
+      return { message: 'Ocurrió un problema de nuestro lado. Inténtalo de nuevo en unos minutos.', fieldErrors: {} };
+  }
+}

@@ -91,6 +91,28 @@ test('GET devuelve solo el catálogo del formulario', async () => {
   assert.deepEqual(calls.map((c) => c.fn), ['workshop_intake_catalog_internal']);
 });
 
+test('GET con catálogo real vacío responde 200 con listas vacías (el frontend muestra "Registro aún no disponible")', async () => {
+  const { deps } = makeDeps({}, () => ({
+    data: { edition: { name: 'Día OV 2026', event_date: '2026-10-15' }, divisions: [], careers: [] },
+    error: null,
+  }));
+  const res = await handleRequest(new Request(URL_), deps);
+  assert.equal(res.status, 200);
+  const b = await bodyOf(res);
+  assert.deepEqual(b.divisions, []);
+  assert.deepEqual(b.careers, []);
+  assert.ok(Array.isArray(b.activity_types) && b.limits);
+});
+
+test('POST: la base rechaza división o carreras demo con INVALID_DIVISION / INVALID_CAREER (422, sin filtrar detalles)', async () => {
+  for (const code of ['INVALID_DIVISION', 'INVALID_CAREER']) {
+    const { deps } = makeDeps({}, () => ({ data: null, error: { code: 'P0001', message: code } }));
+    const res = await handleRequest(post(valid()), deps);
+    assert.equal(res.status, 422);
+    assert.deepEqual(await bodyOf(res), { error: code });
+  }
+});
+
 test('GET sin edición activa responde 503; error interno responde 500 genérico', async () => {
   let { deps } = makeDeps({}, () => ({ data: null, error: { message: 'NO_ACTIVE_EDITION' } }));
   assert.equal((await handleRequest(new Request(URL_), deps)).status, 503);
@@ -173,6 +195,10 @@ test('keywords: menos de 3, más de 5, vacía, duplicada y tipo inválido', asyn
   await expectInvalid((p) => { p.keywords = ['uno', '   ', 'tres']; }, 'keywords[1]:EMPTY_KEYWORD');
   await expectInvalid((p) => { p.keywords = ['IA', 'ia', 'tres']; }, 'keywords[1]:DUPLICATE_KEYWORD');
   await expectInvalid((p) => { p.keywords = ['Simulación', 'simulacion', 'tres']; }, 'keywords[1]:DUPLICATE_KEYWORD');
+  await expectInvalid((p) => { p.keywords = ['  SIMULACIÓN ', 'simulacion', 'tres']; }, 'keywords[1]:DUPLICATE_KEYWORD');
+  await expectInvalid((p) => { p.keywords = ['Año', 'ANO', 'tres']; }, 'keywords[1]:DUPLICATE_KEYWORD');
+  await expectInvalid((p) => { p.keywords = ['IA  generativa', 'ia generativa', 'tres']; }, 'keywords[1]:DUPLICATE_KEYWORD');
+  await expectInvalid((p) => { p.keywords = ['Pingüino', 'pinguino', 'tres']; }, 'keywords[1]:DUPLICATE_KEYWORD');
   await expectInvalid((p) => { p.keywords = 'a, b, c'; }, 'keywords:INVALID_TYPE');
   await expectInvalid((p) => { p.keywords = ['a', 'b', 7]; }, 'keywords[2]:INVALID_TYPE');
   await expectInvalid((p) => { p.keywords = ['a', 'b', 'x'.repeat(LIMITS.keywords.maxLength + 1)]; }, 'keywords[2]:TOO_LONG');

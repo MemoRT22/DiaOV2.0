@@ -6,7 +6,7 @@
 DO $test$
 DECLARE
   ed uuid := active_edition_id();
-  d_real uuid; d_demo uuid; c_a uuid; c_b uuid; c_off uuid; c_demo uuid;
+  d_real uuid; d_demo uuid; c_a uuid; c_b uuid; c_off uuid; c_demo uuid; c_x uuid; v_i int;
   v_base jsonb; v_res jsonb; v_cat jsonb; v_id uuid; v_row workshop_submissions%ROWTYPE; v_audit jsonb;
   v_err text; v_n int; v_n2 int; v_snap text; v_snap2 text; v_s1 int; v_c1 int; v_other uuid := gen_random_uuid();
   v_mode text; r record; v_tpl text; v_single uuid; v_mal uuid;
@@ -21,6 +21,8 @@ BEGIN
   INSERT INTO careers (code, name, division_id, is_demo, is_active) VALUES ('RWI-B', 'RWI Carrera B', d_real, false, true) RETURNING id INTO c_b;
   INSERT INTO careers (code, name, division_id, is_demo, is_active) VALUES ('RWI-OFF', 'RWI Inactiva', d_real, false, false) RETURNING id INTO c_off;
   INSERT INTO careers (code, name, division_id, is_demo, is_active) VALUES ('RWI-DEMO', 'RWI Carrera Demo', d_demo, true, true) RETURNING id INTO c_demo;
+  -- carrera no demo colgada de una división demo: tampoco debe ofrecerse ni aceptarse
+  INSERT INTO careers (code, name, division_id, is_demo, is_active) VALUES ('RWI-XDIV', 'RWI Carrera en División Demo', d_demo, false, true) RETURNING id INTO c_x;
 
   v_base := jsonb_build_object(
     'facilitator_name', 'Ana Pérez', 'facilitator_email', 'ana@example.com', 'facilitator_phone', '998 123 4567',
@@ -43,7 +45,7 @@ BEGIN
         v_fail := v_fail + 1; v_res_str := v_res_str || '1.grant[' || v_err || ':' || r.t || ':' || r.p || '] ';
       ELSE v_pass := v_pass + 1; END IF;
     END LOOP;
-    FOR r IN SELECT f FROM unnest(ARRAY['create_workshop_submission_internal(jsonb)', 'workshop_intake_catalog_internal()', 'workshop_keywords_valid(text[])', 'workshop_submission_require_career()']) f LOOP
+    FOR r IN SELECT f FROM unnest(ARRAY['create_workshop_submission_internal(jsonb)', 'workshop_intake_catalog_internal()', 'workshop_keywords_valid(text[])', 'workshop_submission_require_career()', 'workshop_submissions_set_updated_at()', 'workshop_fold_keyword(text)']) f LOOP
       IF has_function_privilege(v_err, 'public.' || r.f, 'EXECUTE') THEN
         v_fail := v_fail + 1; v_res_str := v_res_str || '1.fnGrant[' || v_err || ':' || r.f || '] ';
       ELSE v_pass := v_pass + 1; END IF;
@@ -52,6 +54,13 @@ BEGIN
   IF has_function_privilege('service_role', 'public.create_workshop_submission_internal(jsonb)', 'EXECUTE')
      AND has_function_privilege('service_role', 'public.workshop_intake_catalog_internal()', 'EXECUTE')
     THEN v_pass := v_pass + 1; ELSE v_fail := v_fail + 1; v_res_str := v_res_str || '1.serviceExec[] '; END IF;
+
+  -- 9A: ninguna función del intake conserva EXECUTE heredado de PUBLIC (incluye el trigger helper)
+  SELECT count(*) INTO v_n FROM pg_proc p CROSS JOIN LATERAL aclexplode(p.proacl) a
+  WHERE p.proname IN ('create_workshop_submission_internal', 'workshop_intake_catalog_internal', 'workshop_keywords_valid',
+                      'workshop_submission_require_career', 'workshop_submissions_set_updated_at', 'workshop_fold_keyword')
+    AND a.grantee = 0;
+  IF v_n = 0 THEN v_pass := v_pass + 1; ELSE v_fail := v_fail + 1; v_res_str := v_res_str || '1.publicExecute[' || v_n || '] '; END IF;
 
   -- En ejecución real: anon / authenticated no pueden ni leer ni escribir ni llamar las primitivas
   FOREACH v_err IN ARRAY ARRAY['anon', 'authenticated'] LOOP
@@ -83,22 +92,29 @@ BEGIN
      AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_cat->'careers') x WHERE x->>'career_id' = c_off::text)
      AND EXISTS (SELECT 1 FROM jsonb_array_elements(v_cat->'divisions') x WHERE x->>'division_id' = d_real::text)
     THEN v_pass := v_pass + 1; ELSE v_fail := v_fail + 1; v_res_str := v_res_str || '2.catMembers[] '; END IF;
-  IF v_mode = 'preparacion' THEN
-    IF EXISTS (SELECT 1 FROM jsonb_array_elements(v_cat->'careers') x WHERE x->>'career_id' = c_demo::text) THEN v_pass := v_pass + 1; ELSE v_fail := v_fail + 1; v_res_str := v_res_str || '2.prepIncludesDemo[] '; END IF;
-  END IF;
-  -- en operación real el catálogo público no incluye datos demo
-  UPDATE editions SET mode = 'operacion_real' WHERE id = ed;
-  PERFORM set_config('role', 'service_role', true);
-  v_cat := workshop_intake_catalog_internal();
-  PERFORM set_config('role', 'postgres', true);
-  IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_cat->'careers') x WHERE (x->>'career_id')::uuid IN (SELECT id FROM careers WHERE is_demo))
+  -- 9A: el catálogo público es SOLO real, sin importar el modo de la edición
+  IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_cat->'careers') x WHERE (x->>'career_id')::uuid IN (SELECT id FROM careers WHERE is_demo OR division_id IN (SELECT id FROM divisions WHERE is_demo)))
      AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_cat->'divisions') x WHERE (x->>'division_id')::uuid IN (SELECT id FROM divisions WHERE is_demo))
-     AND EXISTS (SELECT 1 FROM jsonb_array_elements(v_cat->'careers') x WHERE x->>'career_id' = c_a::text)
-    THEN v_pass := v_pass + 1; ELSE v_fail := v_fail + 1; v_res_str := v_res_str || '2.realNoDemo[] '; END IF;
-  v_err := NULL; BEGIN PERFORM create_workshop_submission_internal(v_base || jsonb_build_object('division_id', d_demo, 'career_ids', jsonb_build_array(c_demo))); EXCEPTION WHEN others THEN v_err := SQLERRM; END;
-  IF v_err LIKE '%INVALID_DIVISION%' THEN v_pass := v_pass + 1; ELSE v_fail := v_fail + 1; v_res_str := v_res_str || '2.realRejectsDemoDiv[' || coalesce(v_err, 'ok') || '] '; END IF;
-  v_err := NULL; BEGIN PERFORM create_workshop_submission_internal(v_base || jsonb_build_object('career_ids', jsonb_build_array(c_a, c_demo))); EXCEPTION WHEN others THEN v_err := SQLERRM; END;
-  IF v_err LIKE '%INVALID_CAREER%' THEN v_pass := v_pass + 1; ELSE v_fail := v_fail + 1; v_res_str := v_res_str || '2.realRejectsDemoCareer[' || coalesce(v_err, 'ok') || '] '; END IF;
+    THEN v_pass := v_pass + 1; ELSE v_fail := v_fail + 1; v_res_str := v_res_str || '2.noDemo[' || v_mode || '] '; END IF;
+  FOR v_i IN 1..2 LOOP
+    v_err := NULL; BEGIN PERFORM create_workshop_submission_internal(v_base || jsonb_build_object('division_id', d_demo, 'career_ids', jsonb_build_array(c_demo))); EXCEPTION WHEN others THEN v_err := SQLERRM; END;
+    IF v_err LIKE '%INVALID_DIVISION%' THEN v_pass := v_pass + 1; ELSE v_fail := v_fail + 1; v_res_str := v_res_str || '2.rejectsDemoDiv' || v_i || '[' || coalesce(v_err, 'ok') || '] '; END IF;
+    v_err := NULL; BEGIN PERFORM create_workshop_submission_internal(v_base || jsonb_build_object('career_ids', jsonb_build_array(c_a, c_demo))); EXCEPTION WHEN others THEN v_err := SQLERRM; END;
+    IF v_err LIKE '%INVALID_CAREER%' THEN v_pass := v_pass + 1; ELSE v_fail := v_fail + 1; v_res_str := v_res_str || '2.rejectsDemoCareer' || v_i || '[' || coalesce(v_err, 'ok') || '] '; END IF;
+    v_err := NULL; BEGIN PERFORM create_workshop_submission_internal(v_base || jsonb_build_object('career_ids', jsonb_build_array(c_x))); EXCEPTION WHEN others THEN v_err := SQLERRM; END;
+    IF v_err LIKE '%INVALID_CAREER%' THEN v_pass := v_pass + 1; ELSE v_fail := v_fail + 1; v_res_str := v_res_str || '2.rejectsCareerInDemoDiv' || v_i || '[' || coalesce(v_err, 'ok') || '] '; END IF;
+    IF v_i = 1 THEN
+      -- repetir en el otro modo de la edición: el resultado es el mismo
+      UPDATE editions SET mode = CASE WHEN v_mode = 'preparacion' THEN 'operacion_real' ELSE 'preparacion' END WHERE id = ed;
+      PERFORM set_config('role', 'service_role', true);
+      v_cat := workshop_intake_catalog_internal();
+      PERFORM set_config('role', 'postgres', true);
+      IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_cat->'careers') x WHERE (x->>'career_id')::uuid IN (SELECT id FROM careers WHERE is_demo OR division_id IN (SELECT id FROM divisions WHERE is_demo)))
+         AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_cat->'divisions') x WHERE (x->>'division_id')::uuid IN (SELECT id FROM divisions WHERE is_demo))
+         AND EXISTS (SELECT 1 FROM jsonb_array_elements(v_cat->'careers') x WHERE x->>'career_id' = c_a::text)
+        THEN v_pass := v_pass + 1; ELSE v_fail := v_fail + 1; v_res_str := v_res_str || '2.noDemoOtherMode[] '; END IF;
+    END IF;
+  END LOOP;
   UPDATE editions SET mode = v_mode WHERE id = ed;
 
   -- ===================== 3. Crear propuesta válida (+ independencia del catálogo oficial) =====================
@@ -164,7 +180,12 @@ BEGIN
       ('career_not_uuid',    v_base || '{"career_ids": ["abc"]}'::jsonb,                                         'INVALID_CAREER'),
       ('division_missing',   v_base || jsonb_build_object('division_id', v_other),                              'INVALID_DIVISION'),
       ('division_not_uuid',  v_base || '{"division_id": "xyz"}'::jsonb,                                           'INVALID_DIVISION'),
-      ('catalog_mismatch',   v_base || jsonb_build_object('career_ids', jsonb_build_array(c_a, c_demo)),        'CATALOG_MISMATCH'),
+      ('demo_career_mixed',  v_base || jsonb_build_object('career_ids', jsonb_build_array(c_a, c_demo)),        'INVALID_CAREER'),
+      ('demo_division',      v_base || jsonb_build_object('division_id', d_demo),                               'INVALID_DIVISION'),
+      ('career_in_demo_div', v_base || jsonb_build_object('career_ids', jsonb_build_array(c_x)),                'INVALID_CAREER'),
+      ('kw_dup_accent',      v_base || '{"keywords": ["Simulación", "simulacion", "x"]}'::jsonb,                'keywords_check'),
+      ('kw_dup_enye',        v_base || '{"keywords": ["Año", "ANO", "x"]}'::jsonb,                              'keywords_check'),
+      ('kw_dup_spaces',      v_base || '{"keywords": ["IA  generativa", "ia generativa", "x"]}'::jsonb,         'keywords_check'),
       ('kw_not_array',       v_base || '{"keywords": "a, b, c"}'::jsonb,                                         'INVALID_PAYLOAD'),
       ('careers_not_array',  v_base || '{"career_ids": "x"}'::jsonb,                                             'INVALID_PAYLOAD'),
       ('kw_two',             v_base || '{"keywords": ["a", "b"]}'::jsonb,                                        'keywords_check'),
@@ -209,6 +230,9 @@ BEGIN
       ('kw_empty_el',      '{"kw": "ARRAY[''a'','''',''c'']"}'::jsonb,                    'keywords_check'),
       ('kw_blank_el',      '{"kw": "ARRAY[''a'',''   '',''c'']"}'::jsonb,                 'keywords_check'),
       ('kw_dup_case',      '{"kw": "ARRAY[''a'',''A'',''c'']"}'::jsonb,                   'keywords_check'),
+      ('kw_dup_accent',    '{"kw": "ARRAY[''Simulación'',''simulacion'',''c'']"}'::jsonb, 'keywords_check'),
+      ('kw_dup_enye',      '{"kw": "ARRAY[''Año'',''ano'',''c'']"}'::jsonb,               'keywords_check'),
+      ('kw_accent_distinct_ok', '{"kw": "ARRAY[''Simulación'',''Simulaciones'',''c'']"}'::jsonb, NULL),
       ('kw_null_el',       '{"kw": "ARRAY[''a'',NULL,''c'']"}'::jsonb,                    'keywords_check'),
       ('kw_too_long',      jsonb_build_object('kw', 'ARRAY[''a'',''b'',''' || repeat('x', 81) || ''']'), 'keywords_check'),
       ('email_no_at',      '{"email": "''sin-arroba''"}'::jsonb,                          'email_check'),

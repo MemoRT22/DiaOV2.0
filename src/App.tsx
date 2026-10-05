@@ -10,6 +10,7 @@ const Passport = lazy(() => import('./student/Passport'));
 const Missions = lazy(() => import('./student/Missions'));
 const MyRoute = lazy(() => import('./student/MyRoute'));
 const Interests = lazy(() => import('./student/Interests'));
+const WorkshopRegistration = lazy(() => import('./public/WorkshopRegistration'));
 
 const AdminLayout = lazy(() => import('./admin/AdminLayout'));
 const CoordinationOnly = lazy(() => import('./admin/CoordinationOnly'));
@@ -49,6 +50,7 @@ export default function App() {
     <Suspense fallback={<Spinner />}>
       <Routes>
         <Route path="/" element={<StudentLogin />} />
+        <Route path="/registro-taller" element={<WorkshopRegistration />} />
         <Route element={<StudentLayout />}>
           <Route path="/bienvenida" element={<Welcome />} />
           <Route path="/bitacora" element={<Passport />} />

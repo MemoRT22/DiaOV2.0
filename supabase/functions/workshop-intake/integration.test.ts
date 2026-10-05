@@ -39,6 +39,10 @@ const payload = (cat: Catalog, over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
+// Si todavía no hay catálogo REAL (el catálogo público nunca incluye datos demo), las pruebas que necesitan
+// una división y carreras reales se omiten con un aviso.
+const noReal = async () => (URL_ ? ((await catalog()).careers.length === 0 || (await catalog()).divisions.length === 0 ? 'catálogo real vacío' : false) : skip);
+
 test('GET: catálogo mínimo y CORS', { skip }, async () => {
   const res = await fetch(URL_!);
   assert.equal(res.status, 200);
@@ -46,11 +50,31 @@ test('GET: catálogo mínimo y CORS', { skip }, async () => {
   const b = (await res.json()) as Record<string, unknown>;
   assert.deepEqual(Object.keys(b).sort(), ['activity_types', 'careers', 'divisions', 'edition', 'limits']);
   const cat = b as unknown as Catalog;
-  assert.ok(cat.divisions.length > 0 && cat.careers.length > 0);
-  assert.deepEqual(Object.keys(cat.careers[0]).sort(), ['career_id', 'career_name', 'division_id']);
+  assert.ok(Array.isArray(cat.divisions) && Array.isArray(cat.careers));
+  if (cat.careers.length > 0) assert.deepEqual(Object.keys(cat.careers[0]).sort(), ['career_id', 'career_name', 'division_id']);
 });
 
-test('POST válido: 201 submitted, respuesta mínima', { skip }, async () => {
+// Opcional: ids de datos DEMO conocidos (WORKSHOP_INTAKE_DEMO_DIVISION / WORKSHOP_INTAKE_DEMO_CAREER): nunca deben ofrecerse ni aceptarse.
+const demoDiv = process.env.WORKSHOP_INTAKE_DEMO_DIVISION;
+const demoCareer = process.env.WORKSHOP_INTAKE_DEMO_CAREER;
+test('catálogo público sin datos demo y POST rechaza división/carrera demo', { skip: skip || (demoDiv && demoCareer ? false : 'sin ids demo') }, async () => {
+  const cat = await catalog();
+  assert.ok(!cat.divisions.some((d) => d.division_id === demoDiv));
+  assert.ok(!cat.careers.some((c) => c.career_id === demoCareer || c.division_id === demoDiv));
+  const base = {
+    facilitator_name: 'Prueba Integración', facilitator_email: 'integracion@example.com', activity_type: 'liderazgo',
+    title: `ZZ-INTAKE-IT-${crypto.randomUUID().slice(0, 8)}`,
+    student_pitch: 'Pitch de prueba de integración para el formulario.', why_join: 'Razón de prueba de integración para el formulario.',
+    objective: 'Objetivo de prueba de integración para el formulario.', student_experience: 'Experiencia de prueba de integración para el formulario.',
+    takeaway: 'Aprendizaje de prueba', keywords: ['uno', 'dos', 'tres'], session_duration_minutes: 30, capacity_per_session: 20,
+    operating_start_time: '09:00', operating_end_time: '13:00', break_minutes: 5, building: 'Edificio X', room_space: 'Por confirmar',
+  };
+  let res = await fetch(URL_!, { method: 'POST', headers: json, body: JSON.stringify({ ...base, division_id: demoDiv, career_ids: [demoCareer] }) });
+  assert.equal(res.status, 422);
+  assert.equal(((await res.json()) as { error: string }).error, 'INVALID_DIVISION');
+});
+
+test('POST válido: 201 submitted, respuesta mínima', { skip: await noReal() }, async () => {
   const cat = await catalog();
   const res = await fetch(URL_!, { method: 'POST', headers: json, body: JSON.stringify(payload(cat)) });
   assert.equal(res.status, 201);
@@ -59,14 +83,14 @@ test('POST válido: 201 submitted, respuesta mínima', { skip }, async () => {
   assert.equal(b.status, 'submitted');
 });
 
-test('POST con propiedades administrativas: 400 y nada se guarda', { skip }, async () => {
+test('POST con propiedades administrativas: 400 y nada se guarda', { skip: await noReal() }, async () => {
   const cat = await catalog();
   const res = await fetch(URL_!, { method: 'POST', headers: json, body: JSON.stringify(payload(cat, { status: 'published', edition_id: crypto.randomUUID() })) });
   assert.equal(res.status, 400);
   assert.equal(((await res.json()) as { error: string }).error, 'UNKNOWN_FIELDS');
 });
 
-test('POST con carrera inexistente o división inválida: 422 desde la base', { skip }, async () => {
+test('POST con carrera inexistente o división inválida: 422 desde la base', { skip: await noReal() }, async () => {
   const cat = await catalog();
   let res = await fetch(URL_!, { method: 'POST', headers: json, body: JSON.stringify(payload(cat, { career_ids: [crypto.randomUUID()] })) });
   assert.equal(res.status, 422);
@@ -76,7 +100,7 @@ test('POST con carrera inexistente o división inválida: 422 desde la base', { 
   assert.equal(((await res.json()) as { error: string }).error, 'INVALID_DIVISION');
 });
 
-test('POST con validación de formulario: 422 con errores por campo', { skip }, async () => {
+test('POST con validación de formulario: 422 con errores por campo', { skip: await noReal() }, async () => {
   const cat = await catalog();
   const res = await fetch(URL_!, { method: 'POST', headers: json, body: JSON.stringify(payload(cat, { keywords: ['a', 'b'], break_minutes: -1, career_ids: [] })) });
   assert.equal(res.status, 422);
