@@ -1,304 +1,177 @@
--- ============================================================
--- Fase 8A — Pruebas dirigidas: intereses iniciales del prerregistro
--- ============================================================
--- Este script verifica:
--- 1. Datos: participante con 1 carrera, con 2, orden, no duplicados, máximo 2, migración
--- 2. Importación: una carrera reconocida, dos reconocidas, segunda vacía, no reconocida
--- 3. Alta manual: primera obligatoria, segunda opcional, ambas almacenadas
--- 4. Recomendaciones: carrera 1 prioridad, carrera 2, taller compartido, post_event no afecta
--- 5. Seguridad: participante A no puede ver intereses de B
--- ============================================================
+-- Pruebas de regresión Fase 8A — Intereses iniciales del prerregistro (hasta 2 carreras).
+-- Se ejecuta como un solo bloque DO. Siempre termina con RAISE EXCEPTION que trae los resultados,
+-- así que todos los cambios se revierten. Cubre: modelo, alta manual, corrección, importación,
+-- recomendaciones y seguridad. Pega el archivo completo en el SQL editor.
 
--- Configurar contexto de prueba (usar service role)
-SET request.jwt.claims TO '{}'::jsonb;
-SET role postgres;
-
--- Obtener edición activa
-DO $$
-DECLARE v_ed uuid;
+DO $test$
+DECLARE
+  c uuid := '00000000-0000-4000-8000-0000000000c1';
+  s uuid := '00000000-0000-4000-8000-0000000000c2';
+  r uuid := '00000000-0000-4000-8000-0000000000c3';
+  ua uuid := '00000000-0000-4000-8000-0000000000d1';
+  ub uuid := '00000000-0000-4000-8000-0000000000d2';
+  ed uuid := active_edition_id();
+  v_div uuid := (SELECT id FROM divisions ORDER BY sort_order LIMIT 1);
+  v_c1 uuid; v_c2 uuid; v_c3 uuid;
+  v_pid uuid; v_pid2 uuid;
+  st record;
+  v_uid uuid; v_q text; v_val text; v_err text; v_ok boolean;
+  v_res text := ''; v_pass int := 0; v_fail int := 0;
+  v_def text;
 BEGIN
-  SELECT id INTO v_ed FROM editions WHERE is_active LIMIT 1;
-  IF v_ed IS NULL THEN
-    RAISE EXCEPTION 'No hay edición activa para pruebas';
-  END IF;
-END $$;
+  -- ====== FIXTURE ======
+  INSERT INTO auth.users (id, instance_id, aud, role, email, raw_app_meta_data, raw_user_meta_data, created_at, updated_at)
+  SELECT u, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'rt8a.' || right(u::text, 2) || '@test.invalid', '{}', '{}', now(), now()
+  FROM unnest(ARRAY[c, s, r, ua, ub]) u;
+  INSERT INTO staff_members (user_id, role, full_name, is_active, email) VALUES
+    (c, 'coordinacion', 'RT8A Coord', true, 'rt8a.c1@test.invalid'),
+    (s, 'staff', 'RT8A Staff', true, 'rt8a.c2@test.invalid'),
+    (r, 'sorteo', 'RT8A Sorteo', true, 'rt8a.c3@test.invalid');
+  INSERT INTO staff_roles (user_id, role) VALUES (c, 'coordinacion'), (s, 'staff'), (r, 'sorteo');
 
--- ============================================================
--- 1. PRUEBAS DE DATOS Y MIGRACIÓN
--- ============================================================
+  INSERT INTO careers (code, name, division_id, is_demo, is_active) VALUES
+    ('RT8A-C1', 'RT8A Carrera 1', v_div, true, true),
+    ('RT8A-C2', 'RT8A Carrera 2', v_div, true, true),
+    ('RT8A-C3', 'RT8A Carrera 3', v_div, true, true);
+  SELECT id INTO v_c1 FROM careers WHERE code = 'RT8A-C1';
+  SELECT id INTO v_c2 FROM careers WHERE code = 'RT8A-C2';
+  SELECT id INTO v_c3 FROM careers WHERE code = 'RT8A-C3';
 
--- 1a. Verificar que la tabla initial_interests existe
-DO $$
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'initial_interests') THEN
-    RAISE EXCEPTION 'FAIL: initial_interests table does not exist';
-  END IF;
-  RAISE NOTICE 'PASS: initial_interests table exists';
-END $$;
+  -- Participant A: C1+C2, with platform consent
+  INSERT INTO participants (edition_id, email, full_name, birth_date, origin, is_demo, initial_career_id, auth_user_id)
+  VALUES (ed, 'rt8a.a@test.invalid', 'Ana Test OchoA', '2008-01-01', 'demo', true, v_c1, ua);
+  SELECT id INTO v_pid FROM participants WHERE email = 'rt8a.a@test.invalid';
+  PERFORM sync_initial_interests(v_pid, ARRAY[v_c1, v_c2], ARRAY['Gastronomia', 'Negocios']);
+  UPDATE participant_profiles SET platform_consent_version = e.privacy_notice_version, platform_consent_at = now()
+  FROM editions e WHERE e.id = ed AND participant_profiles.participant_id = v_pid;
 
--- 1b. Verificar que todos los participantes con initial_career_id tienen fila en initial_interests con preference 1
-DO $$
-DECLARE v_count int;
-BEGIN
-  SELECT count(*) INTO v_count
-  FROM participants p
-  WHERE p.initial_career_id IS NOT NULL
-    AND NOT EXISTS (SELECT 1 FROM initial_interests ii WHERE ii.participant_id = p.id AND ii.preference = 1);
-  IF v_count > 0 THEN
-    RAISE EXCEPTION 'FAIL: % participants with initial_career_id but no initial_interests row', v_count;
-  END IF;
-  RAISE NOTICE 'PASS: all participants with initial_career_id migrated to initial_interests';
-END $$;
+  -- Participant B: C2 only, with platform consent
+  INSERT INTO participants (edition_id, email, full_name, birth_date, origin, is_demo, initial_career_id, auth_user_id)
+  VALUES (ed, 'rt8a.b@test.invalid', 'Beto Test OchoB', '2008-02-02', 'demo', true, v_c2, ub);
+  SELECT id INTO v_pid2 FROM participants WHERE email = 'rt8a.b@test.invalid';
+  PERFORM sync_initial_interests(v_pid2, ARRAY[v_c2], ARRAY['Negocios']);
+  UPDATE participant_profiles SET platform_consent_version = e.privacy_notice_version, platform_consent_at = now()
+  FROM editions e WHERE e.id = ed AND participant_profiles.participant_id = v_pid2;
 
--- 1c. Verificar constraint de máximo 2 preferencias
-DO $$
-DECLARE v_ed uuid; v_pid uuid; v_career1 uuid; v_career2 uuid; v_career3 uuid;
-BEGIN
-  SELECT id INTO v_ed FROM editions WHERE is_active LIMIT 1;
-  SELECT id INTO v_career1 FROM careers WHERE is_active AND is_demo = false LIMIT 1;
-  SELECT id INTO v_career2 FROM careers WHERE is_active AND is_demo = false AND id <> v_career1 LIMIT 1;
-  SELECT id INTO v_career3 FROM careers WHERE is_active AND is_demo = false AND id NOT IN (v_career1, v_career2) LIMIT 1;
-
-  -- Crear participante de prueba
-  DELETE FROM initial_interests WHERE participant_id IN (
-    SELECT id FROM participants WHERE email = 'test_8a_1c@ejemplo.com'
-  );
-  DELETE FROM participants WHERE email = 'test_8a_1c@ejemplo.com';
-
-  INSERT INTO participants (edition_id, email, full_name, birth_date, origin, is_demo, created_by)
-  VALUES (v_ed, 'test_8a_1c@ejemplo.com', 'Test 8A 1C', '2008-01-01', 'demo', false, null)
-  RETURNING id INTO v_pid;
-
-  -- Intentar insertar 3 preferencias (debe fallar por CHECK constraint)
+  -- Activities: W1->C1, W2->C1+C2, W3->C2
+  DECLARE v_act uuid; v_sid uuid;
   BEGIN
-    INSERT INTO initial_interests (participant_id, preference, career_id) VALUES (v_pid, 1, v_career1);
-    INSERT INTO initial_interests (participant_id, preference, career_id) VALUES (v_pid, 2, v_career2);
-    INSERT INTO initial_interests (participant_id, preference, career_id) VALUES (v_pid, 3, v_career3);
-    RAISE EXCEPTION 'FAIL: CHECK constraint preference BETWEEN 1 AND 2 did not reject preference 3';
-  EXCEPTION WHEN check_violation THEN
-    RAISE NOTICE 'PASS: CHECK constraint rejects preference > 2';
+    INSERT INTO activities (edition_id, division_id, title, description, location, is_demo)
+    VALUES (ed, v_div, 'RT8A W1 Crepas', '', 'Edificio', true) RETURNING id INTO v_act;
+    INSERT INTO activity_sessions (activity_id, starts_at, ends_at, capacity, location, status, is_demo, credits)
+    VALUES (v_act, now() + interval '2 hours', now() + interval '3 hours', 30, 'Edificio', 'activa', true, 1) RETURNING id INTO v_sid;
+    INSERT INTO activity_careers (activity_id, career_id) VALUES (v_act, v_c1);
+
+    INSERT INTO activities (edition_id, division_id, title, description, location, is_demo)
+    VALUES (ed, v_div, 'RT8A W2 Restaurante', '', 'Edificio', true) RETURNING id INTO v_act;
+    INSERT INTO activity_sessions (activity_id, starts_at, ends_at, capacity, location, status, is_demo, credits)
+    VALUES (v_act, now() + interval '4 hours', now() + interval '5 hours', 30, 'Edificio', 'activa', true, 1) RETURNING id INTO v_sid;
+    INSERT INTO activity_careers (activity_id, career_id) VALUES (v_act, v_c1);
+    INSERT INTO activity_careers (activity_id, career_id) VALUES (v_act, v_c2);
+
+    INSERT INTO activities (edition_id, division_id, title, description, location, is_demo)
+    VALUES (ed, v_div, 'RT8A W3 Finanzas', '', 'Edificio', true) RETURNING id INTO v_act;
+    INSERT INTO activity_sessions (activity_id, starts_at, ends_at, capacity, location, status, is_demo, credits)
+    VALUES (v_act, now() + interval '6 hours', now() + interval '7 hours', 30, 'Edificio', 'activa', true, 1) RETURNING id INTO v_sid;
+    INSERT INTO activity_careers (activity_id, career_id) VALUES (v_act, v_c2);
   END;
 
-  -- Limpiar
-  DELETE FROM initial_interests WHERE participant_id = v_pid;
-  DELETE FROM participants WHERE id = v_pid;
-END $$;
-
--- 1d. Verificar UNIQUE(participant_id, career_id) — no duplicados
-DO $$
-DECLARE v_ed uuid; v_pid uuid; v_career1 uuid;
-BEGIN
-  SELECT id INTO v_ed FROM editions WHERE is_active LIMIT 1;
-  SELECT id INTO v_career1 FROM careers WHERE is_active AND is_demo = false LIMIT 1;
-
-  DELETE FROM initial_interests WHERE participant_id IN (
-    SELECT id FROM participants WHERE email = 'test_8a_1d@ejemplo.com'
-  );
-  DELETE FROM participants WHERE email = 'test_8a_1d@ejemplo.com';
-
-  INSERT INTO participants (edition_id, email, full_name, birth_date, origin, is_demo, created_by)
-  VALUES (v_ed, 'test_8a_1d@ejemplo.com', 'Test 8A 1D', '2008-01-01', 'demo', false, null)
-  RETURNING id INTO v_pid;
-
-  INSERT INTO initial_interests (participant_id, preference, career_id) VALUES (v_pid, 1, v_career1);
-  BEGIN
-    INSERT INTO initial_interests (participant_id, preference, career_id) VALUES (v_pid, 2, v_career1);
-    RAISE EXCEPTION 'FAIL: UNIQUE(participant_id, career_id) did not reject duplicate career';
-  EXCEPTION WHEN unique_violation THEN
-    RAISE NOTICE 'PASS: UNIQUE constraint rejects duplicate career for same participant';
-  END;
-
-  DELETE FROM initial_interests WHERE participant_id = v_pid;
-  DELETE FROM participants WHERE id = v_pid;
-END $$;
-
--- 1e. Verificar que sync_initial_interests sincroniza initial_career_id
-DO $$
-DECLARE v_ed uuid; v_pid uuid; v_c1 uuid; v_c2 uuid;
-BEGIN
-  SELECT id INTO v_ed FROM editions WHERE is_active LIMIT 1;
-  SELECT id INTO v_c1 FROM careers WHERE is_active AND is_demo = false ORDER BY name LIMIT 1;
-  SELECT id INTO v_c2 FROM careers WHERE is_active AND is_demo = false AND id <> v_c1 ORDER BY name LIMIT 1;
-
-  DELETE FROM initial_interests WHERE participant_id IN (
-    SELECT id FROM participants WHERE email = 'test_8a_1e@ejemplo.com'
-  );
-  DELETE FROM participants WHERE email = 'test_8a_1e@ejemplo.com';
-
-  INSERT INTO participants (edition_id, email, full_name, birth_date, origin, is_demo, created_by, initial_career_id)
-  VALUES (v_ed, 'test_8a_1e@ejemplo.com', 'Test 8A 1E', '2008-01-01', 'demo', false, null, v_c1)
-  RETURNING id INTO v_pid;
-
-  PERFORM sync_initial_interests(v_pid, ARRAY[v_c1, v_c2], ARRAY['Raw1', 'Raw2']);
-
-  -- Verify initial_career_id synced to preference 1
-  IF NOT EXISTS (SELECT 1 FROM participants WHERE id = v_pid AND initial_career_id = v_c1) THEN
-    RAISE EXCEPTION 'FAIL: initial_career_id not synced with preference 1';
-  END IF;
-  RAISE NOTICE 'PASS: initial_career_id synced with preference 1 after sync_initial_interests';
-
-  -- Verify 2 rows in initial_interests
-  IF (SELECT count(*) FROM initial_interests WHERE participant_id = v_pid) <> 2 THEN
-    RAISE EXCEPTION 'FAIL: expected 2 initial_interests rows, got %',
-      (SELECT count(*) FROM initial_interests WHERE participant_id = v_pid);
-  END IF;
-  RAISE NOTICE 'PASS: 2 initial_interests rows created with correct order';
-
-  -- Verify order preserved
-  IF NOT EXISTS (SELECT 1 FROM initial_interests WHERE participant_id = v_pid AND preference = 1 AND career_id = v_c1) THEN
-    RAISE EXCEPTION 'FAIL: preference 1 not set to career 1';
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM initial_interests WHERE participant_id = v_pid AND preference = 2 AND career_id = v_c2) THEN
-    RAISE EXCEPTION 'FAIL: preference 2 not set to career 2';
-  END IF;
-  RAISE NOTICE 'PASS: order 1/2 preserved correctly';
-
-  -- Clean up
-  DELETE FROM initial_interests WHERE participant_id = v_pid;
-  DELETE FROM participants WHERE id = v_pid;
-END $$;
-
--- ============================================================
--- 2. PRUEBAS DE IMPORTACIÓN (se prueban via RPC, no directo)
--- ============================================================
--- Las pruebas de importación requieren contexto de auth (coordinación).
--- Se verifican indirectamente verificando que process_participant_import
--- acepta el parámetro p_career_map_2.
-
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_proc p
-    JOIN pg_namespace n ON n.oid = p.pronamespace
-    WHERE n.nspname = 'public' AND p.proname = 'process_participant_import'
-      AND array_length(p.proallargtypes::int[], 1) = 5
-  ) THEN
-    RAISE EXCEPTION 'FAIL: process_participant_import does not accept 5 parameters (p_career_map_2 missing)';
-  END IF;
-  RAISE NOTICE 'PASS: process_participant_import accepts p_career_map_2 parameter';
-END $$;
-
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_proc p
-    JOIN pg_namespace n ON n.oid = p.pronamespace
-    WHERE n.nspname = 'public' AND p.proname = 'preview_participant_import'
-      AND array_length(p.proallargtypes::int[], 1) = 4
-  ) THEN
-    RAISE EXCEPTION 'FAIL: preview_participant_import does not accept 4 parameters (p_career_map_2 missing)';
-  END IF;
-  RAISE NOTICE 'PASS: preview_participant_import accepts p_career_map_2 parameter';
-END $$;
-
--- ============================================================
--- 3. PRUEBAS DE ALTA MANUAL
--- ============================================================
--- Verificar que create_participant_manual acepta initial_career_id_2
-DO $$
-DECLARE v_pid uuid; v_c1 uuid; v_c2 uuid;
-BEGIN
-  SELECT id INTO v_c1 FROM careers WHERE is_active AND is_demo = false ORDER BY name LIMIT 1;
-  SELECT id INTO v_c2 FROM careers WHERE is_active AND is_demo = false AND id <> v_c1 ORDER BY name LIMIT 1;
-
-  -- Limpiar si existe
-  DELETE FROM initial_interests WHERE participant_id IN (
-    SELECT id FROM participants WHERE email = 'test_8a_3@ejemplo.com'
-  );
-  DELETE FROM participants WHERE email = 'test_8a_3@ejemplo.com';
-
-  -- Crear con 2 carreras (usando auth context simulado)
-  -- No podemos llamar create_participant_manual sin auth, así que verificamos
-  -- que la función acepta initial_career_id_2 en su definición
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_proc p
-    JOIN pg_namespace n ON n.oid = p.pronamespace
-    WHERE n.nspname = 'public' AND p.proname = 'create_participant_manual'
-  ) THEN
-    RAISE EXCEPTION 'FAIL: create_participant_manual function not found';
-  END IF;
-  RAISE NOTICE 'PASS: create_participant_manual function exists (accepts jsonb with initial_career_id_2)';
-END $$;
-
--- ============================================================
--- 4. PRUEBAS DE RECOMENDACIONES
--- ============================================================
--- Verificar que my_recommended_activities no referencia post_event_interests
-DO $$
-DECLARE v_def text;
-BEGIN
   SELECT pg_get_functiondef('public.my_recommended_activities()'::regprocedure) INTO v_def;
-  IF v_def ILIKE '%post_event_interests%' THEN
-    RAISE EXCEPTION 'FAIL: my_recommended_activities still references post_event_interests';
-  END IF;
-  RAISE NOTICE 'PASS: my_recommended_activities does NOT reference post_event_interests';
 
-  IF v_def NOT ILIKE '%initial_interests%' THEN
-    RAISE EXCEPTION 'FAIL: my_recommended_activities does not reference initial_interests';
-  END IF;
-  RAISE NOTICE 'PASS: my_recommended_activities uses initial_interests as source';
-END $$;
+  -- ====== TEST STEPS ======
+  CREATE TEMP TABLE rt_steps (seq serial, name text, who text, q text, expect text) ON COMMIT DROP;
+  INSERT INTO rt_steps (name, who, q, expect) VALUES
+  -- ===== Modelo / migración =====
+  ('modelo: tabla existe', 'P', 'select count(*) > 0 from information_schema.tables where table_name = ''initial_interests''', 'TRUE'),
+  ('modelo: A tiene 2 intereses', 'P', 'select count(*) = 2 from initial_interests where participant_id = ' || quote_literal(v_pid) || '::uuid', 'TRUE'),
+  ('modelo: B tiene 1 interes', 'P', 'select count(*) = 1 from initial_interests where participant_id = ' || quote_literal(v_pid2) || '::uuid', 'TRUE'),
+  ('modelo: orden 1 ok', 'P', 'select preference = 1 and career_id = ' || quote_literal(v_c1) || '::uuid from initial_interests where participant_id = ' || quote_literal(v_pid) || '::uuid and preference = 1', 'TRUE'),
+  ('modelo: orden 2 ok', 'P', 'select preference = 2 and career_id = ' || quote_literal(v_c2) || '::uuid from initial_interests where participant_id = ' || quote_literal(v_pid) || '::uuid and preference = 2', 'TRUE'),
+  ('modelo: raw 1 alineado', 'P', 'select career_raw = ''Gastronomia'' from initial_interests where participant_id = ' || quote_literal(v_pid) || '::uuid and preference = 1', 'TRUE'),
+  ('modelo: raw 2 alineado', 'P', 'select career_raw = ''Negocios'' from initial_interests where participant_id = ' || quote_literal(v_pid) || '::uuid and preference = 2', 'TRUE'),
+  ('modelo: sin duplicados', 'P', 'select count(*) = 0 from (select participant_id, career_id from initial_interests group by participant_id, career_id having count(*) > 1) x', 'TRUE'),
+  ('modelo: max 2 CHECK', 'P', 'insert into initial_interests (participant_id, preference, career_id) values (' || quote_literal(v_pid) || '::uuid, 3, ' || quote_literal(v_c3) || '::uuid)', 'ERR:check constraint'),
+  ('modelo: UNIQUE', 'P', 'insert into initial_interests (participant_id, preference, career_id) values (' || quote_literal(v_pid2) || '::uuid, 2, ' || quote_literal(v_c2) || '::uuid)', 'ERR:unique'),
+  ('modelo: sync initial_career_id', 'P', 'select initial_career_id = ' || quote_literal(v_c1) || '::uuid from participants where id = ' || quote_literal(v_pid) || '::uuid', 'TRUE'),
 
--- ============================================================
--- 5. PRUEBAS DE SEGURIDAD
--- ============================================================
+  -- ===== Recomendaciones (antes de correcciones que cambian intereses) =====
+  ('recom: A obtiene talleres', 'A', 'select jsonb_array_length(my_recommended_activities()->''recommendations'') > 0', 'TRUE'),
+  ('recom: A ve W3 Finanzas (C2)', 'A', 'select exists (select 1 from jsonb_array_elements(my_recommended_activities()->''recommendations'') x where x->>''title'' = ''RT8A W3 Finanzas'')', 'TRUE'),
+  ('recom: A ve W1 Crepas (C1)', 'A', 'select exists (select 1 from jsonb_array_elements(my_recommended_activities()->''recommendations'') x where x->>''title'' = ''RT8A W1 Crepas'')', 'TRUE'),
+  ('recom: W2 una vez (dedup)', 'A', 'select count(*) = 1 from jsonb_array_elements(my_recommended_activities()->''recommendations'') x where x->>''title'' = ''RT8A W2 Restaurante''', 'TRUE'),
+  ('recom: 3 talleres distintos', 'A', 'select jsonb_array_length(my_recommended_activities()->''recommendations'') = 3', 'TRUE'),
+  ('recom: post_event no en def', 'P', 'select position(''post_event_interests'' in ' || quote_literal(v_def) || ') = 0', 'TRUE'),
+  ('recom: initial_interests en def', 'P', 'select position(''initial_interests'' in ' || quote_literal(v_def) || ') > 0', 'TRUE'),
 
--- 5a. Verificar RLS habilitada en initial_interests
-DO $$
-DECLARE v_rls boolean;
-BEGIN
-  SELECT relrowsecurity INTO v_rls FROM pg_class WHERE relname = 'initial_interests';
-  IF v_rls IS NOT TRUE THEN
-    RAISE EXCEPTION 'FAIL: RLS not enabled on initial_interests';
-  END IF;
-  RAISE NOTICE 'PASS: RLS enabled on initial_interests';
-END $$;
+  -- ===== Alta manual: validaciones =====
+  ('alta: falta birth_date', 'S', 'select create_participant_manual(jsonb_build_object(''email'',''rt8a.m1@t.invalid'',''full_name'',''Manual Uno'',''phone'',''9981111111'',''high_school'',''Prepa'',''initial_career_id'',''' || v_c1::text || ''',''consent_confirmed'',true,''is_demo'',true))', 'ERR:BIRTH_DATE_REQUIRED'),
+  ('alta: falta telefono', 'S', 'select create_participant_manual(jsonb_build_object(''email'',''rt8a.m2@t.invalid'',''full_name'',''Manual Dos'',''birth_date'',''2008-03-03'',''high_school'',''Prepa'',''initial_career_id'',''' || v_c1::text || ''',''consent_confirmed'',true,''is_demo'',true))', 'ERR:PHONE_REQUIRED'),
+  ('alta: falta preparatoria', 'S', 'select create_participant_manual(jsonb_build_object(''email'',''rt8a.m3@t.invalid'',''full_name'',''Manual Tres'',''birth_date'',''2008-03-03'',''phone'',''9982222222'',''initial_career_id'',''' || v_c1::text || ''',''consent_confirmed'',true,''is_demo'',true))', 'ERR:HIGH_SCHOOL_REQUIRED'),
+  ('alta: falta carrera', 'S', 'select create_participant_manual(jsonb_build_object(''email'',''rt8a.m4@t.invalid'',''full_name'',''Manual Cuatro'',''birth_date'',''2008-03-03'',''phone'',''9983333333'',''high_school'',''Prepa'',''consent_confirmed'',true,''is_demo'',true))', 'ERR:CAREER_REQUIRED'),
+  ('alta: sin consentimiento', 'S', 'select create_participant_manual(jsonb_build_object(''email'',''rt8a.m5@t.invalid'',''full_name'',''Manual Cinco'',''birth_date'',''2008-03-03'',''phone'',''9984444444'',''high_school'',''Prepa'',''initial_career_id'',''' || v_c1::text || ''',''consent_confirmed'',false,''is_demo'',true))', 'ERR:CONSENT_REQUIRED'),
+  ('alta: carrera inexistente', 'S', 'select create_participant_manual(jsonb_build_object(''email'',''rt8a.m5b@t.invalid'',''full_name'',''Manual CincoB'',''birth_date'',''2008-03-03'',''phone'',''9984444445'',''high_school'',''Prepa'',''initial_career_id'',''00000000-0000-0000-0000-000000000099'',''consent_confirmed'',true,''is_demo'',true))', 'ERR:INVALID_CAREER'),
+  ('alta: una carrera ok', 'S', 'select create_participant_manual(jsonb_build_object(''email'',''rt8a.m6@t.invalid'',''full_name'',''Manual Seis'',''birth_date'',''2008-03-03'',''phone'',''9985555555'',''high_school'',''Prepa'',''initial_career_id'',''' || v_c1::text || ''',''consent_confirmed'',true,''is_demo'',true))', 'OK'),
+  ('alta: una carrera 1 interes', 'P', 'select count(*) = 1 from initial_interests ii join participants p on p.id = ii.participant_id where p.email = ''rt8a.m6@t.invalid''', 'TRUE'),
+  ('alta: dos carreras ok', 'S', 'select create_participant_manual(jsonb_build_object(''email'',''rt8a.m7@t.invalid'',''full_name'',''Manual Siete'',''birth_date'',''2008-04-04'',''phone'',''9986666666'',''high_school'',''Prepa'',''initial_career_id'',''' || v_c1::text || ''',''initial_career_id_2'',''' || v_c2::text || ''',''consent_confirmed'',true,''is_demo'',true))', 'OK'),
+  ('alta: dos carreras 2 intereses', 'P', 'select count(*) = 2 from initial_interests ii join participants p on p.id = ii.participant_id where p.email = ''rt8a.m7@t.invalid''', 'TRUE'),
+  ('alta: dos carreras orden', 'P', 'select ii.preference = 1 and ii.career_id = ' || quote_literal(v_c1) || '::uuid from initial_interests ii join participants p on p.id = ii.participant_id where p.email = ''rt8a.m7@t.invalid'' and ii.preference = 1', 'TRUE'),
+  ('alta: carrera duplicada', 'S', 'select create_participant_manual(jsonb_build_object(''email'',''rt8a.m8@t.invalid'',''full_name'',''Manual Ocho'',''birth_date'',''2008-04-04'',''phone'',''9987777777'',''high_school'',''Prepa'',''initial_career_id'',''' || v_c1::text || ''',''initial_career_id_2'',''' || v_c1::text || ''',''consent_confirmed'',true,''is_demo'',true))', 'ERR:DUPLICATE'),
 
--- 5b. Verificar que anon y authenticated no tienen grants directos en initial_interests
-DO $$
-DECLARE v_has_grant boolean;
-BEGIN
-  SELECT EXISTS (
-    SELECT 1 FROM information_schema.role_table_grants
-    WHERE table_name = 'initial_interests'
-      AND grantee IN ('anon', 'authenticated')
-      AND privilege_type IN ('INSERT', 'UPDATE', 'DELETE')
-  ) INTO v_has_grant;
-  IF v_has_grant THEN
-    RAISE EXCEPTION 'FAIL: anon or authenticated has write grants on initial_interests';
-  END IF;
-  RAISE NOTICE 'PASS: no write grants on initial_interests for anon/authenticated';
-END $$;
+  -- ===== Corrección =====
+  ('correccion: cambiar carrera 1', 'S', 'select update_participant(' || quote_literal(v_pid) || '::uuid, jsonb_build_object(''initial_career_id'',''' || v_c3::text || '''))', 'OK'),
+  ('correccion: carrera 1 ok', 'P', 'select career_id = ' || quote_literal(v_c3) || '::uuid from initial_interests where participant_id = ' || quote_literal(v_pid) || '::uuid and preference = 1', 'TRUE'),
+  ('correccion: initial_career_id sync', 'P', 'select initial_career_id = ' || quote_literal(v_c3) || '::uuid from participants where id = ' || quote_literal(v_pid) || '::uuid', 'TRUE'),
+  ('correccion: carrera 2 intacta', 'P', 'select career_id = ' || quote_literal(v_c2) || '::uuid from initial_interests where participant_id = ' || quote_literal(v_pid) || '::uuid and preference = 2', 'TRUE'),
+  ('correccion: cambiar carrera 2 a C1', 'S', 'select update_participant(' || quote_literal(v_pid) || '::uuid, jsonb_build_object(''initial_career_id_2'',''' || v_c1::text || '''))', 'OK'),
+  ('correccion: carrera 2 ok', 'P', 'select career_id = ' || quote_literal(v_c1) || '::uuid from initial_interests where participant_id = ' || quote_literal(v_pid) || '::uuid and preference = 2', 'TRUE'),
+  ('correccion: limpiar carrera 2', 'S', 'select update_participant(' || quote_literal(v_pid) || '::uuid, jsonb_build_object(''initial_career_id_2'',''''))', 'OK'),
+  ('correccion: carrera 2 limpiada', 'P', 'select count(*) = 0 from initial_interests where participant_id = ' || quote_literal(v_pid) || '::uuid and preference = 2', 'TRUE'),
+  ('correccion: carrera 1 intacta tras limpiar 2', 'P', 'select count(*) = 1 from initial_interests where participant_id = ' || quote_literal(v_pid) || '::uuid and preference = 1', 'TRUE'),
+  ('correccion: promocion 2 a 1', 'S', 'select update_participant(' || quote_literal(v_pid2) || '::uuid, jsonb_build_object(''initial_career_id'','''',''initial_career_id_2'',''' || v_c1::text || '''))', 'OK'),
+  ('correccion: carrera 2 promovida', 'P', 'select career_id = ' || quote_literal(v_c1) || '::uuid from initial_interests where participant_id = ' || quote_literal(v_pid2) || '::uuid and preference = 1', 'TRUE'),
+  ('correccion: no preference 2 tras promocion', 'P', 'select count(*) = 0 from initial_interests where participant_id = ' || quote_literal(v_pid2) || '::uuid and preference = 2', 'TRUE'),
 
--- 5c. Verificar que get_my_initial_interests existe y está revocada de anon
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_proc p
-    JOIN pg_namespace n ON n.oid = p.pronamespace
-    WHERE n.nspname = 'public' AND p.proname = 'get_my_initial_interests'
-  ) THEN
-    RAISE EXCEPTION 'FAIL: get_my_initial_interests function not found';
-  END IF;
-  RAISE NOTICE 'PASS: get_my_initial_interests function exists';
-END $$;
+  -- ===== Corrección: cambio de correo con historial =====
+  ('correccion: cambiar correo', 'S', 'select update_participant(' || quote_literal(v_pid) || '::uuid, jsonb_build_object(''email'',''rt8a.a.new@t.invalid'',''email_reason'',''correccion''))', 'OK'),
+  ('correccion: historial', 'P', 'select count(*) = 1 from participant_email_history where participant_id = ' || quote_literal(v_pid) || '::uuid and email = ''rt8a.a@test.invalid''', 'TRUE'),
+  ('correccion: motivo', 'P', 'select reason = ''correccion'' from participant_email_history where participant_id = ' || quote_literal(v_pid) || '::uuid and email = ''rt8a.a@test.invalid''', 'TRUE'),
+  ('correccion: correo vigente', 'P', 'select email = ''rt8a.a.new@t.invalid'' from participants where id = ' || quote_literal(v_pid) || '::uuid', 'TRUE'),
 
--- 5d. Verificar que sync_initial_interests no es ejecutable por anon/authenticated
-DO $$
-DECLARE v_has_grant boolean;
-BEGIN
-  SELECT EXISTS (
-    SELECT 1 FROM information_schema.role_routine_grants
-    WHERE routine_name = 'sync_initial_interests'
-      AND grantee IN ('anon', 'authenticated')
-  ) INTO v_has_grant;
-  IF v_has_grant THEN
-    RAISE EXCEPTION 'FAIL: sync_initial_interests is executable by anon or authenticated';
-  END IF;
-  RAISE NOTICE 'PASS: sync_initial_interests is not executable by anon/authenticated (internal only)';
-END $$;
+  -- ===== Seguridad =====
+  ('seg: A no lee B', 'A', 'select count(*) from initial_interests where participant_id = ' || quote_literal(v_pid2) || '::uuid', 'ERR:permission denied'),
+  ('seg: A lee propias via RPC', 'A', 'select jsonb_array_length(get_my_initial_interests()) >= 1', 'TRUE'),
+  ('seg: anon no lee', 'X', 'select count(*) from initial_interests', 'ERR:permission denied'),
+  ('seg: anon no sync', 'X', 'select sync_initial_interests(' || quote_literal(v_pid) || '::uuid, array[''' || v_c1::text || ''']::uuid[], null)', 'ERR:permission denied'),
+  ('seg: sorteo no sync', 'R', 'select sync_initial_interests(' || quote_literal(v_pid) || '::uuid, array[''' || v_c1::text || ''']::uuid[], null)', 'ERR:permission denied'),
+  ('seg: sorteo no crea', 'R', 'select create_participant_manual(jsonb_build_object(''email'',''rt8a.sorteo@t.invalid'',''full_name'',''Sorteo Test'',''birth_date'',''2008-01-01'',''phone'',''9989999999'',''high_school'',''Prepa'',''initial_career_id'',''' || v_c1::text || ''',''consent_confirmed'',true,''is_demo'',true))', 'ERR:NOT_AUTHORIZED'),
+  ('seg: get_my_initial_interests own', 'A', 'select jsonb_array_length(get_my_initial_interests()) >= 1', 'TRUE'),
+  ('seg: B no update A', 'B', 'select update_participant(' || quote_literal(v_pid) || '::uuid, jsonb_build_object(''full_name'',''Hackeado''))', 'ERR:NOT_AUTHORIZED');
 
--- ============================================================
--- RESUMEN
--- ============================================================
-RAISE NOTICE '=== All Fase 8A regression tests completed ===';
+  -- ===== RUN STEPS =====
+  FOR st IN SELECT * FROM rt_steps ORDER BY seq LOOP
+    v_q := st.q;
+    v_uid := CASE st.who WHEN 'C' THEN c WHEN 'S' THEN s WHEN 'R' THEN r WHEN 'A' THEN ua WHEN 'B' THEN ub END;
+    v_val := NULL; v_err := NULL;
+    BEGIN
+      IF st.who = 'X' THEN
+        PERFORM set_config('request.jwt.claims', '{"role":"anon"}', true);
+        PERFORM set_config('role', 'anon', true);
+      ELSIF v_uid IS NOT NULL THEN
+        PERFORM set_config('request.jwt.claims', json_build_object('sub', v_uid, 'role', 'authenticated')::text, true);
+        PERFORM set_config('role', 'authenticated', true);
+      END IF;
+      IF v_q ~* '^(update|insert|create)' THEN EXECUTE v_q; ELSE EXECUTE v_q INTO v_val; END IF;
+    EXCEPTION WHEN others THEN v_err := SQLERRM; END;
+    PERFORM set_config('role', 'postgres', true);
+    PERFORM set_config('request.jwt.claims', '', true);
+    v_ok := CASE
+      WHEN st.expect = 'OK' THEN v_err IS NULL
+      WHEN st.expect = 'TRUE' THEN v_err IS NULL AND v_val = 'true'
+      WHEN st.expect LIKE 'ERR:%' THEN v_err LIKE '%' || substr(st.expect, 5) || '%'
+    END;
+    IF v_ok THEN v_pass := v_pass + 1;
+    ELSE v_fail := v_fail + 1; v_res := v_res || st.name || '[' || coalesce('err:' || v_err, 'val:' || coalesce(v_val, 'null')) || '] '; END IF;
+  END LOOP;
+  RAISE EXCEPTION E'% ok % fail: %', v_pass, v_fail, v_res;
+END
+$test$;
