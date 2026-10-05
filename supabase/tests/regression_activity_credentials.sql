@@ -25,6 +25,7 @@ DECLARE
   st record;
   v_uid uuid; v_q text; v_val text; v_err text; v_ok boolean;
   v_res_str text := ''; v_pass int := 0; v_fail int := 0;
+  v_rv jsonb; v_rc text; v_ri int; v_rb boolean;
 BEGIN
   -- ====== FIXTURE ======
   INSERT INTO auth.users (id, instance_id, aud, role, email, raw_app_meta_data, raw_user_meta_data, created_at, updated_at)
@@ -216,13 +217,45 @@ BEGIN
     IF v_ok THEN v_pass := v_pass + 1;
     ELSE v_fail := v_fail + 1; v_res_str := v_res_str || st.name || '[' || coalesce('err:' || v_err, 'val:' || coalesce(v_val, 'null')) || '] '; END IF;
     IF st.name = 'REGEN_ACT1' AND v_err IS NULL THEN
-      INSERT INTO rt_steps (name, who, q, expect) VALUES
-      ('regen: nuevo token capturado', 'P', 'select ' || quote_literal(v_new_token1) || ' is not null', 'TRUE'),
-      ('regen: token anterior act1 inválido', 'A', 'select check_in(' || quote_literal(v_token1) || ')', 'ERR:INVALID_CREDENTIAL'),
-      ('regen: Ana check-in con token nuevo', 'A', 'select (check_in(' || quote_literal(v_new_token1) || ')->>''already_registered'') = ''true''', 'TRUE'),
-      ('regen: Ana sigue en sesión 1b', 'P', 'select count(*) = 1 from attendances where participant_id = ' || quote_literal(v_pid) || '::uuid and session_id = ' || quote_literal(v_s1b) || '::uuid', 'TRUE'),
-      ('regen: Ana 1 sola asistencia', 'P', 'select count(*) = 1 from attendances where participant_id = ' || quote_literal(v_pid) || '::uuid', 'TRUE'),
-      ('regen: Ana créditos correctos', 'P', 'select credits_granted = 1 from attendances where participant_id = ' || quote_literal(v_pid) || '::uuid', 'TRUE');
+      -- ===== Fase 2: verificaciones inline tras regenerar act1 =====
+      -- 1. nuevo token capturado
+      IF v_new_token1 IS NOT NULL THEN v_pass := v_pass + 1;
+      ELSE v_fail := v_fail + 1; v_res_str := v_res_str || 'regen: nuevo token capturado[val:null] '; END IF;
+
+      -- 2. token anterior inválido (Ana escanea con v_token1)
+      PERFORM set_config('request.jwt.claims', json_build_object('sub', ua, 'role', 'authenticated')::text, true);
+      PERFORM set_config('role', 'authenticated', true);
+      BEGIN
+        SELECT check_in(v_token1) INTO v_rv;
+        v_err := NULL;
+      EXCEPTION WHEN others THEN v_err := SQLERRM; END;
+      IF v_err LIKE '%INVALID_CREDENTIAL%' THEN v_pass := v_pass + 1;
+      ELSE v_fail := v_fail + 1; v_res_str := v_res_str || 'regen: token anterior inválido[err:' || coalesce(v_err, 'val:' || coalesce(v_rv::text, 'null')) || '] '; END IF;
+
+      -- 3. token nuevo aceptado: already_registered = true (Ana ya tiene asistencia)
+      v_rv := NULL; v_err := NULL;
+      BEGIN
+        SELECT check_in(v_new_token1) INTO v_rv;
+      EXCEPTION WHEN others THEN v_err := SQLERRM; END;
+      IF v_err IS NULL AND (v_rv->>'already_registered') = 'true' THEN v_pass := v_pass + 1;
+      ELSE v_fail := v_fail + 1; v_res_str := v_res_str || 'regen: Ana check-in token nuevo[err:' || coalesce(v_err, 'val:' || coalesce(v_rv::text, 'null')) || '] '; END IF;
+
+      -- 4. Ana sigue asociada a sesión 1b
+      PERFORM set_config('role', 'postgres', true);
+      PERFORM set_config('request.jwt.claims', '', true);
+      SELECT count(*) INTO v_ri FROM attendances WHERE participant_id = v_pid AND session_id = v_s1b;
+      IF v_ri = 1 THEN v_pass := v_pass + 1;
+      ELSE v_fail := v_fail + 1; v_res_str := v_res_str || 'regen: Ana en sesión 1b[val:' || v_ri || '] '; END IF;
+
+      -- 5. Ana tiene exactamente 1 asistencia
+      SELECT count(*) INTO v_ri FROM attendances WHERE participant_id = v_pid;
+      IF v_ri = 1 THEN v_pass := v_pass + 1;
+      ELSE v_fail := v_fail + 1; v_res_str := v_res_str || 'regen: Ana 1 sola asistencia[val:' || v_ri || '] '; END IF;
+
+      -- 6. créditos siguen siendo 1
+      SELECT credits_granted INTO v_ri FROM attendances WHERE participant_id = v_pid;
+      IF v_ri = 1 THEN v_pass := v_pass + 1;
+      ELSE v_fail := v_fail + 1; v_res_str := v_res_str || 'regen: Ana créditos correctos[val:' || v_ri || '] '; END IF;
     END IF;
   END LOOP;
   RAISE EXCEPTION E'% ok % fail: %', v_pass, v_fail, v_res_str;
