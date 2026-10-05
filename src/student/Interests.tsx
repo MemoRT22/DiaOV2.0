@@ -1,7 +1,7 @@
 import { ArrowDown, ArrowUp, Check, Search, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Alert, Button, LoadError, PageSkeleton } from '../components/ui';
-import { fetchCareers, fetchDivisions, fetchPostEventInterests } from '../lib/catalog';
+import { fetchDivisions, fetchPostEventInterests } from '../lib/catalog';
 import { friendlyError } from '../lib/errors';
 import { supabase } from '../lib/supabase';
 import { useLoad } from '../lib/useLoad';
@@ -18,7 +18,7 @@ const normalize = (s: string) =>
 export default function Interests() {
   const { theme, text } = useTheme();
   const { data, error, loading, reload } = useLoad(
-    () => Promise.all([fetchCareers(), fetchDivisions(), fetchPostEventInterests()]),
+    () => Promise.all([fetchDivisions(), fetchPostEventInterests()]),
     [],
   );
   const [selected, setSelected] = useState<string[]>([]);
@@ -29,12 +29,13 @@ export default function Interests() {
 
   useEffect(() => {
     if (data) {
-      setSelected(data[2].career_ids);
-      setSaved(data[2].career_ids);
+      setSelected(data[1].career_ids);
+      setSaved(data[1].career_ids);
     }
   }, [data]);
 
-  const [careers, divisions, interests] = data ?? [[], [], null] as const;
+  const [divisions, interests] = data ?? [[], null] as const;
+  const careers = interests?.careers ?? [];
   const careerById = useMemo(() => new Map(careers.map((c) => [c.id, c])), [careers]);
   const groups = useMemo(() => {
     const q = normalize(query.trim());

@@ -12,6 +12,7 @@ DECLARE
   v_id uuid; v_i int; v_n int; v_n2 int; v_err text; v_txt text; v_j jsonb; v_j2 jsonb;
     snap_init jsonb; snap_init2 jsonb; snap_rec jsonb; snap_rec2 jsonb; snap_part uuid; snap_part2 uuid;
   snap_cnt text; snap_cnt2 text;
+  c_real_off uuid; v_ga text[]; v_ge text[]; v_glob text; v_glob2 text; p4_init jsonb; p4_init2 jsonb; p4_rec jsonb; p4_rec2 jsonb; p4_cnt text; p4_cnt2 text;
   v_pass int := 0; v_fail int := 0; v_res_str text := '';
 BEGIN
   SELECT * INTO v_ed FROM editions WHERE id = ed;
@@ -28,6 +29,12 @@ BEGIN
     UPDATE participant_profiles SET platform_consent_version = v_ed.privacy_notice_version, platform_consent_at = now() WHERE participant_id = v_id;
   END LOOP;
 
+  -- Participante REAL (P4) para probar el catálogo por entorno
+  v_id := '00000000-0000-4000-8000-00000000e104'::uuid;
+  INSERT INTO auth.users (id, instance_id, aud, role, email, raw_app_meta_data, raw_user_meta_data, created_at, updated_at)
+  VALUES (v_id, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'rpe.p4@test.invalid', '{}', '{}', now(), now());
+  v_u := v_u || v_id;
+
   INSERT INTO careers (code, name, division_id, is_demo, is_active) VALUES ('RPE-1', 'RPE Carrera 1', v_div, true, true) RETURNING id INTO c1;
   INSERT INTO careers (code, name, division_id, is_demo, is_active) VALUES ('RPE-2', 'RPE Carrera 2', v_div, true, true) RETURNING id INTO c2;
   INSERT INTO careers (code, name, division_id, is_demo, is_active) VALUES ('RPE-3', 'RPE Carrera 3', v_div, true, true) RETURNING id INTO c3;
@@ -35,6 +42,12 @@ BEGIN
   INSERT INTO careers (code, name, division_id, is_demo, is_active) VALUES ('RPE-5', 'RPE Carrera 5', v_div, true, true) RETURNING id INTO c5;
   INSERT INTO careers (code, name, division_id, is_demo, is_active) VALUES ('RPE-OFF', 'RPE Inactiva', v_div, true, false) RETURNING id INTO c_inactive;
   INSERT INTO careers (code, name, division_id, is_demo, is_active) VALUES ('RPE-REAL', 'RPE Real', v_div, false, true) RETURNING id INTO c_real;
+  INSERT INTO careers (code, name, division_id, is_demo, is_active) VALUES ('RPE-REAL-OFF', 'RPE Real Inactiva', v_div, false, false) RETURNING id INTO c_real_off;
+  INSERT INTO participants (edition_id, email, full_name, birth_date, origin, auth_user_id, initial_career_id)
+  VALUES (ed, 'rpe.p4@test.invalid', 'RPE P4 real', '2008-01-01', 'forms', v_u[4], c_real) RETURNING id INTO v_id;
+  v_p := v_p || v_id;
+  UPDATE participant_profiles SET platform_consent_version = v_ed.privacy_notice_version, platform_consent_at = now() WHERE participant_id = v_id;
+  PERFORM sync_initial_interests(v_id, ARRAY[c_real], ARRAY['rpe real']);
 
   -- Talleres: a1 y a2 (asistencias de P1), a3 (recomendable por la carrera inicial c1)
   INSERT INTO activities (edition_id, division_id, title, description, location, is_demo) VALUES (ed, v_div, 'RPE A1', '', 'A1', true) RETURNING id INTO a1;
@@ -113,6 +126,9 @@ BEGIN
   SELECT count(*) INTO v_n FROM attendances WHERE participant_id = v_p[2];
   IF (v_j->>'post_event_interests_prompt') = 'true' AND v_n = 0
     THEN v_pass := v_pass + 1; ELSE v_fail := v_fail + 1; v_res_str := v_res_str || 'J.byDate[' || v_j::text || '/' || v_n || '] '; END IF;
+
+  SELECT (SELECT count(*) FROM reservations) || '/' || (SELECT count(*) FROM attendances) || '/' || (SELECT coalesce(sum(credits_granted), 0) FROM attendances)
+         || '/' || (SELECT count(*) FROM activity_credentials) || '/' || (SELECT count(*) FROM initial_interests) INTO v_glob;
 
   -- ===================== A-F. Guardar =====================
   PERFORM set_config('request.jwt.claims', json_build_object('sub', v_u[1], 'role', 'authenticated')::text, true);
@@ -209,6 +225,58 @@ BEGIN
   PERFORM set_config('role', 'postgres', true); PERFORM set_config('request.jwt.claims', '', true);
   SELECT count(*) INTO v_n FROM post_event_interests WHERE participant_id = v_p[1];
   IF v_n = 2 THEN v_pass := v_pass + 1; ELSE v_fail := v_fail + 1; v_res_str := v_res_str || 'G.p1Intact[' || v_n || '] '; END IF;
+
+  -- ===================== L. Catálogo seleccionable alineado con el entorno =====================
+  -- demo (P2)
+  PERFORM set_config('request.jwt.claims', json_build_object('sub', v_u[2], 'role', 'authenticated')::text, true);
+  PERFORM set_config('role', 'authenticated', true);
+  v_j := my_post_event_interests();
+  SELECT array_agg(x->>'id' ORDER BY x->>'id') INTO v_ga FROM jsonb_array_elements(v_j->'careers') x;
+  SELECT array_agg(id::text ORDER BY id::text) INTO v_ge FROM careers WHERE is_active AND is_demo;
+  IF v_ga = v_ge THEN v_pass := v_pass + 1; ELSE v_fail := v_fail + 1; v_res_str := v_res_str || 'L.demoCatalog[' || coalesce(v_ga::text, 'null') || ' vs ' || coalesce(v_ge::text, 'null') || '] '; END IF;
+  IF c1::text = ANY (v_ga) AND NOT (c_real::text = ANY (v_ga)) AND NOT (c_real_off::text = ANY (v_ga)) AND NOT (c_inactive::text = ANY (v_ga))
+    THEN v_pass := v_pass + 1; ELSE v_fail := v_fail + 1; v_res_str := v_res_str || 'L.demoMembers[] '; END IF;
+  v_err := NULL; BEGIN PERFORM save_post_event_interests(ARRAY[c_real]); EXCEPTION WHEN others THEN v_err := SQLERRM; END;
+  IF v_err LIKE '%INVALID_CAREER%' THEN v_pass := v_pass + 1; ELSE v_fail := v_fail + 1; v_res_str := v_res_str || 'L.demoRejectsReal[' || coalesce(v_err, 'ok') || '] '; END IF;
+  v_err := NULL; BEGIN PERFORM save_post_event_interests(ARRAY[c_inactive]); EXCEPTION WHEN others THEN v_err := SQLERRM; END;
+  IF v_err LIKE '%INVALID_CAREER%' THEN v_pass := v_pass + 1; ELSE v_fail := v_fail + 1; v_res_str := v_res_str || 'L.demoRejectsInactive[' || coalesce(v_err, 'ok') || '] '; END IF;
+  v_err := NULL; BEGIN PERFORM save_post_event_interests(ARRAY[c1]); EXCEPTION WHEN others THEN v_err := SQLERRM; END;
+  IF v_err IS NULL THEN v_pass := v_pass + 1; ELSE v_fail := v_fail + 1; v_res_str := v_res_str || 'L.demoAllowsDemo[' || coalesce(v_err, '?') || '] '; END IF;
+  PERFORM set_config('role', 'postgres', true); PERFORM set_config('request.jwt.claims', '', true);
+
+  -- real (P4)
+  SELECT coalesce(jsonb_agg(to_jsonb(i) - 'updated_at' - 'created_at' ORDER BY preference), '[]') INTO p4_init FROM initial_interests i WHERE participant_id = v_p[4];
+  p4_cnt := (SELECT count(*) FROM reservations WHERE participant_id = v_p[4]) || '/' || (SELECT count(*) FROM attendances WHERE participant_id = v_p[4]) || '/' || my_stamp_count(v_p[4]);
+  PERFORM set_config('request.jwt.claims', json_build_object('sub', v_u[4], 'role', 'authenticated')::text, true);
+  PERFORM set_config('role', 'authenticated', true);
+  p4_rec := my_recommended_activities();
+  v_j := my_post_event_interests();
+  SELECT array_agg(x->>'id' ORDER BY x->>'id') INTO v_ga FROM jsonb_array_elements(v_j->'careers') x;
+  SELECT array_agg(id::text ORDER BY id::text) INTO v_ge FROM careers WHERE is_active AND NOT is_demo;
+  IF v_ga = v_ge THEN v_pass := v_pass + 1; ELSE v_fail := v_fail + 1; v_res_str := v_res_str || 'L.realCatalog[' || coalesce(v_ga::text, 'null') || ' vs ' || coalesce(v_ge::text, 'null') || '] '; END IF;
+  IF c_real::text = ANY (v_ga) AND NOT (c1::text = ANY (v_ga)) AND NOT (c_real_off::text = ANY (v_ga)) AND NOT (c_inactive::text = ANY (v_ga))
+    THEN v_pass := v_pass + 1; ELSE v_fail := v_fail + 1; v_res_str := v_res_str || 'L.realMembers[] '; END IF;
+  IF (v_j->>'post_event_interests_prompt') = 'true' THEN v_pass := v_pass + 1; ELSE v_fail := v_fail + 1; v_res_str := v_res_str || 'L.realPrompt[' || v_j::text || '] '; END IF;
+  v_err := NULL; BEGIN PERFORM save_post_event_interests(ARRAY[c1]); EXCEPTION WHEN others THEN v_err := SQLERRM; END;
+  IF v_err LIKE '%INVALID_CAREER%' THEN v_pass := v_pass + 1; ELSE v_fail := v_fail + 1; v_res_str := v_res_str || 'L.realRejectsDemo[' || coalesce(v_err, 'ok') || '] '; END IF;
+  v_err := NULL; BEGIN PERFORM save_post_event_interests(ARRAY[c_real_off]); EXCEPTION WHEN others THEN v_err := SQLERRM; END;
+  IF v_err LIKE '%INVALID_CAREER%' THEN v_pass := v_pass + 1; ELSE v_fail := v_fail + 1; v_res_str := v_res_str || 'L.realRejectsInactive[' || coalesce(v_err, 'ok') || '] '; END IF;
+  v_err := NULL; BEGIN PERFORM save_post_event_interests(ARRAY[c_real, c1]); EXCEPTION WHEN others THEN v_err := SQLERRM; END;
+  IF v_err LIKE '%INVALID_CAREER%' THEN v_pass := v_pass + 1; ELSE v_fail := v_fail + 1; v_res_str := v_res_str || 'L.realRejectsMixed[' || coalesce(v_err, 'ok') || '] '; END IF;
+  v_err := NULL; BEGIN PERFORM save_post_event_interests(ARRAY[c_real]); EXCEPTION WHEN others THEN v_err := SQLERRM; END;
+  IF v_err IS NULL THEN v_pass := v_pass + 1; ELSE v_fail := v_fail + 1; v_res_str := v_res_str || 'L.realAllowsReal[' || coalesce(v_err, '?') || '] '; END IF;
+  SELECT count(*), min(preference) INTO v_n, v_n2 FROM post_event_interests;
+  IF v_n = 1 AND v_n2 = 1 THEN v_pass := v_pass + 1; ELSE v_fail := v_fail + 1; v_res_str := v_res_str || 'L.realSaved[' || v_n || '/' || v_n2 || '] '; END IF;
+  p4_rec2 := my_recommended_activities();
+  PERFORM set_config('role', 'postgres', true); PERFORM set_config('request.jwt.claims', '', true);
+  SELECT coalesce(jsonb_agg(to_jsonb(i) - 'updated_at' - 'created_at' ORDER BY preference), '[]') INTO p4_init2 FROM initial_interests i WHERE participant_id = v_p[4];
+  p4_cnt2 := (SELECT count(*) FROM reservations WHERE participant_id = v_p[4]) || '/' || (SELECT count(*) FROM attendances WHERE participant_id = v_p[4]) || '/' || my_stamp_count(v_p[4]);
+  IF p4_init = p4_init2 AND jsonb_array_length(p4_init) = 1 AND p4_rec = p4_rec2 AND p4_cnt = p4_cnt2
+    THEN v_pass := v_pass + 1; ELSE v_fail := v_fail + 1; v_res_str := v_res_str || 'L.realIndependent[' || p4_cnt || ' vs ' || p4_cnt2 || '] '; END IF;
+  -- global: reservas, asistencias, créditos, QR e intereses iniciales no cambian por guardar intereses finales
+  SELECT (SELECT count(*) FROM reservations) || '/' || (SELECT count(*) FROM attendances) || '/' || (SELECT coalesce(sum(credits_granted), 0) FROM attendances)
+         || '/' || (SELECT count(*) FROM activity_credentials) || '/' || (SELECT count(*) FROM initial_interests) INTO v_glob2;
+  IF v_glob = v_glob2 THEN v_pass := v_pass + 1; ELSE v_fail := v_fail + 1; v_res_str := v_res_str || 'L.global[' || v_glob || ' vs ' || v_glob2 || '] '; END IF;
 
   -- ===================== H. Ventana cerrada =====================
   UPDATE editions SET interests_close_at = now() - interval '1 minute' WHERE id = ed;

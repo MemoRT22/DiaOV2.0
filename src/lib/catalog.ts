@@ -42,6 +42,9 @@ export type Progress = {
   post_event_interests_completed: boolean;
 };
 
+/** Careers the participant may pick: derived server-side from their identity (active + their demo/real environment). */
+export type PostEventCareer = Pick<Career, 'id' | 'code' | 'name' | 'division_id'>;
+
 export type PostEventInterests = {
   post_event_interests_prompt: boolean;
   post_event_interests_open: boolean;
@@ -51,6 +54,7 @@ export type PostEventInterests = {
   /** Selected career ids ordered by preference (1st, 2nd, 3rd). */
   career_ids: string[];
   items: { career_id: string; preference: number }[];
+  careers: PostEventCareer[];
 };
 
 export async function fetchDivisions(): Promise<Division[]> {
