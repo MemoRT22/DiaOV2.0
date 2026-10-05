@@ -1,9 +1,11 @@
-import { FileSpreadsheet, ShieldCheck } from 'lucide-react';
+import { Compass, FileSpreadsheet, ShieldCheck } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import { Alert, Button, Field } from '../../components/ui';
 import { rpc } from '../../lib/adminApi';
 import { friendlyError } from '../../lib/errors';
+import { exportVocational } from '../../lib/vocationalApi';
 import { useTheme } from '../../theme/ThemeProvider';
+import { buildVocationalWorkbook } from './buildVocationalWorkbook';
 import { buildWorkbook, type ExportPayload } from './buildWorkbook';
 
 export default function ExportPage() {
@@ -13,6 +15,9 @@ export default function ExportPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [done, setDone] = useState<number | null>(null);
+  const [vocBusy, setVocBusy] = useState(false);
+  const [vocError, setVocError] = useState('');
+  const [vocDone, setVocDone] = useState<number | null>(null);
   const preparing = edition?.mode === 'preparacion';
 
   const submit = async (e: FormEvent) => {
@@ -36,6 +41,30 @@ export default function ExportPage() {
       setError(friendlyError(cause));
     } finally {
       setBusy(false);
+    }
+  };
+
+  const submitVocational = async (e: FormEvent) => {
+    e.preventDefault();
+    setVocBusy(true);
+    setVocError('');
+    setVocDone(null);
+    try {
+      const demo = preparing && includeDemo;
+      const payload = await exportVocational(reason.trim(), demo);
+      if (!payload || !Array.isArray(payload.rows)) throw new Error('SERVER_ERROR');
+      const blob = await buildVocationalWorkbook(payload);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `vocacional-${payload.edition_code}-${new Date().toISOString().slice(0, 10)}.xlsx`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setVocDone(payload.count);
+    } catch (cause) {
+      setVocError(friendlyError(cause));
+    } finally {
+      setVocBusy(false);
     }
   };
 
@@ -86,6 +115,29 @@ export default function ExportPage() {
           {busy ? 'Generando…' : 'Generar Excel'}
         </Button>
       </form>
+
+      <div className="card space-y-5 p-6">
+        <div>
+          <h2 className="flex items-center gap-2 text-lg font-extrabold">
+            <Compass className="h-5 w-5 text-primary-400" aria-hidden />
+            Exportación vocacional
+          </h2>
+          <p className="mt-1 text-sm text-ink-muted">
+            Descarga un Excel con el resumen vocacional de cada aspirante: interés inicial, opciones posteriores, talleres
+            asistidos y divisiones visitadas. No incluye calificación de afinidad.
+          </p>
+        </div>
+        {vocError && <Alert tone="error">{vocError}</Alert>}
+        {vocDone !== null && (
+          <Alert tone="success">
+            Listo. Se descargó el archivo vocacional con {vocDone} participante{vocDone === 1 ? '' : 's'}.
+          </Alert>
+        )}
+        <Button onClick={submitVocational} loading={vocBusy} variant="secondary">
+          <Compass className="h-4 w-4" aria-hidden />
+          {vocBusy ? 'Generando…' : 'Generar Excel vocacional'}
+        </Button>
+      </div>
     </div>
   );
 }

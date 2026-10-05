@@ -29,6 +29,7 @@ export default function Passport() {
   const rank = theme.ranks[progress.level - 1];
   const showPrompt = progress.interests_prompt && progress.interests_open && interests.length === 0 && !dismissed;
   const finished = progress.level === 5 || interests.length > 0;
+  const showBrujulaPrompt = progress.interests_prompt && progress.interests_open;
 
   const remainingStamps = progress.next ? Math.max(progress.next.required_attendances - progress.stamps, 0) : 0;
   const remainingDivisions = progress.next ? Math.max(progress.next.required_divisions - visited.size, 0) : 0;
@@ -140,10 +141,12 @@ export default function Passport() {
             <X className="h-4 w-4" />
           </button>
           <Compass className="h-6 w-6 text-primary-400" aria-hidden />
-          <h2 className="mt-2 pr-6 text-lg font-extrabold">{text('interestsPromptTitle')}</h2>
-          <p className="mt-1 text-sm text-ink-muted">{text('interestsPromptBody')}</p>
+          <h2 className="mt-2 pr-6 text-lg font-extrabold">Descubre tu Brújula Vocacional</h2>
+          <p className="mt-1 text-sm text-ink-muted">
+            Explora las conexiones entre los talleres que cursaste y las carreras que podrías considerar.
+          </p>
           <Link to="/destinos" className={buttonClasses('primary', 'mt-4')}>
-            Elegir carreras
+            Abrir mi Brújula
           </Link>
         </section>
       )}
@@ -212,6 +215,12 @@ export default function Passport() {
           {theme.assets.mascot && <img src={theme.assets.mascot} alt="" loading="lazy" decoding="async" className="mx-auto h-28 w-auto" />}
           <h2 className="mt-3 text-lg font-extrabold">{text('closingTitle')}</h2>
           <p className="mt-1 text-sm text-ink-muted">{text('closingBody')}</p>
+          {showBrujulaPrompt && (
+            <Link to="/destinos" className={buttonClasses('secondary', 'mt-4')}>
+              <Compass className="mr-1.5 h-4 w-4" />
+              Ver mi Brújula Vocacional
+            </Link>
+          )}
         </section>
       )}
     </div>
