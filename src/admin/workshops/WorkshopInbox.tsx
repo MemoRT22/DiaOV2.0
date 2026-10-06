@@ -27,7 +27,7 @@ export default function WorkshopInbox() {
     <div className="space-y-6">
       <header>
         <h1 className="text-2xl font-extrabold">Propuestas de talleres</h1>
-        <p className="mt-1 text-sm text-ink-muted">Revisa propuestas recibidas. Esta bandeja no publica talleres al catálogo.</p>
+        <p className="mt-1 text-sm text-ink-muted">Revisa, aprueba y publica las propuestas recibidas en Día OV.</p>
       </header>
 
       {data && (

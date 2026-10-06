@@ -11,6 +11,7 @@ const MESSAGES: Record<string, string> = {
   NO_DRAFT: 'No hay un borrador para publicar.',
   NOT_FOUND: 'No se encontró el elemento.',
   INVALID_TRANSITION: 'El estado de la propuesta cambió. Actualiza la página e inténtalo de nuevo.',
+  PUBLISH_STATE_INCONSISTENT: 'La propuesta y la actividad publicada no coinciden. Contacta a soporte antes de intentarlo de nuevo.',
   FEEDBACK_REQUIRED: 'Escribe el mensaje para el tallerista antes de solicitar cambios.',
   NOTES_REQUIRED: 'Escribe las notas internas antes de guardarlas.',
   TEXT_TOO_LONG: 'El texto no puede superar 5000 caracteres.',

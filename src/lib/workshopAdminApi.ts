@@ -2,7 +2,12 @@ import { functionsUrl, supabase, supabaseAnonKey } from './supabase';
 
 export type ReviewStatus = 'submitted' | 'in_review' | 'changes_requested' | 'approved' | 'published' | 'archived';
 export type WorkshopType = 'academica' | 'vida_universitaria';
-export type ReviewAction = 'start_review' | 'save_notes' | 'request_changes' | 'resume_review' | 'archive';
+export type ReviewAction = 'start_review' | 'save_notes' | 'request_changes' | 'resume_review' | 'approve' | 'archive';
+export type PublishResult = {
+  submission_id: string; status: 'published'; activity_id: string;
+  session_count: number; career_count: number; division_count: number;
+  credential_created: boolean;
+};
 
 export const STATUS_LABELS: Record<ReviewStatus, string> = {
   submitted: 'Nueva', in_review: 'En revisión', changes_requested: 'Cambios solicitados',
@@ -35,7 +40,7 @@ export type WorkshopDetail = WorkshopSummary & {
    takeaway: string; keywords: string[];
   operating_start_time: string; operating_end_time: string; building: string; room_space: string;
   requirements: string | null; notes: string | null; admin_notes: string | null;
-  review_feedback: string | null; careers: WorkshopCareer[];
+  review_feedback: string | null; published_activity_id: string | null; careers: WorkshopCareer[];
 };
 export type WorkshopList = {
   items: WorkshopSummary[]; total: number; page: number; page_size: number;
@@ -68,4 +73,5 @@ export const workshopAdminApi = {
     (await call<{ submission: WorkshopDetail }>({ action: 'get', submission_id })).submission,
   transition: async (action: ReviewAction, submission_id: string, fields: { admin_notes?: string; review_feedback?: string } = {}) =>
     (await call<{ submission: { id: string; status: ReviewStatus } }>({ action, submission_id, ...fields })).submission,
+  publish: (submission_id: string) => call<PublishResult>({ action: 'publish', submission_id }),
 };
