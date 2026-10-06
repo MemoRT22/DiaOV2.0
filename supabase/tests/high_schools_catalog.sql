@@ -1,12 +1,29 @@
--- Run with psql -v ON_ERROR_STOP=1. Every fixture, including the new school and imported participants, rolls back.
+-- Run after the migration with psql -v ON_ERROR_STOP=1. All fixtures and imported participants roll back.
 BEGIN;
+DO $$
+BEGIN
+  IF (SELECT count(*) FROM public.high_schools) <> 195
+    OR (SELECT count(*) FROM public.high_schools WHERE is_active) <> 195
+    OR (SELECT count(DISTINCT public.fold_text(name)) FROM public.high_schools) <> 195 THEN
+    RAISE EXCEPTION 'initial high school seed must contain exactly 195 active, normalized-unique names';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM (VALUES
+      ('Colegio Boston (Cancún)'),
+      ('Colegio Álamos Norte Quintana Roo (Cancún)'),
+      ('Cbtis No. 111 Leona Vicario (Cancún)'),
+      ('C. Bachilleres Cozumel (Cozumel)'),
+      ('Colegio Álamos Sur Quintana Roo (Cancún)'),
+      ('Otra escuela')
+    ) AS expected(name)
+    WHERE NOT EXISTS (SELECT 1 FROM public.high_schools h WHERE h.name = expected.name AND h.is_active)
+  ) THEN RAISE EXCEPTION 'representative high school missing from initial seed'; END IF;
+END $$;
 INSERT INTO auth.users(id, email, aud, role) VALUES ('a2111111-1111-4111-8111-111111111111', 'high-schools-test@example.invalid', 'authenticated', 'authenticated');
 INSERT INTO public.staff_members(user_id, role, full_name, email)
 VALUES ('a2111111-1111-4111-8111-111111111111', 'coordinacion', 'Coordinación fixture', 'high-schools-test@example.invalid');
 INSERT INTO public.staff_roles(user_id, role) VALUES ('a2111111-1111-4111-8111-111111111111', 'coordinacion');
 SELECT set_config('request.jwt.claim.sub', 'a2111111-1111-4111-8111-111111111111', true);
-INSERT INTO public.high_schools(name) VALUES ('Colegio Boston (Cancún)'), ('Colegio Álamos Norte Quintana Roo (Cancún)'), ('Otra escuela')
-ON CONFLICT DO NOTHING;
 
 DO $$
 DECLARE
@@ -24,7 +41,7 @@ BEGIN
   SELECT id INTO v_boston FROM public.high_schools WHERE public.fold_text(name) = public.fold_text('Colegio Boston (Cancún)');
   SELECT id INTO v_alamos FROM public.high_schools WHERE public.fold_text(name) = public.fold_text('Colegio Álamos Norte Quintana Roo (Cancún)');
   SELECT id INTO v_other FROM public.high_schools WHERE name = 'Otra escuela';
-  IF v_boston IS NULL OR v_alamos IS NULL OR v_other IS NULL THEN RAISE EXCEPTION 'initial fixture absent'; END IF;
+  IF v_boston IS NULL OR v_alamos IS NULL OR v_other IS NULL THEN RAISE EXCEPTION 'initial seed absent'; END IF;
   IF EXISTS (SELECT 1 FROM public.high_schools GROUP BY public.fold_text(name) HAVING count(*) > 1) THEN RAISE EXCEPTION 'normalized duplicate'; END IF;
 
   v_created := public.save_high_school('{"name":"Colegio de Prueba","is_active":true}'::jsonb);
@@ -76,7 +93,7 @@ BEGIN
   SELECT code INTO v_career FROM public.careers WHERE is_active AND NOT is_demo LIMIT 1;
   v_rows := jsonb_build_array(
     jsonb_build_object('row',2,'email','school-a@example.invalid','full_name','Alumno A','high_school','Colegio Boston (Cancún)','career',v_career),
-    jsonb_build_object('row',3,'email','school-b@example.invalid','full_name','Alumno B','high_school','  COLEGIO   BOSTON (CANCUN)  ','career',v_career),
+    jsonb_build_object('row',3,'email','school-b@example.invalid','full_name','Alumno B','high_school','  COLEGIO   ALAMOS NORTE QUINTANA ROO (CANCUN)  ','career',v_career),
     jsonb_build_object('row',4,'email','school-c@example.invalid','full_name','Alumno C','high_school',v_unknown,'career',v_career)
   );
   v_preview := public.preview_participant_import(v_rows,false,'{}','{}','{}');
@@ -102,8 +119,13 @@ BEGIN
   END IF;
   IF EXISTS (SELECT 1 FROM public.participants p JOIN public.high_schools h ON h.id=p.high_school_id
     WHERE p.email LIKE 'school-%@example.invalid' AND p.high_school IS DISTINCT FROM h.name) THEN RAISE EXCEPTION 'noncanonical school snapshot'; END IF;
-  IF (SELECT count(DISTINCT high_school_id) FROM public.participants WHERE email IN ('school-a@example.invalid','school-b@example.invalid')) <> 1 THEN
-    RAISE EXCEPTION 'normalized import matched different schools';
+  IF NOT EXISTS (SELECT 1 FROM public.participants WHERE email='school-a@example.invalid'
+    AND high_school_id=v_boston AND high_school='Colegio Boston (Cancún)') THEN
+    RAISE EXCEPTION 'exact import did not resolve Boston from initial seed';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM public.participants WHERE email='school-b@example.invalid'
+    AND high_school_id=v_alamos AND high_school='Colegio Álamos Norte Quintana Roo (Cancún)') THEN
+    RAISE EXCEPTION 'normalized import did not resolve Álamos from initial seed';
   END IF;
   IF has_table_privilege('anon','public.high_schools','SELECT') OR has_table_privilege('authenticated','public.high_schools','INSERT')
     OR has_function_privilege('anon','public.save_high_school(jsonb)','EXECUTE') THEN RAISE EXCEPTION 'catalog grants too broad'; END IF;
