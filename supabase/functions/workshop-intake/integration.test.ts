@@ -44,7 +44,9 @@ test('GET: catálogo mínimo y CORS', { skip }, async () => {
   assert.equal(res.status, 200);
   assert.equal(res.headers.get('access-control-allow-origin'), '*');
   const b = (await res.json()) as Record<string, unknown>;
-  assert.deepEqual(Object.keys(b).sort(), ['activity_types', 'careers', 'divisions', 'edition', 'limits']);
+  assert.deepEqual(Object.keys(b).sort(), ['activity_types', 'careers', 'divisions', 'edition', 'experience_categories', 'limits']);
+  assert.deepEqual((b.experience_categories as { value: string }[]).map((c) => c.value), ['liderazgo', 'deportiva', 'artistica_cultural', 'vida_universitaria', 'otra']);
+  assert.deepEqual((b.activity_types as { value: string }[]).map((t) => t.value), ['academica', 'vida_universitaria']);
   const cat = b as unknown as Catalog;
   assert.ok(Array.isArray(cat.divisions) && Array.isArray(cat.careers));
   if (cat.careers.length > 0) assert.deepEqual(Object.keys(cat.careers[0]).sort(), ['career_id', 'career_name', 'division_id']);
@@ -115,10 +117,30 @@ test('POST con carrera inexistente: 422 INVALID_CAREER desde la base (no requier
   assert.equal(((await res.json()) as { error: string }).error, 'INVALID_CAREER');
 });
 
-test('POST Vida Universitaria sin carreras: 201 (no requiere catálogo real)', { skip }, async () => {
+test('POST Vida Universitaria sin carreras ni objetivo: 201 (no requiere catálogo real)', { skip }, async () => {
   const cat = await catalog();
-  const res = await fetch(URL_!, { method: 'POST', headers: json, body: JSON.stringify(payload({ ...cat, careers: [], divisions: [] }, { activity_type: 'vida_universitaria', career_ids: [] })) });
+  const vida = { activity_type: 'vida_universitaria', experience_category: 'deportiva', career_ids: [] };
+  const base = payload({ ...cat, careers: [], divisions: [] }, vida) as Record<string, unknown>;
+  delete base.objective;
+  const res = await fetch(URL_!, { method: 'POST', headers: json, body: JSON.stringify(base) });
   assert.equal(res.status, 201);
+});
+
+test('POST: reglas de categoría de experiencia y objetivo condicional (422 sin guardar)', { skip }, async () => {
+  const cat = await catalog();
+  const base = payload({ ...cat, careers: [{ career_id: crypto.randomUUID(), division_id: '' }], divisions: [] }) as Record<string, unknown>;
+  const errors = async (body: Record<string, unknown>) => {
+    const res = await fetch(URL_!, { method: 'POST', headers: json, body: JSON.stringify(body) });
+    assert.equal(res.status, 422);
+    return ((await res.json()) as { errors: { field: string; code: string }[] }).errors.map((e) => `${e.field}:${e.code}`);
+  };
+  assert.ok((await errors({ ...base, experience_category: 'deportiva' })).includes('experience_category:NOT_ALLOWED'));
+  const vida = { ...base, activity_type: 'vida_universitaria', career_ids: [] };
+  assert.ok((await errors(vida)).includes('experience_category:REQUIRED'));
+  assert.ok((await errors({ ...vida, experience_category: 'musical' })).includes('experience_category:INVALID_EXPERIENCE_CATEGORY'));
+  const noObjective = { ...base } as Record<string, unknown>;
+  delete noObjective.objective;
+  assert.ok((await errors(noObjective)).includes('objective:REQUIRED'));
 });
 
 test('POST con validación de formulario: 422 con errores por campo', { skip: await noReal() }, async () => {

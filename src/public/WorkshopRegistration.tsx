@@ -42,8 +42,7 @@ export default function WorkshopRegistration() {
   const load = useCallback(async (): Promise<IntakeCatalog | 'unavailable' | 'error'> => {
     try {
       const catalog = await fetchWorkshopIntakeCatalog();
-      // Sin catálogo REAL no hay formulario: no se usa ningún dato de prueba como alternativa.
-      if (catalog.divisions.length === 0 || catalog.careers.length === 0) return 'unavailable';
+      // Un catálogo académico vacío ya no bloquea el formulario: Vida Universitaria no lo necesita.
       return catalog;
     } catch (err) {
       if (err instanceof IntakeError && err.code === 'NO_ACTIVE_EDITION') return 'unavailable';

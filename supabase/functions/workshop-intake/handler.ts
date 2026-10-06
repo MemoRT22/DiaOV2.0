@@ -1,6 +1,6 @@
 // Frontera HTTP pública de `workshop-intake`. Solo APIs web estándar (Request/Response): no depende de Deno,
 // así que se prueba con Node. Las credenciales server-side viven únicamente en index.ts (runtime de la función).
-import { ACTIVITY_TYPES, ADMIN_FIELDS, LIMITS, validateSubmission } from './validation.ts';
+import { ACTIVITY_TYPES, ADMIN_FIELDS, EXPERIENCE_CATEGORIES, LIMITS, validateSubmission } from './validation.ts';
 
 export type RpcResult = { data: unknown; error: { code?: string; message?: string } | null };
 
@@ -94,6 +94,7 @@ async function handleGet(deps: Deps): Promise<Response> {
       divisions: catalog.divisions ?? [],
       careers: catalog.careers ?? [],
       activity_types: ACTIVITY_TYPES,
+      experience_categories: EXPERIENCE_CATEGORIES,
       limits: LIMITS,
     },
     200,

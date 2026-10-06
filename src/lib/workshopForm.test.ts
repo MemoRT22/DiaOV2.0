@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { IntakeError } from './workshopIntakeApi';
 import {
   buildDraft,
+  copyFor,
   describeSubmitError,
   emptyForm,
   messageFor,
@@ -51,7 +52,7 @@ describe('validateForm (misma validación que la Edge Function)', () => {
       expect(payload).not.toHaveProperty(retired);
     }
     expect(Object.keys(buildDraft(valid())).sort()).toEqual([
-      'activity_type', 'building', 'capacity_per_session', 'career_ids', 'facilitator_email', 'facilitator_name', 'keywords', 'notes',
+      'activity_type', 'building', 'capacity_per_session', 'career_ids', 'experience_category', 'facilitator_email', 'facilitator_name', 'keywords', 'notes',
       'objective', 'requirements', 'room_space', 'session_duration_minutes', 'student_experience', 'student_pitch', 'takeaway', 'title', 'why_join',
     ]);
   });
@@ -100,16 +101,49 @@ describe('validateForm (misma validación que la Edge Function)', () => {
   });
 
   it('Vida Universitaria: sin carreras es válido y el tipo viaja correcto', () => {
-    const { errors, payload } = validateForm(valid({ activity_type: 'vida_universitaria', career_ids: [] }));
+    const { errors, payload } = validateForm(valid({ activity_type: 'vida_universitaria', experience_category: 'otra', career_ids: [] }));
     expect(errors).toEqual({});
     expect(payload?.activity_type).toBe('vida_universitaria');
     expect(payload?.career_ids).toEqual([]);
   });
 
   it('Vida Universitaria nunca envía carreras, aunque antes se hubieran marcado', () => {
-    const { errors, payload } = validateForm(valid({ activity_type: 'vida_universitaria', career_ids: [C1, C2] }));
+    const { errors, payload } = validateForm(valid({ activity_type: 'vida_universitaria', experience_category: 'otra', career_ids: [C1, C2] }));
     expect(errors).toEqual({});
     expect(payload?.career_ids).toEqual([]);
+  });
+
+  it('categoría de experiencia: obligatoria en Vida Universitaria, cada valor válido, nunca en académico', () => {
+    const vida = (over: Partial<FormState> = {}) => valid({ activity_type: 'vida_universitaria', career_ids: [], ...over });
+    expect(validateForm(vida()).errors.experience_category).toBe('Este dato es obligatorio.');
+    for (const c of ['liderazgo', 'deportiva', 'artistica_cultural', 'vida_universitaria', 'otra'] as const) {
+      const { errors, payload } = validateForm(vida({ experience_category: c }));
+      expect(errors, c).toEqual({});
+      expect(payload?.experience_category).toBe(c);
+    }
+    expect(validateForm(vida({ experience_category: 'musical' as never })).errors.experience_category).toMatch(/categoría/);
+    // un académico nunca arrastra la categoría, aunque el estado local la conserve
+    const acad = validateForm(valid({ experience_category: 'deportiva' }));
+    expect(acad.errors).toEqual({});
+    expect(acad.payload?.experience_category).toBeNull();
+    expect(buildDraft(valid({ experience_category: 'deportiva' }))).not.toHaveProperty('experience_category', 'deportiva');
+  });
+
+  it('objetivo: obligatorio en académico, opcional en Vida Universitaria (null, sin texto por defecto)', () => {
+    expect(validateForm(valid({ objective: '' })).errors.objective).toBe('Este dato es obligatorio.');
+    const vida = validateForm(valid({ activity_type: 'vida_universitaria', experience_category: 'otra', career_ids: [], objective: '   ' }));
+    expect(vida.errors).toEqual({});
+    expect(vida.payload?.objective).toBeNull();
+    expect(validateForm(valid({ activity_type: 'vida_universitaria', experience_category: 'otra', career_ids: [], objective: 'Integración' })).payload?.objective).toBe('Integración');
+  });
+
+  it('copy por tipo y títulos de pasos', () => {
+    expect(copyFor('academica').title.label).toBe('Nombre del taller');
+    expect(copyFor('vida_universitaria').title.label).toBe('Nombre de la actividad');
+    expect(copyFor('vida_universitaria').student_pitch.label).toBe('Descripción corta');
+    expect(copyFor('vida_universitaria').objective.label).toBe('¿Qué buscas generar con esta experiencia?');
+    expect(stepsFor('vida_universitaria').map((s) => s.title)).toEqual(['Tus datos', 'Tu actividad', 'Experiencia', 'Logística', 'Revisa y envía']);
+    expect(stepsFor('academica').map((s) => s.title)).toEqual(['Tus datos', 'Tu taller', 'Experiencia del alumno', 'Logística', 'Carreras relacionadas', 'Revisa y envía']);
   });
 
   it('validateStep reporta solo el paso pedido; la revisión valida todo', () => {

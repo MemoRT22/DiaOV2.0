@@ -3,6 +3,7 @@
 // acepta es exactamente lo que el servidor acepta. El servidor y la base de datos siguen siendo la autoridad final.
 import {
   ACTIVITY_TYPES,
+  EXPERIENCE_CATEGORIES,
   LIMITS,
   SESSION_DURATIONS,
   normalizeLine,
@@ -12,7 +13,7 @@ import {
 } from '../../supabase/functions/workshop-intake/validation.ts';
 import { IntakeError } from './workshopIntakeApi';
 
-export { ACTIVITY_TYPES, LIMITS, SESSION_DURATIONS };
+export { ACTIVITY_TYPES, EXPERIENCE_CATEGORIES, LIMITS, SESSION_DURATIONS };
 
 export const ROOM_TBD = 'Por confirmar';
 
@@ -20,6 +21,8 @@ export type FormState = {
   facilitator_name: string;
   facilitator_email: string;
   activity_type: '' | 'academica' | 'vida_universitaria';
+  /** Solo Vida Universitaria; se limpia al pasar a académico. */
+  experience_category: '' | (typeof EXPERIENCE_CATEGORIES)[number]['value'];
   title: string;
   student_pitch: string;
   why_join: string;
@@ -42,6 +45,7 @@ export const emptyForm = (): FormState => ({
   facilitator_name: '',
   facilitator_email: '',
   activity_type: '',
+  experience_category: '',
   title: '',
   student_pitch: '',
   why_join: '',
@@ -64,7 +68,7 @@ export type StepDef = { id: string; title: string; short: string; fields: readon
 /** Todos los pasos posibles, en lenguaje natural. El último (revisión) valida todo el formulario. */
 export const STEPS: readonly StepDef[] = [
   { id: 'responsable', title: 'Tus datos', short: 'Tus datos', fields: ['facilitator_name', 'facilitator_email'] },
-  { id: 'taller', title: 'Tu taller', short: 'Taller', fields: ['activity_type', 'title', 'student_pitch'] },
+  { id: 'taller', title: 'Tu taller', short: 'Taller', fields: ['activity_type', 'experience_category', 'title', 'student_pitch'] },
   {
     id: 'experiencia',
     title: 'Experiencia del alumno',
@@ -86,7 +90,37 @@ export const needsCareers = (type: FormState['activity_type']) => type !== 'vida
 
 /** Pasos visibles según el tipo de taller (con tipo aún sin elegir se asume el flujo académico). */
 export const stepsFor = (type: FormState['activity_type']): readonly StepDef[] =>
-  needsCareers(type) ? STEPS : STEPS.filter((s) => s.id !== 'carreras');
+  type === 'vida_universitaria'
+    ? STEPS.filter((s) => s.id !== 'carreras').map((s) =>
+        s.id === 'taller' ? { ...s, title: 'Tu actividad', short: 'Actividad' } : s.id === 'experiencia' ? { ...s, title: 'Experiencia' } : s,
+      )
+    : STEPS;
+
+export type FieldCopy = { label: string; hint?: string };
+export type TypeCopy = Record<'title' | 'student_pitch' | 'why_join' | 'objective' | 'student_experience' | 'takeaway', FieldCopy>;
+
+/** Lenguaje de cada pregunta según el tipo. Las columnas son las mismas; solo cambia el copy visible. */
+export const copyFor = (type: FormState['activity_type']): TypeCopy =>
+  type === 'vida_universitaria'
+    ? {
+        title: { label: 'Nombre de la actividad' },
+        student_pitch: { label: 'Descripción corta', hint: 'En pocas palabras, ¿qué experiencia vivirán los alumnos?' },
+        why_join: { label: '¿Por qué debería sumarse un alumno?', hint: 'Cuéntanos qué hace atractiva o especial esta experiencia.' },
+        objective: {
+          label: '¿Qué buscas generar con esta experiencia?',
+          hint: 'Por ejemplo: integración, creatividad, liderazgo, bienestar, convivencia o diversión.',
+        },
+        student_experience: { label: '¿Qué harán los alumnos durante la actividad?', hint: 'Describe brevemente la dinámica o cómo participarán.' },
+        takeaway: { label: '¿Con qué queremos que se queden después de participar?', hint: 'Puede ser una sensación, una experiencia, una habilidad o una integración.' },
+      }
+    : {
+        title: { label: 'Nombre del taller' },
+        student_pitch: { label: 'Presenta tu taller en pocas palabras', hint: 'Es lo primero que verán los alumnos al elegirlo.' },
+        why_join: { label: '¿Por qué debería elegir este taller un alumno?' },
+        objective: { label: '¿Cuál es el objetivo del taller?', hint: 'Qué quieres que el alumno comprenda, descubra o experimente.' },
+        student_experience: { label: '¿Qué hará el alumno durante el taller?' },
+        takeaway: { label: '¿Qué aprendizaje o idea quieres que se lleve?' },
+      };
 
 export const fieldId = (field: string) => `wf-${field}`;
 
@@ -102,10 +136,13 @@ export function buildDraft(f: FormState): Record<string, unknown> {
     facilitator_name: f.facilitator_name,
     facilitator_email: f.facilitator_email,
     activity_type: f.activity_type || undefined,
+    // La categoría solo existe para Vida Universitaria; nunca se mezcla con un taller académico.
+    experience_category: f.activity_type === 'vida_universitaria' ? f.experience_category || undefined : undefined,
     title: f.title,
     student_pitch: f.student_pitch,
     why_join: f.why_join,
-    objective: f.objective,
+    // Opcional en Vida Universitaria (vacío → null); obligatorio en académico.
+    objective: f.activity_type === 'vida_universitaria' ? orNull(f.objective) : f.objective,
     student_experience: f.student_experience,
     takeaway: f.takeaway,
     keywords: f.keywords,
@@ -158,6 +195,10 @@ export function messageFor(field: string, code: string): string {
       return 'Escribe un correo válido, por ejemplo nombre@dominio.com.';
     case 'INVALID_ACTIVITY_TYPE':
       return 'Elige el tipo de taller.';
+    case 'INVALID_EXPERIENCE_CATEGORY':
+      return 'Elige la categoría de la experiencia.';
+    case 'NOT_ALLOWED':
+      return 'Este dato no aplica para este tipo de taller.';
     case 'INVALID_DURATION':
       return 'Elige 30 minutos o 1 hora.';
     case 'TOO_FEW_KEYWORDS':

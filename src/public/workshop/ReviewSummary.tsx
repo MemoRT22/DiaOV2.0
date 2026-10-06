@@ -1,7 +1,7 @@
 import { Pencil } from 'lucide-react';
 import type { ReactNode } from 'react';
 import type { IntakeCatalog } from '../../lib/workshopIntakeApi';
-import { ACTIVITY_TYPES, ROOM_TBD, SESSION_DURATIONS, needsCareers, type FormState } from '../../lib/workshopForm';
+import { ACTIVITY_TYPES, EXPERIENCE_CATEGORIES, copyFor, ROOM_TBD, SESSION_DURATIONS, needsCareers, type FormState } from '../../lib/workshopForm';
 
 function Section({ title, onEdit, children }: { title: string; onEdit: () => void; children: ReactNode }) {
   return (
@@ -42,6 +42,9 @@ export default function ReviewSummary({
   catalog: IntakeCatalog;
   onEdit: (stepId: string) => void;
 }) {
+  const vida = form.activity_type === 'vida_universitaria';
+  const copy = copyFor(form.activity_type);
+  const category = EXPERIENCE_CATEGORIES.find((c) => c.value === form.experience_category)?.label ?? '—';
   const type = ACTIVITY_TYPES.find((t) => t.value === form.activity_type)?.label ?? '—';
   const duration = SESSION_DURATIONS.find((d) => String(d.value) === form.session_duration_minutes)?.label ?? '—';
   const careerNames = form.career_ids.map((id) => catalog.careers.find((c) => c.career_id === id)?.career_name ?? 'Carrera no disponible');
@@ -51,16 +54,17 @@ export default function ReviewSummary({
         <Row label="Nombre">{form.facilitator_name}</Row>
         <Row label="Correo electrónico">{form.facilitator_email}</Row>
       </Section>
-      <Section title="Tu taller" onEdit={() => onEdit('taller')}>
-        <Row label="Tipo de taller">{type}</Row>
-        <Row label="Nombre del taller">{form.title}</Row>
-        <Row label="Presentación">{form.student_pitch}</Row>
+      <Section title={vida ? 'Tu actividad' : 'Tu taller'} onEdit={() => onEdit('taller')}>
+        <Row label="Tipo">{type}</Row>
+        {vida && <Row label="Categoría de la experiencia">{category}</Row>}
+        <Row label={copy.title.label}>{form.title}</Row>
+        <Row label={vida ? 'Descripción corta' : 'Presentación'}>{form.student_pitch}</Row>
       </Section>
-      <Section title="Experiencia del alumno" onEdit={() => onEdit('experiencia')}>
-        <Row label="¿Por qué debería elegirlo un alumno?">{form.why_join}</Row>
-        <Row label="Objetivo">{form.objective}</Row>
-        <Row label="¿Qué hará el alumno?">{form.student_experience}</Row>
-        <Row label="¿Qué se llevará?">{form.takeaway}</Row>
+      <Section title={vida ? 'Experiencia' : 'Experiencia del alumno'} onEdit={() => onEdit('experiencia')}>
+        <Row label={copy.why_join.label}>{form.why_join}</Row>
+        {(!vida || form.objective.trim()) && <Row label={copy.objective.label}>{form.objective}</Row>}
+        <Row label={copy.student_experience.label}>{form.student_experience}</Row>
+        <Row label={copy.takeaway.label}>{form.takeaway}</Row>
         <Row label="Palabras clave">
           <ul className="flex flex-wrap gap-2">
             {form.keywords.map((k) => (

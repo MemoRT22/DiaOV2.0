@@ -181,11 +181,26 @@ BEGIN
 
   -- Vida Universitaria: cero carreras permitido, con el tipo correcto y el mismo horario fijo
   PERFORM set_config('role', 'service_role', true);
-  v_res := create_workshop_submission_internal(v_base || jsonb_build_object('activity_type', 'vida_universitaria', 'career_ids', '[]'::jsonb, 'session_duration_minutes', 30));
+  v_res := create_workshop_submission_internal(v_base || jsonb_build_object('activity_type', 'vida_universitaria', 'experience_category', 'liderazgo', 'objective', NULL, 'career_ids', '[]'::jsonb, 'session_duration_minutes', 30));
   PERFORM set_config('role', 'postgres', true);
   v_vu := (v_res->>'submission_id')::uuid;
   SELECT * INTO v_row FROM workshop_submissions WHERE id = v_vu;
   SELECT count(*) INTO v_n FROM workshop_submission_careers WHERE submission_id = v_vu;
+  -- categoría de experiencia y objetivo opcional (NULL, sin texto por defecto)
+  IF v_row.experience_category = 'liderazgo' AND v_row.objective IS NULL
+    THEN v_pass := v_pass + 1; ELSE v_fail := v_fail + 1; v_res_str := v_res_str || '3.vidaCategoryObjective[' || coalesce(v_row.experience_category, 'null') || '/' || coalesce(v_row.objective, 'null') || '] '; END IF;
+  FOREACH v_err IN ARRAY ARRAY['liderazgo', 'deportiva', 'artistica_cultural', 'vida_universitaria', 'otra'] LOOP
+    PERFORM set_config('role', 'service_role', true);
+    v_res := create_workshop_submission_internal(v_base || jsonb_build_object('activity_type', 'vida_universitaria', 'experience_category', v_err, 'objective', 'Integración', 'career_ids', '[]'::jsonb));
+    PERFORM set_config('role', 'postgres', true);
+    SELECT * INTO v_row FROM workshop_submissions WHERE id = (v_res->>'submission_id')::uuid;
+    IF v_row.experience_category = v_err AND v_row.objective = 'Integración' AND v_row.activity_type = 'vida_universitaria'
+      THEN v_pass := v_pass + 1; ELSE v_fail := v_fail + 1; v_res_str := v_res_str || '3.category.' || v_err || '[] '; END IF;
+  END LOOP;
+  -- el académico guarda categoría NULL
+  SELECT count(*) INTO v_n2 FROM workshop_submissions WHERE id = v_id AND experience_category IS NULL AND activity_type = 'academica' AND objective IS NOT NULL;
+  IF v_n2 = 1 THEN v_pass := v_pass + 1; ELSE v_fail := v_fail + 1; v_res_str := v_res_str || '3.academicNullCategory[] '; END IF;
+  SELECT * INTO v_row FROM workshop_submissions WHERE id = v_vu;
   IF v_n = 0 AND v_row.activity_type = 'vida_universitaria' AND v_row.status = 'submitted' AND v_row.division_id IS NULL
      AND v_row.operating_start_time = '10:00' AND v_row.operating_end_time = '12:00' AND v_row.break_minutes = 0
     THEN v_pass := v_pass + 1; ELSE v_fail := v_fail + 1; v_res_str := v_res_str || '3.vidaUniversitaria[' || v_n || '/' || coalesce(v_row.activity_type, 'null') || '] '; END IF;
@@ -225,8 +240,14 @@ BEGIN
       ('careers_empty',      v_base || '{"career_ids": []}'::jsonb,                                              'CAREERS_REQUIRED'),
       ('careers_dup',        v_base || jsonb_build_object('career_ids', jsonb_build_array(c_a, c_a)),           'DUPLICATE_CAREER'),
       ('career_missing',     v_base || jsonb_build_object('career_ids', jsonb_build_array(c_a, v_other)),       'INVALID_CAREER'),
-      ('vida_careers_dup',   v_base || jsonb_build_object('activity_type', 'vida_universitaria', 'career_ids', jsonb_build_array(c_a, c_a)), 'DUPLICATE_CAREER'),
-      ('vida_career_demo',   v_base || jsonb_build_object('activity_type', 'vida_universitaria', 'career_ids', jsonb_build_array(c_demo)),   'INVALID_CAREER'),
+      ('vida_careers_dup',   v_base || jsonb_build_object('activity_type', 'vida_universitaria', 'experience_category', 'otra', 'career_ids', jsonb_build_array(c_a, c_a)), 'DUPLICATE_CAREER'),
+      ('vida_career_demo',   v_base || jsonb_build_object('activity_type', 'vida_universitaria', 'experience_category', 'otra', 'career_ids', jsonb_build_array(c_demo)),   'INVALID_CAREER'),
+      ('academic_with_category', v_base || '{"experience_category": "deportiva"}'::jsonb,                          'INVALID_PAYLOAD'),
+      ('vida_without_category',  v_base || '{"activity_type": "vida_universitaria", "career_ids": []}'::jsonb,     'INVALID_PAYLOAD'),
+      ('vida_null_category',     v_base || '{"activity_type": "vida_universitaria", "experience_category": null, "career_ids": []}'::jsonb, 'INVALID_PAYLOAD'),
+      ('vida_unknown_category',  v_base || '{"activity_type": "vida_universitaria", "experience_category": "musical", "career_ids": []}'::jsonb, 'INVALID_PAYLOAD'),
+      ('objective_missing_academic', v_base - 'objective',                                                         'objective_required_check'),
+      ('objective_blank_academic',   v_base || '{"objective": "   "}'::jsonb,                                      'objective_required_check'),
       ('career_inactive',    v_base || jsonb_build_object('career_ids', jsonb_build_array(c_a, c_off)),         'INVALID_CAREER'),
       ('career_not_uuid',    v_base || '{"career_ids": ["abc"]}'::jsonb,                                         'INVALID_CAREER'),
       ('demo_career_mixed',  v_base || jsonb_build_object('career_ids', jsonb_build_array(c_a, c_demo)),        'INVALID_CAREER'),
@@ -258,10 +279,12 @@ BEGIN
   IF v_n = v_s1 AND v_n2 = v_c1 THEN v_pass := v_pass + 1; ELSE v_fail := v_fail + 1; v_res_str := v_res_str || '4.partialWrites[' || (v_n - v_s1) || '/' || (v_n2 - v_c1) || '] '; END IF;
 
   -- ===================== 5. Constraints directos (defensa en profundidad) =====================
+  -- experience_category se deriva del tipo (Vida Universitaria → 'otra'; académico → NULL) para no alterar los 12 argumentos
   v_tpl := $q$INSERT INTO workshop_submissions (edition_id, division_id, status, submitted_at, facilitator_name, facilitator_email, activity_type, title,
       student_pitch, why_join, objective, student_experience, takeaway, keywords, session_duration_minutes, capacity_per_session,
-      operating_start_time, operating_end_time, break_minutes, building, room_space)
-    VALUES (%1$L, %2$L, %3$s, now(), 'N', %4$s, %5$s, %6$s, 'p', 'w', 'o', 'e', 't', %7$s, %8$s, %9$s, %10$s, %11$s, %12$s, 'B', 'R')$q$;
+      operating_start_time, operating_end_time, break_minutes, building, room_space, experience_category)
+    VALUES (%1$L, %2$L, %3$s, now(), 'N', %4$s, %5$s, %6$s, 'p', 'w', 'o', 'e', 't', %7$s, %8$s, %9$s, %10$s, %11$s, %12$s, 'B', 'R',
+      (CASE WHEN %5$s = 'vida_universitaria' THEN 'otra' END))$q$;
   FOR r IN SELECT * FROM (VALUES
       ('control_valid',    '{}'::jsonb,                                                   NULL),
       ('status_bogus',     '{"status": "''bogus''"}'::jsonb,                              'status_check'),
@@ -335,7 +358,7 @@ BEGIN
   v_err := NULL; BEGIN EXECUTE format(v_tpl, ed, d_real, '''submitted''', '''a@b.co''', '''vida_universitaria''', '''T''', 'ARRAY[''a'',''b'',''c'']', '30', '10', '''10:00''', '''12:00''', '5'); EXCEPTION WHEN others THEN v_err := SQLERRM; END;
   IF v_err IS NULL THEN v_pass := v_pass + 1; ELSE v_fail := v_fail + 1; v_res_str := v_res_str || '5.vidaNoCareerOk[' || coalesce(v_err, '?') || '] '; END IF;
   -- cambiar una propuesta de Vida Universitaria sin carreras a académica exige carreras
-  v_err := NULL; BEGIN UPDATE workshop_submissions SET activity_type = 'academica' WHERE id = v_vu; EXCEPTION WHEN others THEN v_err := SQLERRM; END;
+  v_err := NULL; BEGIN UPDATE workshop_submissions SET activity_type = 'academica', experience_category = NULL, objective = 'Objetivo' WHERE id = v_vu; EXCEPTION WHEN others THEN v_err := SQLERRM; END;
   IF v_err LIKE '%SUBMISSION_REQUIRES_CAREER%' THEN v_pass := v_pass + 1; ELSE v_fail := v_fail + 1; v_res_str := v_res_str || '5.vidaToAcademicNoCareer[' || coalesce(v_err, 'ok') || '] '; END IF;
   v_err := NULL; BEGIN EXECUTE format(v_tpl, ed, d_real, '''draft''', '''a@b.co''', '''academica''', '''T''', 'ARRAY[''a'',''b'',''c'']', '30', '10', '''10:00''', '''12:00''', '5'); EXCEPTION WHEN others THEN v_err := SQLERRM; END;
   IF v_err IS NULL THEN v_pass := v_pass + 1; ELSE v_fail := v_fail + 1; v_res_str := v_res_str || '5.draftNoCareerOk[' || coalesce(v_err, '?') || '] '; END IF;
@@ -351,6 +374,25 @@ BEGIN
   SELECT count(*) INTO v_n FROM workshop_submission_careers WHERE submission_id = v_single;
   IF v_err IS NULL AND v_n = 0 THEN v_pass := v_pass + 1; ELSE v_fail := v_fail + 1; v_res_str := v_res_str || '5.cascadeDelete[' || coalesce(v_err, 'ok') || '/' || v_n || '] '; END IF;
   SET CONSTRAINTS workshop_submission_careers_require_career DEFERRED;
+
+  -- constraints directos de categoría y objetivo
+  FOR r IN SELECT * FROM (VALUES
+      ('cat_on_academic',     format('UPDATE workshop_submissions SET experience_category = %L WHERE id = %L', 'deportiva', v_mal),  'experience_category_check'),
+      ('academic_to_vida_nocat', format('UPDATE workshop_submissions SET activity_type = %L WHERE id = %L', 'vida_universitaria', v_mal), 'experience_category_check'),
+      ('vida_null_cat',       format('UPDATE workshop_submissions SET experience_category = NULL WHERE id = %L', v_vu),             'experience_category_check'),
+      ('vida_unknown_cat',    format('UPDATE workshop_submissions SET experience_category = %L WHERE id = %L', 'musical', v_vu),    'experience_category_check'),
+      ('vida_old_value',      format('UPDATE workshop_submissions SET experience_category = %L WHERE id = %L', 'Liderazgo', v_vu),  'experience_category_check'),
+      ('academic_null_objective', format('UPDATE workshop_submissions SET objective = NULL WHERE id = %L', v_mal),                'objective_required_check'),
+      ('academic_blank_objective', format('UPDATE workshop_submissions SET objective = %L WHERE id = %L', '  ', v_mal),             'text_check'),
+      ('vida_null_objective_ok', format('UPDATE workshop_submissions SET objective = NULL, activity_type = %L, experience_category = %L WHERE id = %L', 'vida_universitaria', 'otra', v_vu), NULL),
+      ('vida_other_cat_ok',   format('UPDATE workshop_submissions SET experience_category = %L WHERE id = %L', 'otra', v_vu),       NULL)
+    ) AS t(name, stmt, expected)
+  LOOP
+    v_err := NULL;
+    BEGIN EXECUTE r.stmt; EXCEPTION WHEN others THEN v_err := SQLERRM; END;
+    IF (r.expected IS NULL AND v_err IS NULL) OR (r.expected IS NOT NULL AND v_err LIKE '%' || r.expected || '%')
+      THEN v_pass := v_pass + 1; ELSE v_fail := v_fail + 1; v_res_str := v_res_str || '5.' || r.name || '[' || coalesce(v_err, 'ok') || '] '; END IF;
+  END LOOP;
 
   -- todos los estados administrativos son válidos (con carreras presentes)
   FOREACH v_err IN ARRAY ARRAY['draft', 'submitted', 'in_review', 'changes_requested', 'approved', 'published', 'archived'] LOOP

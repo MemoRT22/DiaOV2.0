@@ -79,7 +79,14 @@ test('GET devuelve solo el catálogo del formulario', async () => {
   assert.equal(res.status, 200);
   assert.equal(res.headers.get('access-control-allow-origin'), '*');
   const b = await bodyOf(res);
-  assert.deepEqual(Object.keys(b).sort(), ['activity_types', 'careers', 'divisions', 'edition', 'limits']);
+  assert.deepEqual(Object.keys(b).sort(), ['activity_types', 'careers', 'divisions', 'edition', 'experience_categories', 'limits']);
+  assert.deepEqual(b.experience_categories, [
+    { value: 'liderazgo', label: 'Liderazgo' },
+    { value: 'deportiva', label: 'Deportiva' },
+    { value: 'artistica_cultural', label: 'Artística / cultural' },
+    { value: 'vida_universitaria', label: 'Vida universitaria' },
+    { value: 'otra', label: 'Otra' },
+  ]);
   assert.deepEqual(b.careers[0], { career_id: C1, career_name: 'TI e IA', division_id: DIV });
   assert.deepEqual(b.activity_types.map((t: any) => t.value), ['academica', 'vida_universitaria']);
   assert.deepEqual(b.activity_types.map((t: any) => t.label), ['Taller académico', 'Vida Universitaria']);
@@ -137,7 +144,7 @@ test('POST válido: 201, respuesta mínima y payload normalizado sin campos del 
     assert.ok(!(forbidden in sent), `${forbidden} no debe viajar a la base`);
   }
   assert.deepEqual(Object.keys(sent).sort(), [
-    'activity_type', 'building', 'capacity_per_session', 'career_ids', 'facilitator_email', 'facilitator_name', 'keywords', 'notes',
+    'activity_type', 'building', 'capacity_per_session', 'career_ids', 'experience_category', 'facilitator_email', 'facilitator_name', 'keywords', 'notes',
     'objective', 'requirements', 'room_space', 'session_duration_minutes', 'student_experience', 'student_pitch', 'takeaway', 'title', 'why_join',
   ]);
 });
@@ -165,13 +172,81 @@ test('POST: duración 30 y 60 son válidas', async () => {
 test('Vida Universitaria: sin carreras (vacías o ausentes) es válido y viaja con el tipo correcto', async () => {
   for (const variant of ['empty', 'absent'] as const) {
     const { deps, calls } = makeDeps();
-    const p = { ...valid(), activity_type: 'vida_universitaria' } as Record<string, any>;
+    const p = { ...valid(), activity_type: 'vida_universitaria', experience_category: 'otra' } as Record<string, any>;
     if (variant === 'empty') p.career_ids = []; else delete p.career_ids;
     const res = await handleRequest(post(p), deps);
     assert.equal(res.status, 201, variant);
     const sent = calls[0].args!.p_payload as Record<string, any>;
     assert.equal(sent.activity_type, 'vida_universitaria');
     assert.deepEqual(sent.career_ids, []);
+  }
+});
+
+const vida = (p: Record<string, any>, category: unknown = 'deportiva') => {
+  p.activity_type = 'vida_universitaria';
+  p.career_ids = [];
+  if (category !== undefined) p.experience_category = category;
+};
+
+test('académico: sin categoría de experiencia es válido y viaja como null; con categoría se rechaza', async () => {
+  const { deps, calls } = makeDeps();
+  assert.equal((await handleRequest(post(valid()), deps)).status, 201);
+  assert.equal((calls[0].args!.p_payload as Record<string, any>).experience_category, null);
+  await expectInvalid((p) => { p.experience_category = 'deportiva'; }, 'experience_category:NOT_ALLOWED');
+  await expectInvalid((p) => { p.experience_category = 'liderazgo'; }, 'experience_category:NOT_ALLOWED');
+});
+
+test('académico: objetivo y carreras siguen siendo obligatorios', async () => {
+  await expectInvalid((p) => { delete p.objective; }, 'objective:REQUIRED');
+  await expectInvalid((p) => { p.objective = '   '; }, 'objective:REQUIRED');
+  await expectInvalid((p) => { p.objective = 'corto'; }, 'objective:TOO_SHORT');
+  await expectInvalid((p) => { p.career_ids = []; }, 'career_ids:CAREERS_REQUIRED');
+});
+
+test('Vida Universitaria: cada una de las 5 categorías es válida y viaja con career_ids vacío', async () => {
+  for (const cat of ['liderazgo', 'deportiva', 'artistica_cultural', 'vida_universitaria', 'otra']) {
+    const { deps, calls } = makeDeps();
+    const p = valid() as Record<string, any>;
+    vida(p, cat);
+    const res = await handleRequest(post(p), deps);
+    assert.equal(res.status, 201, cat);
+    const sent = calls[0].args!.p_payload as Record<string, any>;
+    assert.equal(sent.experience_category, cat);
+    assert.equal(sent.activity_type, 'vida_universitaria');
+    assert.deepEqual(sent.career_ids, []);
+  }
+});
+
+test('Vida Universitaria: categoría requerida, desconocida o de tipo inválido se rechaza', async () => {
+  await expectInvalid((p) => { vida(p); delete p.experience_category; }, 'experience_category:REQUIRED');
+  await expectInvalid((p) => vida(p, null), 'experience_category:REQUIRED');
+  await expectInvalid((p) => vida(p, 'musical'), 'experience_category:INVALID_EXPERIENCE_CATEGORY');
+  await expectInvalid((p) => vida(p, 'Liderazgo'), 'experience_category:INVALID_EXPERIENCE_CATEGORY');
+  await expectInvalid((p) => vida(p, 7), 'experience_category:INVALID_TYPE');
+});
+
+test('Vida Universitaria: objetivo opcional (ausente, nulo o vacío → null, sin texto por defecto) pero válido si se da', async () => {
+  for (const variant of ['absent', 'null', 'blank'] as const) {
+    const { deps, calls } = makeDeps();
+    const p = valid() as Record<string, any>;
+    vida(p);
+    if (variant === 'absent') delete p.objective; else if (variant === 'null') p.objective = null; else p.objective = '  \n ';
+    assert.equal((await handleRequest(post(p), deps)).status, 201, variant);
+    assert.equal((calls[0].args!.p_payload as Record<string, any>).objective, null);
+  }
+  const { deps, calls } = makeDeps();
+  const p = valid() as Record<string, any>;
+  vida(p);
+  p.objective = 'Integración y convivencia';
+  assert.equal((await handleRequest(post(p), deps)).status, 201);
+  assert.equal((calls[0].args!.p_payload as Record<string, any>).objective, 'Integración y convivencia');
+  await expectInvalid((q) => { vida(q); q.objective = 5; }, 'objective:INVALID_TYPE');
+  await expectInvalid((q) => { vida(q); q.objective = 'x'.repeat(LIMITS.objective.max + 1); }, 'objective:TOO_LONG');
+});
+
+test('Vida Universitaria sigue exigiendo why_join, student_experience, takeaway y keywords', async () => {
+  for (const f of ['why_join', 'student_experience', 'takeaway', 'keywords']) {
+    await expectInvalid((p) => { vida(p); delete p[f]; }, `${f}:REQUIRED`);
   }
 });
 

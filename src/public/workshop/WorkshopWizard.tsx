@@ -9,8 +9,10 @@ import {
 } from '../../lib/workshopIntakeApi';
 import {
   ACTIVITY_TYPES,
+  EXPERIENCE_CATEGORIES,
   LIMITS,
   SESSION_DURATIONS,
+  copyFor,
   describeSubmitError,
   emptyForm,
   fieldId,
@@ -31,6 +33,7 @@ const LABELS: Record<string, string> = {
   facilitator_name: 'Nombre',
   facilitator_email: 'Correo electrónico',
   activity_type: 'Tipo de taller',
+  experience_category: 'Categoría de la experiencia',
   title: 'Nombre del taller',
   student_pitch: 'Presentación del taller',
   why_join: '¿Por qué debería elegirlo un alumno?',
@@ -77,6 +80,7 @@ export default function WorkshopWizard({
   const steps = stepsFor(form.activity_type);
   const LAST = steps.length - 1;
   const current = steps[Math.min(step, LAST)];
+  const copy = copyFor(form.activity_type);
   const stepIndexOf = (field: string) => {
     const id = stepIdOfField(field);
     return id ? steps.findIndex((s) => s.id === id) : -1;
@@ -140,7 +144,11 @@ export default function WorkshopWizard({
     goTo(targetStep, first);
   };
 
+  // Taller académico sin carreras reales en el catálogo: se informa en su momento, sin bloquear el resto del formulario.
+  const academicUnavailable = form.activity_type === 'academica' && catalog.careers.length === 0;
+
   const next = () => {
+    if (current.id === 'taller' && academicUnavailable) return;
     const found = validateStep(form, current.id);
     if (Object.keys(found).length > 0) {
       showErrors(found, step);
@@ -153,7 +161,7 @@ export default function WorkshopWizard({
   };
 
   const submit = async () => {
-    if (submittingRef.current) return; // bloquea el doble envío aunque el botón aún no se haya deshabilitado
+    if (submittingRef.current || academicUnavailable) return; // bloquea el doble envío aunque el botón aún no se haya deshabilitado
     const { errors: found, payload } = validateForm(form);
     if (!payload) {
       const firstField = Object.keys(found).filter((k) => k !== '_form').sort((a, b) => stepIndexOf(a) - stepIndexOf(b))[0];
@@ -203,7 +211,7 @@ export default function WorkshopWizard({
           <h2 id="wf-step-title" ref={headingRef} tabIndex={-1} className="text-xl font-extrabold focus:outline-none">
             {current.title}
           </h2>
-          <p className="mt-1 text-sm text-ink-muted">{stepIntro(current.id)}</p>
+          <p className="mt-1 text-sm text-ink-muted">{stepIntro(current.id, form.activity_type === 'vida_universitaria')}</p>
         </div>
 
         {notice && <Alert tone="warning">{notice}</Alert>}
@@ -276,15 +284,31 @@ export default function WorkshopWizard({
               legend="Tipo de taller"
               required
               value={form.activity_type}
-              onChange={(v) => set('activity_type', v)}
+              onChange={(v) => {
+                set('activity_type', v);
+                if (v === 'academica') set('experience_category', ''); // la categoría solo existe para Vida Universitaria
+              }}
               options={ACTIVITY_TYPES.map((t) => ({ value: t.value, label: t.label, description: t.description }))}
               error={errors.activity_type}
             />
-            <TextField field="title" label="Nombre del taller" required value={form.title} onChange={(v) => set('title', v)} error={errors.title} />
+            {academicUnavailable && <Alert tone="warning">El registro de talleres académicos aún no está disponible. Estamos preparando el catálogo de carreras; vuelve a intentarlo más tarde.</Alert>}
+            {form.activity_type === 'vida_universitaria' && (
+              <RadioCards
+                field="experience_category"
+                legend="Clasificación de la experiencia"
+                hint="Elige la que mejor la describa."
+                required
+                value={form.experience_category}
+                onChange={(v) => set('experience_category', v)}
+                options={(catalog.experience_categories ?? EXPERIENCE_CATEGORIES).map((c) => ({ value: c.value, label: c.label }))}
+                error={errors.experience_category}
+              />
+            )}
+            <TextField field="title" label={copy.title.label} required value={form.title} onChange={(v) => set('title', v)} error={errors.title} />
             <TextAreaField
               field="student_pitch"
-              label="Presenta tu taller en pocas palabras"
-              hint="Es lo primero que verán los alumnos al elegirlo."
+              label={copy.student_pitch.label}
+              hint={copy.student_pitch.hint}
               required
               rows={3}
               max={LIMITS.studentPitch.max}
@@ -297,18 +321,28 @@ export default function WorkshopWizard({
 
         {current.id === 'experiencia' && (
           <div className="space-y-5">
-            <TextAreaField field="why_join" label="¿Por qué debería elegirlo un alumno?" required max={LIMITS.whyJoin.max} value={form.why_join} onChange={(v) => set('why_join', v)} error={errors.why_join} />
-            <TextAreaField field="objective" label="¿Cuál es el objetivo del taller?" required max={LIMITS.objective.max} value={form.objective} onChange={(v) => set('objective', v)} error={errors.objective} />
+            <TextAreaField field="why_join" label={copy.why_join.label} hint={copy.why_join.hint} required max={LIMITS.whyJoin.max} value={form.why_join} onChange={(v) => set('why_join', v)} error={errors.why_join} />
+            <TextAreaField
+              field="objective"
+              label={copy.objective.label}
+              hint={copy.objective.hint}
+              required={form.activity_type !== 'vida_universitaria'}
+              max={LIMITS.objective.max}
+              value={form.objective}
+              onChange={(v) => set('objective', v)}
+              error={errors.objective}
+            />
             <TextAreaField
               field="student_experience"
-              label="¿Qué hará el alumno durante el taller?"
+              label={copy.student_experience.label}
+              hint={copy.student_experience.hint}
               required
               max={LIMITS.studentExperience.max}
               value={form.student_experience}
               onChange={(v) => set('student_experience', v)}
               error={errors.student_experience}
             />
-            <TextAreaField field="takeaway" label="¿Qué se llevará el alumno al terminar?" required rows={3} max={LIMITS.takeaway.max} value={form.takeaway} onChange={(v) => set('takeaway', v)} error={errors.takeaway} />
+            <TextAreaField field="takeaway" label={copy.takeaway.label} hint={copy.takeaway.hint} required rows={3} max={LIMITS.takeaway.max} value={form.takeaway} onChange={(v) => set('takeaway', v)} error={errors.takeaway} />
             <KeywordInput value={form.keywords} onChange={(v) => set('keywords', v)} error={errors.keywords} />
           </div>
         )}
@@ -409,12 +443,12 @@ export default function WorkshopWizard({
   );
 }
 
-function stepIntro(stepId: string): string {
+function stepIntro(stepId: string, vida: boolean): string {
   switch (stepId) {
     case 'responsable':
       return 'Cuéntanos quién será el contacto del equipo organizador.';
     case 'taller':
-      return 'Lo básico de tu taller: de qué tipo es, cómo se llama y de qué trata.';
+      return vida ? 'Cuéntanos cómo se llama tu actividad y de qué trata.' : 'Lo básico de tu taller: de qué tipo es, cómo se llama y de qué trata.';
     case 'experiencia':
       return 'Ayúdanos a explicarle a los alumnos qué van a vivir.';
     case 'operacion':

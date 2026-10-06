@@ -31,6 +31,15 @@ export const ACTIVITY_TYPES = [
   },
 ] as const;
 
+/** Clasificación exclusiva de Vida Universitaria. Independiente de la división/carrera académica "Liderazgo". */
+export const EXPERIENCE_CATEGORIES = [
+  { value: 'liderazgo', label: 'Liderazgo' },
+  { value: 'deportiva', label: 'Deportiva' },
+  { value: 'artistica_cultural', label: 'Artística / cultural' },
+  { value: 'vida_universitaria', label: 'Vida universitaria' },
+  { value: 'otra', label: 'Otra' },
+] as const;
+
 /** Única duración permitida: 30 minutos o 1 hora. */
 export const SESSION_DURATIONS = [
   { value: 30, label: '30 minutos' },
@@ -45,6 +54,7 @@ export const ALLOWED_FIELDS = [
   'facilitator_name',
   'facilitator_email',
   'activity_type',
+  'experience_category',
   'title',
   'student_pitch',
   'why_join',
@@ -86,10 +96,13 @@ export type SubmissionPayload = {
   facilitator_name: string;
   facilitator_email: string;
   activity_type: 'academica' | 'vida_universitaria';
+  /** Solo Vida Universitaria; siempre null para académico. */
+  experience_category: (typeof EXPERIENCE_CATEGORIES)[number]['value'] | null;
   title: string;
   student_pitch: string;
   why_join: string;
-  objective: string;
+  /** Obligatorio para académico; opcional (null) para Vida Universitaria. */
+  objective: string | null;
   student_experience: string;
   takeaway: string;
   keywords: string[];
@@ -212,11 +225,28 @@ export function validateSubmission(input: unknown): ValidationResult {
     else activity_type = raw as SubmissionPayload['activity_type'];
   }
 
+  // Categoría de experiencia: obligatoria solo para Vida Universitaria; prohibida para académico.
+  let experience_category: SubmissionPayload['experience_category'] = null;
+  {
+    const raw = input.experience_category;
+    const present = raw !== undefined && raw !== null;
+    if (activity_type === 'academica') {
+      if (present) err('experience_category', 'NOT_ALLOWED');
+    } else if (!present) err('experience_category', 'REQUIRED');
+    else if (typeof raw !== 'string') err('experience_category', 'INVALID_TYPE');
+    else if (!EXPERIENCE_CATEGORIES.some((c) => c.value === raw)) err('experience_category', 'INVALID_EXPERIENCE_CATEGORY');
+    else experience_category = raw as SubmissionPayload['experience_category'];
+  }
+
   // Contenido
   const title = line('title', LIMITS.title.min, LIMITS.title.max);
   const student_pitch = text('student_pitch', LIMITS.studentPitch.min, LIMITS.studentPitch.max);
   const why_join = text('why_join', LIMITS.whyJoin.min, LIMITS.whyJoin.max);
-  const objective = text('objective', LIMITS.objective.min, LIMITS.objective.max);
+  // El objetivo es obligatorio para académico y opcional para Vida Universitaria (nunca se rellena con textos por defecto).
+  const objective =
+    activity_type === 'academica'
+      ? text('objective', LIMITS.objective.min, LIMITS.objective.max)
+      : optionalText('objective', LIMITS.objective.max);
   const student_experience = text('student_experience', LIMITS.studentExperience.min, LIMITS.studentExperience.max);
   const takeaway = text('takeaway', LIMITS.takeaway.min, LIMITS.takeaway.max);
 
@@ -293,6 +323,7 @@ export function validateSubmission(input: unknown): ValidationResult {
       facilitator_name,
       facilitator_email,
       activity_type,
+      experience_category,
       title,
       student_pitch,
       why_join,

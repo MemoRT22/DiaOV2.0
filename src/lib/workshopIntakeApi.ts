@@ -1,13 +1,15 @@
 // Cliente ESPECÍFICO del formulario público de propuestas de taller. Habla únicamente con la Edge Function
 // `workshop-intake` (GET catálogo / POST propuesta). No usa el helper genérico de RPC, ni sesión, ni
 // credenciales: la función es pública (sin login) y es la única frontera de escritura.
-import type { ACTIVITY_TYPES, FieldError, LIMITS, SubmissionPayload } from '../../supabase/functions/workshop-intake/validation.ts';
+import type { ACTIVITY_TYPES, EXPERIENCE_CATEGORIES, FieldError, LIMITS, SubmissionPayload } from '../../supabase/functions/workshop-intake/validation.ts';
 
 export type IntakeCatalog = {
   edition: { name: string; event_date: string } | null;
   divisions: { division_id: string; division_name: string }[];
   careers: { career_id: string; career_name: string; division_id: string }[];
   activity_types: typeof ACTIVITY_TYPES;
+  /** Catálogo de clasificación de Vida Universitaria (opcional: una versión anterior de la API no lo devuelve). */
+  experience_categories?: typeof EXPERIENCE_CATEGORIES;
   limits: typeof LIMITS;
 };
 

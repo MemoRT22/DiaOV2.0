@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ACTIVITY_TYPES, LIMITS } from '../../supabase/functions/workshop-intake/validation.ts';
+import { ACTIVITY_TYPES, EXPERIENCE_CATEGORIES, LIMITS } from '../../supabase/functions/workshop-intake/validation.ts';
 import WorkshopRegistration from './WorkshopRegistration';
 
 vi.mock('../theme/ThemeProvider', async () => {
@@ -29,6 +29,7 @@ const catalog = {
     { career_id: C4, career_name: 'Mercadotecnia', division_id: D2 },
   ],
   activity_types: ACTIVITY_TYPES,
+  experience_categories: EXPERIENCE_CATEGORIES,
   limits: LIMITS,
 };
 
@@ -68,11 +69,25 @@ async function fillTaller(user: ReturnType<typeof userEvent.setup>, type: RegExp
   setVal(/Nombre del taller/, 'Código Rojo Cancún 2035');
   setVal(/Presenta tu taller/, 'Resuelve una crisis digital en equipo durante una hora.');
 }
+async function fillVidaTaller(user: ReturnType<typeof userEvent.setup>, category: RegExp = /Deportiva/) {
+  await user.click(screen.getByRole('radio', { name: /Vida Universitaria/ }));
+  await user.click(screen.getByRole('radio', { name: category }));
+  setVal(/Nombre de la actividad/, 'Torneo de fútbol relámpago');
+  setVal(/Descripción corta/, 'Un torneo rápido para convivir y divertirse con tu escuela.');
+}
+async function fillVidaExperiencia(user: ReturnType<typeof userEvent.setup>, objetivo?: string) {
+  setVal(/Por qué debería sumarse un alumno/, 'Porque es una forma distinta y divertida de convivir.');
+  if (objetivo) setVal(/Qué buscas generar/, objetivo);
+  setVal(/Qué harán los alumnos durante la actividad/, 'Jugarán partidos cortos por equipos mixtos.');
+  setVal(/Con qué queremos que se queden/, 'Amistades nuevas y ganas de volver a participar.');
+  const kw = screen.getByRole('textbox', { name: /Palabras clave/ });
+  for (const k of ['deporte', 'convivencia', 'fútbol']) await user.type(kw, `${k}{Enter}`);
+}
 async function fillExperiencia(user: ReturnType<typeof userEvent.setup>) {
-  setVal(/Por qué debería elegirlo/, 'Porque vivirás cómo se trabaja bajo presión con tecnología real.');
+  setVal(/Por qué debería elegir este taller/, 'Porque vivirás cómo se trabaja bajo presión con tecnología real.');
   setVal(/objetivo del taller/, 'Que el alumno identifique el rol de las TI en una emergencia.');
   setVal(/Qué hará el alumno durante/, 'Simulación guiada con retos por equipos y retroalimentación.');
-  setVal(/Qué se llevará el alumno/, 'Una idea clara de qué hace un ingeniero en ciberseguridad.');
+  setVal(/Qué aprendizaje o idea/, 'Una idea clara de qué hace un ingeniero en ciberseguridad.');
   const kw = screen.getByRole('textbox', { name: /Palabras clave/ });
   for (const k of ['ciberseguridad', 'inteligencia artificial', 'simulación']) await user.type(kw, `${k}{Enter}`);
 }
@@ -103,12 +118,12 @@ async function toReview(user: ReturnType<typeof userEvent.setup>) {
 }
 
 /** Vida Universitaria: no hay paso de carreras; de Logística se pasa directo a la revisión. */
-async function toReviewVida(user: ReturnType<typeof userEvent.setup>) {
+async function toReviewVida(user: ReturnType<typeof userEvent.setup>, objetivo?: string) {
   fillResponsable();
   await next(user);
-  await fillTaller(user, /Vida Universitaria/);
+  await fillVidaTaller(user);
   await next(user);
-  await fillExperiencia(user);
+  await fillVidaExperiencia(user, objetivo);
   await next(user);
   await fillOperacion(user);
   await next(user);
@@ -129,18 +144,35 @@ describe('catálogo', () => {
     expect(fetchMock.mock.calls[0][1]?.method).toBe('GET');
   });
 
-  it('catálogo vacío: «Registro aún no disponible», sin formulario ni datos de respaldo', async () => {
+  it('catálogo académico vacío: la página abre el formulario (Vida Universitaria no necesita catálogo)', async () => {
     handlers.GET = () => json({ ...catalog, divisions: [], careers: [] });
-    render(<WorkshopRegistration />);
-    expect(await screen.findByRole('heading', { name: 'Registro aún no disponible' })).toBeInTheDocument();
-    expect(screen.queryByRole('form')).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Siguiente/ })).not.toBeInTheDocument();
+    await open();
+    expect(screen.getByText('Paso 1 de 6: Tus datos')).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Registro aún no disponible' })).not.toBeInTheDocument();
   });
 
-  it('sin carreras reales aunque haya divisiones: también no disponible', async () => {
-    handlers.GET = () => json({ ...catalog, careers: [] });
-    render(<WorkshopRegistration />);
-    expect(await screen.findByRole('heading', { name: 'Registro aún no disponible' })).toBeInTheDocument();
+  it('catálogo vacío: Vida Universitaria se completa y se envía normalmente', async () => {
+    handlers.GET = () => json({ ...catalog, divisions: [], careers: [] });
+    const user = await open();
+    await toReviewVida(user);
+    await user.click(screen.getByRole('button', { name: 'Enviar propuesta' }));
+    expect(await screen.findByRole('heading', { name: '¡Recibimos tu propuesta!' })).toBeInTheDocument();
+    expect(JSON.parse((posts()[0][1] as RequestInit).body as string).career_ids).toEqual([]);
+  });
+
+  it('catálogo vacío: Académico informa que falta el catálogo en su momento y no avanza', async () => {
+    handlers.GET = () => json({ ...catalog, divisions: [], careers: [] });
+    const user = await open();
+    fillResponsable();
+    await next(user);
+    expect(screen.queryByText(/talleres académicos aún no está disponible/)).not.toBeInTheDocument();
+    await fillTaller(user);
+    expect(screen.getByText(/registro de talleres académicos aún no está disponible/i)).toBeInTheDocument();
+    await next(user);
+    expect(heading('Tu taller')).toBeInTheDocument();
+    // cambiar a Vida Universitaria quita el aviso y habilita el flujo
+    await user.click(screen.getByRole('radio', { name: /Vida Universitaria/ }));
+    expect(screen.queryByText(/talleres académicos aún no está disponible/)).not.toBeInTheDocument();
   });
 
   it('sin edición activa (503): no disponible', async () => {
@@ -262,6 +294,158 @@ describe('tipo de taller y logística simplificada', () => {
   });
 });
 
+describe('Vida Universitaria: copy y campos propios', () => {
+  async function toVidaTaller() {
+    const user = await open();
+    fillResponsable();
+    await next(user);
+    return user;
+  }
+
+  it('académico no muestra la clasificación; Vida Universitaria sí, con las 5 categorías', async () => {
+    const user = await toVidaTaller();
+    await user.click(screen.getByRole('radio', { name: /Taller académico/ }));
+    expect(screen.queryByRole('group', { name: /Clasificación de la experiencia/ })).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/Nombre del taller/)).toBeInTheDocument();
+    await user.click(screen.getByRole('radio', { name: /Vida Universitaria/ }));
+    const group = screen.getByRole('group', { name: /Clasificación de la experiencia/ });
+    expect(within(group).getAllByRole('radio').map((r) => (r as HTMLInputElement).value)).toEqual([
+      'liderazgo', 'deportiva', 'artistica_cultural', 'vida_universitaria', 'otra',
+    ]);
+    expect(within(group).getByRole('radio', { name: 'Artística / cultural' })).toBeInTheDocument();
+    expect(screen.getByLabelText(/Nombre de la actividad/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Descripción corta/)).toBeInTheDocument();
+    expect(screen.getByText('En pocas palabras, ¿qué experiencia vivirán los alumnos?')).toBeInTheDocument();
+  });
+
+  it('la categoría es obligatoria', async () => {
+    const user = await toVidaTaller();
+    await user.click(screen.getByRole('radio', { name: /Vida Universitaria/ }));
+    setVal(/Nombre de la actividad/, 'Torneo de fútbol relámpago');
+    setVal(/Descripción corta/, 'Un torneo rápido para convivir y divertirse con tu escuela.');
+    await next(user);
+    expect(heading('Tu actividad')).toBeInTheDocument();
+    expect(document.getElementById('wf-experience_category-error')).toBeInTheDocument();
+  });
+
+  it('preguntas de experiencia con lenguaje propio; el objetivo es opcional y no hay CareerPicker', async () => {
+    const user = await toVidaTaller();
+    await fillVidaTaller(user);
+    await next(user);
+    expect(heading('Experiencia')).toBeInTheDocument();
+    for (const l of [/Por qué debería sumarse un alumno/, /Qué buscas generar con esta experiencia/, /Qué harán los alumnos durante la actividad/, /Con qué queremos que se queden/]) {
+      expect(screen.getByLabelText(l)).toBeInTheDocument();
+    }
+    expect(screen.getByText('Cuéntanos qué hace atractiva o especial esta experiencia.')).toBeInTheDocument();
+    expect(screen.getByText(/Por ejemplo: integración, creatividad/)).toBeInTheDocument();
+    expect(screen.getByText('Describe brevemente la dinámica o cómo participarán.')).toBeInTheDocument();
+    expect(screen.getByLabelText(/Qué buscas generar/).id).toBe('wf-objective');
+    expect(screen.getByText(/Qué buscas generar/).textContent).toMatch(/opcional/);
+    // se avanza sin objetivo
+    await fillVidaExperiencia(user);
+    await next(user);
+    expect(heading('Logística')).toBeInTheDocument();
+    await fillOperacion(user);
+    await next(user);
+    expect(heading('Revisa y envía')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Buscar carrera')).not.toBeInTheDocument();
+  });
+
+  it('review: copy de Vida Universitaria, categoría, sin carreras; el objetivo solo si se respondió', async () => {
+    const user = await open();
+    await toReviewVida(user);
+    expect(screen.getByText('Vida Universitaria')).toBeInTheDocument();
+    expect(screen.getByText('Deportiva')).toBeInTheDocument();
+    expect(screen.getByText('Torneo de fútbol relámpago')).toBeInTheDocument();
+    expect(screen.getByText('Descripción corta')).toBeInTheDocument();
+    expect(screen.getByText('¿Por qué debería sumarse un alumno?')).toBeInTheDocument();
+    expect(screen.getByText('¿Qué harán los alumnos durante la actividad?')).toBeInTheDocument();
+    expect(screen.getByText('¿Con qué queremos que se queden después de participar?')).toBeInTheDocument();
+    expect(screen.queryByText('¿Qué buscas generar con esta experiencia?')).not.toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Carreras relacionadas' })).not.toBeInTheDocument();
+    expect(screen.queryByText(/Escuela o división|Nombre del taller|Presentación$/)).not.toBeInTheDocument();
+  });
+
+  it('review: el objetivo se muestra si fue respondido y viaja en el payload', async () => {
+    const user = await open();
+    await toReviewVida(user, 'Integración y convivencia');
+    expect(screen.getByText('¿Qué buscas generar con esta experiencia?')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Enviar propuesta' }));
+    await screen.findByRole('heading', { name: '¡Recibimos tu propuesta!' });
+    const body = JSON.parse((posts()[0][1] as RequestInit).body as string);
+    expect(body).toMatchObject({ activity_type: 'vida_universitaria', experience_category: 'deportiva', objective: 'Integración y convivencia', career_ids: [] });
+  });
+
+  it('sin objetivo: se envía null y nunca un texto por defecto', async () => {
+    const user = await open();
+    await toReviewVida(user);
+    await user.click(screen.getByRole('button', { name: 'Enviar propuesta' }));
+    await screen.findByRole('heading', { name: '¡Recibimos tu propuesta!' });
+    expect(JSON.parse((posts()[0][1] as RequestInit).body as string).objective).toBeNull();
+  });
+});
+
+describe('cambio de tipo durante el llenado', () => {
+  it('Vida Universitaria → académico: limpia la categoría, conserva lo escrito y nunca la envía', async () => {
+    const user = await open();
+    fillResponsable();
+    await next(user);
+    await fillVidaTaller(user, /^Liderazgo$/);
+    await user.click(screen.getByRole('radio', { name: /Taller académico/ }));
+    expect(screen.queryByRole('group', { name: /Clasificación de la experiencia/ })).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/Nombre del taller/)).toHaveValue('Torneo de fútbol relámpago');
+    await next(user);
+    await fillExperiencia(user);
+    await next(user);
+    await fillOperacion(user);
+    await next(user);
+    await fillCarreras(user);
+    await next(user);
+    await user.click(screen.getByRole('button', { name: 'Enviar propuesta' }));
+    await screen.findByRole('heading', { name: '¡Recibimos tu propuesta!' });
+    const body = JSON.parse((posts()[0][1] as RequestInit).body as string);
+    expect(body.activity_type).toBe('academica');
+    expect(body.experience_category).toBeNull();
+    expect(body.career_ids).toEqual([C1, C3]);
+  });
+
+  it('académico → Vida Universitaria desde la revisión: sin carreras y con la categoría elegida', async () => {
+    const user = await open();
+    await toReview(user);
+    await user.click(screen.getByRole('button', { name: 'Editar Tu taller' }));
+    await user.click(screen.getByRole('radio', { name: /Vida Universitaria/ }));
+    await user.click(screen.getByRole('radio', { name: /Otra/ }));
+    await next(user);
+    await screen.findByRole('heading', { level: 2, name: 'Revisa y envía' });
+    expect(screen.getByText('Otra')).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Carreras relacionadas' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Enviar propuesta' }));
+    await screen.findByRole('heading', { name: '¡Recibimos tu propuesta!' });
+    const body = JSON.parse((posts()[0][1] as RequestInit).body as string);
+    expect(body.activity_type).toBe('vida_universitaria');
+    expect(body.experience_category).toBe('otra');
+    expect(body.career_ids).toEqual([]);
+  });
+
+  it('Vida Universitaria → académico → Vida Universitaria: las carreras marcadas antes nunca viajan', async () => {
+    const user = await open();
+    await toReview(user);
+    await user.click(screen.getByRole('button', { name: 'Editar Tu taller' }));
+    await user.click(screen.getByRole('radio', { name: /Vida Universitaria/ }));
+    await user.click(screen.getByRole('radio', { name: /^Liderazgo$/ }));
+    await user.click(screen.getByRole('radio', { name: /Taller académico/ }));
+    await user.click(screen.getByRole('radio', { name: /Vida Universitaria/ }));
+    expect(screen.getByRole('radio', { name: /^Liderazgo$/ })).not.toBeChecked(); // la categoría se limpió al pasar por académico
+    await user.click(screen.getByRole('radio', { name: /Deportiva/ }));
+    await next(user);
+    await user.click(await screen.findByRole('button', { name: 'Enviar propuesta' }));
+    await screen.findByRole('heading', { name: '¡Recibimos tu propuesta!' });
+    const body = JSON.parse((posts()[0][1] as RequestInit).body as string);
+    expect(body.experience_category).toBe('deportiva');
+    expect(body.career_ids).toEqual([]);
+  });
+});
+
 describe('palabras clave', () => {
   async function toKeywords() {
     const user = await open();
@@ -292,10 +476,10 @@ describe('palabras clave', () => {
 
   it('menos de 3 palabras clave bloquea el avance con un mensaje claro', async () => {
     const user = await toKeywords();
-    setVal(/Por qué debería elegirlo/, 'Porque vivirás cómo se trabaja bajo presión con tecnología real.');
+    setVal(/Por qué debería elegir este taller/, 'Porque vivirás cómo se trabaja bajo presión con tecnología real.');
     setVal(/objetivo del taller/, 'Que el alumno identifique el rol de las TI en una emergencia.');
     setVal(/Qué hará el alumno durante/, 'Simulación guiada con retos por equipos y retroalimentación.');
-    setVal(/Qué se llevará el alumno/, 'Una idea clara de qué hace un ingeniero en ciberseguridad.');
+    setVal(/Qué aprendizaje o idea/, 'Una idea clara de qué hace un ingeniero en ciberseguridad.');
     await user.type(screen.getByRole('textbox', { name: /Palabras clave/ }), 'ia{Enter}');
     await next(user);
     expect(heading('Experiencia del alumno')).toBeInTheDocument();
@@ -347,8 +531,8 @@ describe('carreras relacionadas', () => {
     const user = await open();
     fillResponsable();
     await next(user);
-    await fillTaller(user, /Vida Universitaria/);
-    expect(screen.getByText('Paso 2 de 5: Tu taller')).toBeInTheDocument();
+    await user.click(screen.getByRole('radio', { name: /Vida Universitaria/ }));
+    expect(screen.getByText('Paso 2 de 5: Tu actividad')).toBeInTheDocument();
     await user.click(screen.getByRole('radio', { name: /Taller académico/ }));
     expect(screen.getByText('Paso 2 de 6: Tu taller')).toBeInTheDocument();
   });
@@ -445,6 +629,7 @@ describe('revisión y envío', () => {
     await toReview(user);
     await user.click(screen.getByRole('button', { name: 'Editar Tu taller' }));
     await user.click(screen.getByRole('radio', { name: /Vida Universitaria/ }));
+    await user.click(screen.getByRole('radio', { name: /Deportiva/ }));
     await next(user); // Guardar y volver a la revisión
     await screen.findByRole('heading', { level: 2, name: 'Revisa y envía' });
     expect(screen.queryByRole('region', { name: 'Carreras relacionadas' })).not.toBeInTheDocument();
