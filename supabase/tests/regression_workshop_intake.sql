@@ -1,5 +1,6 @@
 -- Regresión: capa de datos de propuestas de talleres (workshop_submissions). Un solo bloque DO, autocontenido;
--- termina con RAISE EXCEPTION ("N ok M fail: detalle") para revertir todo. No toca triggers ni protecciones.
+-- termina SIEMPRE con RAISE EXCEPTION ("N ok M fail: detalle") para revertir todo. CONVENCIÓN: el resultado se lee en el mensaje;
+-- éxito = "N ok 0 fail: (none)", cualquier otro valor de fail > 0 es fallo (la excepción no implica error). No toca triggers ni protecciones.
 -- Cubre: primitivas internas (catálogo y creación), constraints, atomicidad, auditoría, independencia del catálogo
 -- oficial y permisos (anon / authenticated / service_role). Modelo simplificado: solo nombre y correo del responsable,
 -- tipo academica | vida_universitaria, sin división en la entrada, duración 30/60, horario fijo 10:00–12:00 sin descanso,
