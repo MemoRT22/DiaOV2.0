@@ -299,7 +299,7 @@ BEGIN
     JOIN careers c ON c.id = ic.career_id
     JOIN activities a ON a.id = ac.activity_id
     WHERE a.edition_id = v_ed.id AND a.is_demo = v_p.is_demo
-      AND a.activity_type <> 'vida_universitaria'
+      AND a.activity_type = 'academica'
   ),
   -- Only activities with at least one active session
   activities_with_sessions AS (
@@ -336,7 +336,7 @@ BEGIN
       ) AS already_reserved,
       coalesce((
         SELECT jsonb_agg(jsonb_build_object(
-          'id', div.id, 'name', div.name, 'code', div.code
+          'division_id', div.id, 'division_name', div.name, 'division_code', div.code
         ) ORDER BY div.name)
         FROM activity_divisions ad
         JOIN divisions div ON div.id = ad.division_id
@@ -362,9 +362,9 @@ BEGIN
     'activity_id', f.activity_id,
     'title', f.title,
     'description', left(f.description, 200),
-    'division_id', CASE WHEN jsonb_array_length(f.divisions_array) = 1 THEN f.divisions_array->0->>'id' ELSE NULL END,
-    'division_name', CASE WHEN jsonb_array_length(f.divisions_array) = 1 THEN f.divisions_array->0->>'name' ELSE NULL END,
-    'division_code', CASE WHEN jsonb_array_length(f.divisions_array) = 1 THEN f.divisions_array->0->>'code' ELSE NULL END,
+    'division_id', CASE WHEN jsonb_array_length(f.divisions_array) = 1 THEN f.divisions_array->0->>'division_id' ELSE NULL END,
+    'division_name', CASE WHEN jsonb_array_length(f.divisions_array) = 1 THEN f.divisions_array->0->>'division_name' ELSE NULL END,
+    'division_code', CASE WHEN jsonb_array_length(f.divisions_array) = 1 THEN f.divisions_array->0->>'division_code' ELSE NULL END,
     'divisions', f.divisions_array,
     'related_careers', f.related_careers,
     'careers', f.careers,
@@ -521,6 +521,11 @@ BEGIN
   );
 END;
 $$;
+REVOKE ALL ON FUNCTION public.publish_workshop_submission_internal(uuid, uuid)
+FROM PUBLIC, anon, authenticated;
+
+GRANT EXECUTE ON FUNCTION public.publish_workshop_submission_internal(uuid, uuid)
+TO service_role;
 
 CREATE OR REPLACE FUNCTION public.workshop_review_transition_internal(
   p_actor uuid,

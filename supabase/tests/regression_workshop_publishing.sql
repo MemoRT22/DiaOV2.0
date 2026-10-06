@@ -110,7 +110,7 @@ BEGIN
     RAISE EXCEPTION 'CREDITS_FAILED';
   END IF;
 
-  SELECT count(*), max(qr_token_hash) INTO v_sess_count, v_token_hash FROM public.activity_credentials WHERE activity_id = v_act;
+  SELECT count(*), max(encode(qr_token_hash, 'hex')) INTO v_sess_count, v_token_hash FROM public.activity_credentials WHERE activity_id = v_act;
   IF v_sess_count <> 1 THEN RAISE EXCEPTION 'CREDENTIAL_COUNT_FAILED'; END IF;
 
   IF (SELECT division_id FROM public.activities WHERE id = v_act) IS NOT NULL THEN RAISE EXCEPTION 'MULTI_DIV_NULL_FAILED'; END IF;
@@ -118,7 +118,7 @@ BEGIN
   -- Publish idempotent without rotating credential
   v_result := public.publish_workshop_submission_internal(v_actor, v_id);
   IF (v_result->>'session_count')::int <> 4 THEN RAISE EXCEPTION 'IDEMPOTENCY_FAILED'; END IF;
-  SELECT max(qr_token_hash) INTO v_new_token_hash FROM public.activity_credentials WHERE activity_id = v_act;
+  SELECT max(encode(qr_token_hash, 'hex')) INTO v_new_token_hash FROM public.activity_credentials WHERE activity_id = v_act;
   IF v_new_token_hash <> v_token_hash THEN RAISE EXCEPTION 'IDEMPOTENCY_CREDENTIAL_ROTATED'; END IF;
 
   -- Integrity violation test
@@ -151,6 +151,11 @@ BEGIN
   IF (SELECT count(*) FROM public.activity_divisions WHERE activity_id = v_act_vida) <> 0 THEN RAISE EXCEPTION 'VU_NO_DIVISIONS_FAILED'; END IF;
   IF (SELECT count(*) FROM public.activity_careers WHERE activity_id = v_act_vida) <> 0 THEN RAISE EXCEPTION 'VU_NO_CAREERS_FAILED'; END IF;
 
+  -- Primitiva de publicación: solo service_role puede ejecutarla
+  IF has_function_privilege('anon', 'public.publish_workshop_submission_internal(uuid, uuid)', 'EXECUTE') THEN RAISE EXCEPTION 'PUBLISH_EXEC_ANON'; END IF;
+  IF has_function_privilege('authenticated', 'public.publish_workshop_submission_internal(uuid, uuid)', 'EXECUTE') THEN RAISE EXCEPTION 'PUBLISH_EXEC_AUTHENTICATED'; END IF;
+  IF NOT has_function_privilege('service_role', 'public.publish_workshop_submission_internal(uuid, uuid)', 'EXECUTE') THEN RAISE EXCEPTION 'PUBLISH_EXEC_SERVICE_ROLE_MISSING'; END IF;
+
   -- Check operations overview with STAFF context
   PERFORM set_config('request.jwt.claims', json_build_object('sub', v_actor, 'role', 'authenticated')::text, true);
   PERFORM set_config('role', 'authenticated', true);
@@ -161,33 +166,63 @@ BEGIN
     WHERE s->>'activity_id' = v_act::text
   ) THEN RAISE EXCEPTION 'OVERVIEW_DROPPED_NULL_DIVISION_ACTIVITY'; END IF;
 
-  -- SWITCH TO PARTICIPANT CONTEXT
+  -- Back to the privileged test context BEFORE creating any fixture
+  PERFORM set_config('role', 'postgres', true);
+  PERFORM set_config('request.jwt.claims', '', true);
+
+  -- Participant fixtures (privileged context)
   v_pid_auth := gen_random_uuid();
   INSERT INTO auth.users (id, instance_id, email, role, aud, created_at, updated_at)
   VALUES (v_pid_auth, '00000000-0000-0000-0000-000000000000', 'test_part_9d@test.invalid', 'authenticated', 'authenticated', now(), now());
 
   INSERT INTO public.participants (id, edition_id, email, is_demo, auth_user_id, full_name, birth_date, origin)
   VALUES (gen_random_uuid(), v_edition, 'test_part_9d@test.invalid', false, v_pid_auth, 'Test Part', '2000-01-01', 'manual') RETURNING id INTO v_pid;
-  
+
   UPDATE public.participant_profiles SET platform_consent_at = now(), platform_consent_version = (SELECT privacy_notice_version FROM public.editions WHERE id = v_edition) WHERE participant_id = v_pid;
 
-  
-  -- Insert initial interests
   INSERT INTO public.initial_interests (participant_id, career_id, preference) VALUES (v_pid, v_careers[1], 1);
-  
+
+  -- Recommendations: only the participant (authenticated + participant JWT) context
   PERFORM set_config('request.jwt.claims', json_build_object('sub', v_pid_auth, 'role', 'authenticated')::text, true);
+  PERFORM set_config('role', 'authenticated', true);
 
   v_rec := public.my_recommended_activities();
+
+  PERFORM set_config('role', 'postgres', true);
+  PERFORM set_config('request.jwt.claims', '', true);
+
   -- Recommendations should include academic multi-division (since they share v_careers[1])
   IF NOT EXISTS (
     SELECT 1 FROM jsonb_array_elements(v_rec->'recommendations') r
     WHERE r->>'activity_id' = v_act::text
   ) THEN RAISE EXCEPTION 'RECOMMENDATIONS_MISSING_MULTI_DIV'; END IF;
 
-  -- Rank counts activity_divisions
+  -- divisions contract: every element carries division_id / division_name / division_code
+  IF EXISTS (
+    SELECT 1 FROM jsonb_array_elements(v_rec->'recommendations') r, jsonb_array_elements(r->'divisions') d
+    WHERE NOT (d ? 'division_id' AND d ? 'division_name' AND d ? 'division_code') OR d ? 'id' OR d ? 'name' OR d ? 'code'
+  ) THEN RAISE EXCEPTION 'RECOMMENDATIONS_DIVISIONS_CONTRACT_FAILED'; END IF;
+  -- legacy single-division fields only when exactly one division
+  IF EXISTS (
+    SELECT 1 FROM jsonb_array_elements(v_rec->'recommendations') r
+    WHERE jsonb_array_length(r->'divisions') <> 1 AND (r->>'division_id' IS NOT NULL OR r->>'division_name' IS NOT NULL OR r->>'division_code' IS NOT NULL)
+  ) THEN RAISE EXCEPTION 'RECOMMENDATIONS_LEGACY_DIVISION_MULTI_FAILED'; END IF;
+  IF EXISTS (
+    SELECT 1 FROM jsonb_array_elements(v_rec->'recommendations') r
+    WHERE jsonb_array_length(r->'divisions') = 1 AND (r->>'division_id' IS DISTINCT FROM r->'divisions'->0->>'division_id'
+      OR r->>'division_name' IS DISTINCT FROM r->'divisions'->0->>'division_name'
+      OR r->>'division_code' IS DISTINCT FROM r->'divisions'->0->>'division_code')
+  ) THEN RAISE EXCEPTION 'RECOMMENDATIONS_LEGACY_DIVISION_SINGLE_FAILED'; END IF;
+  -- vida_universitaria (and legacy liderazgo) never enter vocational recommendations
+  IF EXISTS (
+    SELECT 1 FROM jsonb_array_elements(v_rec->'recommendations') r
+    WHERE r->>'activity_id' = v_act_vida::text
+  ) THEN RAISE EXCEPTION 'RECOMMENDATIONS_INCLUDED_VIDA'; END IF;
+
+  -- Rank counts activity_divisions (direct calls in the privileged context)
   SELECT id INTO v_sess_id FROM public.activity_sessions WHERE activity_id = v_act LIMIT 1;
   INSERT INTO public.attendances (session_id, participant_id, activity_id, credits_granted) VALUES (v_sess_id, v_pid, v_act, 1);
-  
+
   IF (SELECT count(DISTINCT ad.division_id) FROM public.attendances at JOIN public.activity_divisions ad ON ad.activity_id = at.activity_id WHERE at.participant_id = v_pid) <> 2 THEN RAISE EXCEPTION 'RANK_DIVISIONS_COUNT_FAILED'; END IF;
 
   v_rank := public.participant_rank_level(v_pid);
@@ -199,15 +234,11 @@ BEGIN
 
   v_tickets := public.participant_tickets(v_pid);
   IF (v_tickets->>'leadership_tickets')::int <> 1 THEN RAISE EXCEPTION 'LEADERSHIP_TICKETS_FAILED'; END IF;
-  
+
   -- Raffle category preserves behavior
   INSERT INTO public.raffle_categories (edition_id, name, is_demo, required_academic, required_leadership, is_active) VALUES (v_edition, 'Test Cat', false, 0, 0, true);
 
   IF public.participant_raffle_category(v_pid) IS NULL THEN RAISE EXCEPTION 'RAFFLE_CAT_FAILED'; END IF;
-
-  -- Revert context
-  PERFORM set_config('role', 'postgres', true);
-  PERFORM set_config('request.jwt.claims', '', true);
 
 END
 $test$;
