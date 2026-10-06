@@ -10,6 +10,7 @@ import {
 } from '../lib/operationsHelpers';
 import SessionRow from './operations/SessionRow';
 import SessionTable from './operations/SessionTable';
+import ProgramPulse from './operations/ProgramPulse';
 import SummaryStrip, { summaryItems } from './operations/SummaryStrip';
 
 const REFRESH_MS = 20_000;
@@ -101,7 +102,10 @@ export default function OperationsCenter() {
             <h1 className="text-2xl font-extrabold">Centro de Operación</h1>
             <Badge tone={real ? 'success' : 'warning'}>{real ? 'Operación real' : 'Preparación'}</Badge>
           </div>
-          <p className="mt-1 text-sm text-ink-muted">{formatUpdatedAgo(elapsed)}</p>
+          <p className="mt-1.5 flex items-center gap-2 text-sm text-ink-muted">
+            <span aria-hidden className={`admin-pulse h-2 w-2 rounded-full ${error ? 'bg-amber-500 text-amber-500' : 'bg-emerald-500 text-emerald-500'}`} />
+            {formatUpdatedAgo(elapsed)}
+          </p>
         </div>
         <Button variant="secondary" onClick={load} loading={loading} className="min-h-10">
           <RefreshCw className="h-4 w-4" aria-hidden />
@@ -111,18 +115,20 @@ export default function OperationsCenter() {
 
       {!!error && <Alert tone="warning">No se pudo actualizar; se muestran los últimos datos recibidos.</Alert>}
 
+      <ProgramPulse summary={data.summary} />
       <SummaryStrip items={summaryItems(phase, data.summary, counts)} />
 
+      <div className="card space-y-3 p-3 sm:p-4">
       <div className="flex flex-wrap items-center gap-2">
         <label className="relative min-w-[14rem] flex-1">
           <span className="sr-only">Buscar taller, lugar o división</span>
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-muted" aria-hidden />
+          <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-muted" aria-hidden />
           <input
             type="search"
             value={filters.query}
             onChange={(e) => setFilters({ ...filters, query: e.target.value })}
             placeholder="Buscar taller, lugar o división"
-            className="h-10 w-full rounded-theme border border-line bg-surface pl-9 pr-3 text-sm text-ink placeholder:text-ink-muted/70 focus:border-secondary-400 focus:outline-none focus:ring-2 focus:ring-secondary-500/30"
+            className="field-input h-11 w-full rounded-xl border border-line bg-surface-raised pl-10 pr-3 text-sm text-ink placeholder:text-ink-muted/70 focus:outline-none"
           />
         </label>
         {divisions.length > 1 && (
@@ -180,6 +186,7 @@ export default function OperationsCenter() {
           </label>
         </div>
       )}
+      </div>
 
       {unlocated.length > 0 && active !== 'atencion' && (
         <Alert tone="info">
@@ -245,10 +252,10 @@ function NowView({ views, rows, now, tz, searching }: { views: ReturnType<typeof
       </div>
     );
   }
-  const section = (title: string, list: Row[]) =>
+  const section = (title: string, list: Row[], dot: string) =>
     list.length > 0 && (
       <div>
-        <h2 className="mb-2 text-sm font-semibold text-ink-muted">{title} · {list.length}</h2>
+        <h2 className="mb-2.5 flex items-center gap-2 text-sm font-bold text-ink"><span aria-hidden className={`h-2 w-2 rounded-full ${dot}`} />{title} · {list.length}</h2>
         <div className="card overflow-clip" data-testid="session-table">
           {list.map((row) => <SessionRow key={row.session.session_id} row={row} now={now} />)}
         </div>
@@ -256,9 +263,9 @@ function NowView({ views, rows, now, tz, searching }: { views: ReturnType<typeof
     );
   return (
     <div className="space-y-5">
-      {section('Requiere atención', attention)}
-      {section('En curso', inProgress)}
-      {section(`Empiezan pronto (próximos ${SOON_MINUTES} min)`, soon)}
+      {section('Requiere atención', attention, 'bg-amber-500')}
+      {section('En curso', inProgress, 'bg-emerald-500')}
+      {section(`Empiezan pronto (próximos ${SOON_MINUTES} min)`, soon, 'bg-secondary-500')}
     </div>
   );
 }
