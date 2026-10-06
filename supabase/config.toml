@@ -8,3 +8,7 @@ verify_jwt = true
 # no confía en nada del cliente y es la única frontera pública de escritura.
 [functions.workshop-intake]
 verify_jwt = false
+
+# La revisión exige sesión Staff con rol Coordinación; la función también valida el usuario.
+[functions.workshop-admin]
+verify_jwt = true

@@ -22,6 +22,8 @@ const ParticipantImport = lazy(() => import('./admin/imports/ParticipantImport')
 const Conflicts = lazy(() => import('./admin/imports/Conflicts'));
 const Catalog = lazy(() => import('./admin/catalog/Catalog'));
 const CatalogImport = lazy(() => import('./admin/catalog/CatalogImport'));
+const WorkshopInbox = lazy(() => import('./admin/workshops/WorkshopInbox'));
+const WorkshopDetail = lazy(() => import('./admin/workshops/WorkshopDetail'));
 const ExportPage = lazy(() => import('./admin/export/ExportPage'));
 const StaffAccounts = lazy(() => import('./admin/staff/StaffAccounts'));
 const Operation = lazy(() => import('./admin/Operation'));
@@ -73,6 +75,8 @@ export default function App() {
             <Route path="conflictos" element={<Conflicts />} />
             <Route path="catalogo" element={<Catalog />} />
             <Route path="catalogo/importar" element={<CatalogImport />} />
+            <Route path="talleres" element={<WorkshopInbox />} />
+            <Route path="talleres/:id" element={<WorkshopDetail />} />
             <Route path="exportacion" element={<ExportPage />} />
             <Route path="personal" element={<StaffAccounts />} />
             <Route path="operacion" element={<Operation />} />
