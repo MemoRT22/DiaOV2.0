@@ -11,7 +11,7 @@ vi.mock('../lib/workshopAdminApi', () => ({ workshopAdminApi: { list: vi.fn() } 
 vi.mock('../edition/EditionProvider', () => ({ useEdition: vi.fn() }));
 
 const summary = { participants_total: 120, activities: 8, sessions: 22, attendances: 45,
-  missing_birth_date: 0, pending_conflicts: 0 };
+  pending_conflicts: 0 };
 const list = (counts: WorkshopList['counts']): WorkshopList => ({ items: [], total: 0, page: 1, page_size: 25, counts });
 const show = () => render(<MemoryRouter><Overview /></MemoryRouter>);
 
@@ -25,14 +25,14 @@ beforeEach(() => {
 });
 
 test('shows reliable pending work with links to its resolution area', async () => {
-  vi.mocked(supabase.rpc).mockResolvedValue({ data: { ...summary, pending_conflicts: 3, missing_birth_date: 2 }, error: null } as never);
+  vi.mocked(supabase.rpc).mockResolvedValue({ data: { ...summary, pending_conflicts: 3 }, error: null } as never);
   vi.mocked(workshopAdminApi.list).mockResolvedValue(list({ submitted: 2, in_review: 1, approved: 4, changes_requested: 7 }));
   show();
   const section = await screen.findByRole('region', { name: 'Pendientes' });
-  expect(within(section).getAllByRole('link')).toHaveLength(4);
+  expect(within(section).getAllByRole('link')).toHaveLength(3);
   expect(within(section).getByText('3 datos de importación por revisar').closest('a'))
     .toHaveAttribute('href', '/coordinacion/participantes/importar');
-  expect(within(section).getByText('2 participantes sin fecha de nacimiento').closest('a')).toHaveAttribute('href', '/coordinacion/participantes');
+  expect(within(section).queryByText(/fecha de nacimiento/)).not.toBeInTheDocument();
   expect(within(section).getByText('3 propuestas por revisar').closest('a')).toHaveAttribute('href', '/coordinacion/talleres');
   expect(within(section).getByText('4 propuestas listas para publicar').closest('a')).toHaveAttribute('href', '/coordinacion/talleres');
   expect(within(section).queryByText(/7 cambios solicitados/)).not.toBeInTheDocument();

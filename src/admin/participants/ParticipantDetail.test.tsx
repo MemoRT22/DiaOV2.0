@@ -3,14 +3,15 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { rpc } from '../../lib/adminApi';
 import { useAuth, type StaffRole } from '../../lib/auth';
+import { resetParticipantPassword } from '../../lib/participantAdminApi';
 import ParticipantDetail from './ParticipantDetail';
 
 vi.mock('../../lib/adminApi', async (importOriginal) => ({ ...await importOriginal<typeof import('../../lib/adminApi')>(), rpc: vi.fn() }));
 vi.mock('../../lib/catalog', async (importOriginal) => ({ ...await importOriginal<typeof import('../../lib/catalog')>(), fetchCareers: vi.fn().mockResolvedValue([]) }));
 vi.mock('../../lib/auth', async (importOriginal) => ({ ...await importOriginal<typeof import('../../lib/auth')>(), useAuth: vi.fn() }));
+vi.mock('../../lib/participantAdminApi', () => ({ resetParticipantPassword: vi.fn() }));
 vi.mock('../../edition/EditionProvider', () => ({ useEdition: () => ({ edition: { privacy_notice_version: 'v1' } }) }));
 
-const access = { failed: 0, locked: false, locked_until: null, last_success: null };
 let detail: Record<string, unknown>;
 let conflicts: Array<Record<string, unknown>>;
 
@@ -24,10 +25,11 @@ const show = () => render(<MemoryRouter initialEntries={['/coordinacion/particip
 beforeEach(() => {
   vi.clearAllMocks();
   role(['coordinacion']);
-  detail = { id: 'p-1', full_name: 'Ana López', email: 'ana@correo.com', birth_date: '2008-03-15', phone: null, high_school: null,
-    initial_career_id: null, initial_career_raw: null, origin: 'forms', is_demo: false, forms_consent: true, forms_consent_at: null,
-    manual_consent_at: null, manual_consent_by: null, manual_overrides: {}, pending_conflicts: 0, has_logged_in: true,
-    platform_consent_at: '2026-10-05T10:00:00Z', attendances: 0, access };
+  detail = { id: 'p-1', full_name: 'Ana López', email: 'ana@correo.com', phone: null, high_school: null,
+    high_school_grade: '3', entry_period: '2027-08', initial_career_id: null, initial_career_raw: null, origin: 'forms',
+    is_demo: false, forms_consent: true, forms_consent_at: null, manual_consent_at: null, manual_consent_by: null,
+    manual_overrides: {}, pending_conflicts: 0, has_logged_in: true, access_configured: true,
+    platform_consent_at: '2026-10-05T10:00:00Z', platform_consent_source: 'platform', attendances: 0 };
   conflicts = [];
   vi.mocked(rpc).mockImplementation(async (name: string) => {
     if (name === 'get_participant') return detail as never;
@@ -36,41 +38,57 @@ beforeEach(() => {
   });
 });
 
-test('the expediente diagnoses access: everything in order', async () => {
+test('the expediente shows the structural fields and never a birth date', async () => {
   show();
-  const card = await screen.findByRole('region', { name: 'Diagnóstico de acceso' });
-  expect(within(card).getByText('Puede entrar con su correo y fecha de nacimiento')).toBeInTheDocument();
-  expect(within(card).getByText('Tiene fecha de nacimiento')).toBeInTheDocument();
-  expect(within(card).getByText('Sin bloqueo de acceso')).toBeInTheDocument();
-  expect(within(card).getByText(/Ya entró/)).toBeInTheDocument();
+  await screen.findByRole('heading', { name: 'Ana López' });
+  const record = screen.getByText('Datos del registro').closest('section') as HTMLElement;
+  expect(within(record).getByText('Grado')).toBeInTheDocument();
+  expect(within(record).getByText('3.º año')).toBeInTheDocument();
+  expect(within(record).getByText('Periodo de interés')).toBeInTheDocument();
+  expect(within(record).getByText('Agosto 2027')).toBeInTheDocument();
+  expect(screen.queryByText(/nacimiento/i)).not.toBeInTheDocument();
+});
+
+test('an active account is shown as such, with no diagnosis of birth date or lock', async () => {
+  show();
+  const card = await screen.findByRole('region', { name: 'Acceso a la plataforma' });
+  expect(within(card).getByText('Cuenta activa')).toBeInTheDocument();
+  expect(within(card).getByText(/Ya entró a la plataforma/)).toBeInTheDocument();
   expect(within(card).getByText(/Aceptó el aviso de privacidad/)).toBeInTheDocument();
+  expect(within(card).getByRole('button', { name: 'Restablecer contraseña' })).toBeInTheDocument();
+  expect(screen.queryByText(/bloqueo|Bloqueado|fecha de nacimiento/i)).not.toBeInTheDocument();
 });
 
-test('a missing birth date is explained and can be corrected from the diagnosis', async () => {
-  detail = { ...detail, birth_date: null, has_logged_in: false, platform_consent_at: null };
+test('a participant without a password shows "Acceso no configurado" and can still get one from the expediente', async () => {
+  detail = { ...detail, access_configured: false, has_logged_in: false, platform_consent_at: null };
   show();
-  const card = await screen.findByRole('region', { name: 'Diagnóstico de acceso' });
-  expect(within(card).getByText('Tiene problemas para entrar')).toBeInTheDocument();
-  expect(within(card).getByText('Falta la fecha de nacimiento')).toBeInTheDocument();
-  expect(within(card).getByText(/Todavía no ha entrado/)).toBeInTheDocument();
-  fireEvent.click(within(card).getByRole('button', { name: 'Corregir datos' }));
-  expect(await screen.findByRole('dialog')).toBeInTheDocument();
+  const card = await screen.findByRole('region', { name: 'Acceso a la plataforma' });
+  expect(within(card).getByText('Acceso no configurado')).toBeInTheDocument();
+  expect(within(card).getByText(/Todavía no crea su contraseña/)).toBeInTheDocument();
+  fireEvent.click(within(card).getByRole('button', { name: 'Restablecer contraseña' }));
+  expect(await screen.findByText(/todavía no tiene contraseña/)).toBeInTheDocument();
 });
 
-test('an access lock is explained and can be removed, then the expediente reloads', async () => {
-  let locked = true;
+test('resetting generates a password shown once to the operator, then the expediente reloads', async () => {
+  let configured = false;
+  detail = { ...detail, access_configured: false };
   vi.mocked(rpc).mockImplementation(async (name: string) => {
-    if (name === 'get_participant') return { ...detail, access: { ...access, locked, failed: locked ? 5 : 0, locked_until: locked ? '2026-10-06T18:15:00Z' : null } } as never;
-    if (name === 'clear_access_lock') { locked = false; return undefined as never; }
+    if (name === 'get_participant') return { ...detail, access_configured: configured } as never;
     return [] as never;
   });
+  vi.mocked(resetParticipantPassword).mockImplementation(async () => { configured = true; return { ok: true, generated: true, password: 'Xk7mP3qRtz' }; });
   show();
-  const card = await screen.findByRole('region', { name: 'Diagnóstico de acceso' });
-  expect(within(card).getByText('Bloqueado temporalmente')).toBeInTheDocument();
-  expect(within(card).getByText(/Por 5 intentos fallidos/)).toBeInTheDocument();
-  fireEvent.click(within(card).getByRole('button', { name: /Retirar bloqueo/ }));
-  await waitFor(() => expect(rpc).toHaveBeenCalledWith('clear_access_lock', { p_id: 'p-1' }));
-  expect(await screen.findByText('Sin bloqueo de acceso')).toBeInTheDocument();
+  const card = await screen.findByRole('region', { name: 'Acceso a la plataforma' });
+  fireEvent.click(within(card).getByRole('button', { name: 'Restablecer contraseña' }));
+  const dialog = await screen.findByRole('dialog');
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Restablecer contraseña' }));
+  expect(await within(await screen.findByRole('dialog')).findByLabelText('Contraseña generada')).toHaveTextContent('Xk7mP3qRtz');
+  expect(resetParticipantPassword).toHaveBeenCalledWith('p-1', undefined);
+  await waitFor(() => expect(within(screen.getByRole('region', { name: 'Acceso a la plataforma' })).getByText('Cuenta activa')).toBeInTheDocument());
+  fireEvent.click(screen.getByRole('button', { name: 'Listo' }));
+  await waitFor(() => expect(screen.queryByText('Xk7mP3qRtz')).not.toBeInTheDocument());
+  // el expediente nunca pide ni guarda la contraseña: solo se consulta el detalle
+  expect(vi.mocked(rpc).mock.calls.every(([, args]) => !JSON.stringify(args ?? {}).includes('Xk7mP3qRtz'))).toBe(true);
 });
 
 test('import conflicts of this participant are resolved inside the expediente', async () => {

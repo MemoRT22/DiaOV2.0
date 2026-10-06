@@ -12,9 +12,30 @@ Forms solo alimenta la plataforma **antes del corte**. Después, la plataforma e
 4. **Declarar padrón oficial** (`declare_official_roster`, solo Coordinación, frase `DECLARAR PADRÓN OFICIAL`, auditado): bloquea en el servidor cualquier vista previa o carga del CSV (`ROSTER_OFFICIAL`), incluso llamando directo a la función.
 5. **Reapertura excepcional** (`reopen_roster_import`, solo Coordinación): exige motivo (mínimo 10 caracteres) y la frase `REABRIR IMPORTACIÓN`; queda auditada con quién, cuándo y por qué (`roster.reopened`).
 
-## Alta presencial
+## Acceso de participantes (correo → contraseña)
 
-Staff y Coordinación registran a quien llega el mismo día (`create_participant_manual`, origen `manual`). Funciona **sin importar el estado del padrón**. Son obligatorios: nombre completo, correo, fecha de nacimiento, teléfono, preparatoria, carrera de interés (solo del catálogo oficial activo) y consentimiento presencial. El formulario está preparado para sumar campos después sin cambiar el flujo.
+La pantalla pública pide solo el **correo**. El sistema decide el paso (`student-access` → `identify`, que devuelve únicamente `password_login`, `password_setup` o `self_registration`, nunca datos personales):
+
+| Estado | Qué ve la persona |
+|---|---|
+| `password_login` | Correo + contraseña con Supabase Auth (`signInWithPassword`). Un error muestra «Correo o contraseña incorrectos.» |
+| `password_setup` | «Encontramos tu prerregistro»: crea y confirma una contraseña. La función crea la identidad de Auth con el **correo real** (`app_metadata.kind = 'participant'`, correo confirmado administrativamente), la vincula en `participants.auth_user_id` y el navegador inicia sesión. |
+| `self_registration` | «No encontramos un prerregistro con este correo. Puedes registrarte ahora.»: formulario con los campos del Forms (Nombre, Apellidos, Correo, Teléfono con WhatsApp, Escuela/preparatoria, Grado, Periodo de interés, Licenciatura, Contraseña) y el Aviso de Privacidad como casilla obligatoria. |
+
+- **Contraseñas**: viven solo en Supabase Auth (8 a 72 caracteres). Nunca se guardan en tablas públicas, ni se registran ni se auditan. No hay fecha de nacimiento, OTP, enlaces mágicos, códigos por correo, preguntas de seguridad ni recuperación por correo: quien no recuerda su contraseña pide apoyo al personal.
+- **Autorregistro** (`origin = 'self_service'`): `student-access` → `register` valida en SQL (`register_self_service_internal`) y crea participante, perfil, interés inicial y consentimiento en una transacción; después crea la identidad de Auth y la vincula. Si Auth falla se descarta el registro a medias (`discard_self_service_registration_internal`); si el descarte falla, el correo aparece como prerregistro sin contraseña y la persona puede terminarlo. El consentimiento queda como `platform_consent_source = 'self_service'` con versión y fecha del aviso de la edición, por lo que no repite `/bienvenida`; la evidencia de Forms (`forms_consent`) sigue separada.
+- **Grado** (`high_school_grade`: `1`, `2`, `3`, `graduado`) y **periodo** (`entry_period`: `2027-01`, `2027-08`, `2028-01`, `2028-08`) son campos estructurales (importación, autorregistro, expediente, exportación). Solo se guarda `full_name`: Nombre y Apellidos se unen al importar o registrarse.
+- **Importar un padrón oficial** después de un autorregistro con el mismo correo concilia al participante (no duplica, no toca `auth_user_id` ni la contraseña). Las columnas del Forms: Nombre, Apellidos, Correo, Teléfono con WhatsApp, Escuela, Grado, Periodo, Licenciatura; aviso de privacidad y marca temporal opcionales. Una columna de fecha de nacimiento se ignora.
+- **Restablecer contraseña** (expediente, Staff y Coordinación): `participant-admin` (`verify_jwt = true`, valida el rol) genera una contraseña en el servidor (o aplica la que se escriba), la actualiza en Auth y la muestra una sola vez al operador. La auditoría (`participant.password_reset`) guarda solo quién, a quién y cuándo, y se escribe antes del cambio (falla cerrado). También crea la cuenta de quien aún no la tiene. Nunca modifica una cuenta que no sea de participante.
+- Las identidades antiguas (`p.<id>@participantes.diaov.invalid`) se migran al correo real la primera vez que se configura una contraseña. Si Staff corrige el correo de un participante, `identify` alinea el correo de Auth antes del siguiente inicio de sesión.
+- **Reinicio de preparación**: encuentra las identidades de participantes por `participants.auth_user_id` (correo real o sintético, `kind = 'participant'`), nunca toca cuentas de Staff.
+
+### Orden de despliegue
+
+1. Migraciones EXPAND `20261006191413_participant_password_access_expand` y `20261006192044_participant_import_conflict_fields` (compatibles con el frontend anterior).
+2. Edge Functions `student-access` (conserva `legacy.ts` para el frontend anterior; rechaza a quien ya tiene contraseña) y `participant-admin`.
+3. Publicar el frontend nuevo.
+4. Migración CONTRACT `20261007030100_participant_password_access_contract` (borra `participants.birth_date`, `access_attempts`, `access_lock_state`, `clear_access_lock`, `create_participant_manual` y las claves de compatibilidad de `get_participant`, `search_participants` y `coordination_summary`) y redesplegar `student-access` **sin** `legacy.ts`.
 
 ## Regla para operaciones privadas del aspirante
 
@@ -44,7 +65,8 @@ La función `bootstrap_first_coordinator` no tiene permisos para ningún rol (`P
 
 ### Edge Functions
 
-- `student-access`: acceso del aspirante por correo + fecha de nacimiento. `verify_jwt = false` (valida identidad internamente).
+- `student-access`: acceso de participantes por correo + contraseña y autorregistro (ver «Acceso de participantes»). `verify_jwt = false` (es la puerta pública; valida todo el input y orquesta Auth con `service_role` solo en el servidor).
+- `participant-admin`: restablecer la contraseña de un participante. `verify_jwt = true` (sesión Staff/Coordinación, rol validado dentro).
 - `staff-accounts`: administración de personal. `verify_jwt = true` (requiere sesión de Coordinación).
 - `service_role` nunca llega al frontend.
 
@@ -81,7 +103,7 @@ El administrador se entiende con cinco áreas: **Inicio, Participantes, Talleres
 
 | Área | Qué contiene |
 |---|---|
-| Participantes | Buscar, consultar, dar de alta, importar el padrón (con la revisión de lo que requiere decisión), corregir, diagnosticar acceso y exportar. |
+| Participantes | Buscar, consultar, importar el padrón (con la revisión de lo que requiere decisión), corregir datos, restablecer contraseñas y exportar. No hay alta manual: los participantes llegan por el Forms oficial o se registran solos. |
 | Talleres | Propuestas (revisión y publicación) y Programa publicado. |
 | Operación | Centro de Operación, Check-in y Sorteo final. |
 | Configuración | Personal, Experiencia pública (temática), Reservaciones (apertura y cierre), Preparación y puesta en marcha, Carreras y divisiones y Auditoría. |
@@ -96,7 +118,7 @@ El administrador se entiende con cinco áreas: **Inicio, Participantes, Talleres
 
 ## Pruebas de regresión
 
-`supabase/tests/regression_correcciones.sql` se ejecuta completo como un solo bloque. Siempre termina con un error que trae los resultados, así que **todos los cambios se revierten**. Cubre roles, carga y recarga del CSV, columnas adicionales, mapeo de carreras, padrón oficial y reapertura, alta presencial, exportación, aviso de privacidad y sesiones.
+`supabase/tests/regression_correcciones.sql` se ejecuta completo como un solo bloque. Siempre termina con un error que trae los resultados, así que **todos los cambios se revierten**. Cubre roles, carga y recarga del CSV, columnas adicionales, mapeo de carreras, padrón oficial y reapertura, exportación, aviso de privacidad y sesiones.
 
 `supabase/tests/regression_admin_simplification.sql` funciona igual (todo se revierte, fixtures propios) y cubre las reglas de rangos del producto, el conteo de divisiones del progreso, el diagnóstico de acceso desde Participantes, la resolución de conflictos de importación (incluido el flujo importar → conflicto → revisar) y el contrato de reservaciones.
 
@@ -130,3 +152,7 @@ El administrador se entiende con cinco áreas: **Inicio, Participantes, Talleres
 2. Obtener credenciales de la BD y exportarlas: `QR_TOKEN=... MANUAL_CODE=... node supabase/tests/concurrency_checkin.mjs`.
 3. Confirmar en la BD que hay 1 asistencia con el `WINNER_METHOD` impreso (query en el encabezado del script).
 4. Ejecutar `supabase/tests/concurrency_checkin_cleanup.sql`.
+
+`supabase/tests/regression_participant_access.sql` funciona igual (todo se revierte, fixtures propios, no ejecuta el reinicio de preparación) y cubre estados de acceso, vinculación de identidades, autorregistro (campos, validaciones, duplicados, compensación, consentimiento), importación con grado y periodo (sin fecha de nacimiento, conciliación con autorregistros), edición administrativa, roles y PII, exportación, auditoría de restablecimiento sin contraseña y la selección de identidades del reinicio (correo real, sintético, nunca Staff). Con la migración de contrato aplicada valida además el retiro (`retired = true`).
+
+Pruebas de las Edge Functions: `node --test supabase/functions/student-access/handler.test.ts supabase/functions/participant-admin/handler.test.ts`.

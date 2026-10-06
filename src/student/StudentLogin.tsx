@@ -1,37 +1,31 @@
 import { CalendarDays, MapPin } from 'lucide-react';
-import { useState, type FormEvent } from 'react';
+import { useState } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 import { Backdrop, BrandFooter, Tagline, ThemedTitle } from '../components/themed';
-import { Alert, Button, Field, Spinner } from '../components/ui';
+import { Spinner } from '../components/ui';
 import { useAuth } from '../lib/auth';
 import { formatEventDate } from '../lib/catalog';
-import { friendlyError } from '../lib/errors';
+import { studentAccess, type AccessState } from '../lib/studentAccess';
 import { useEdition } from '../edition/EditionProvider';
 import { usePublicTheme } from '../theme/PublicThemeProvider';
+import { EmailStep, LoginStep, RegisterStep, SetupStep } from './StudentAccessSteps';
 
+type Step = { kind: 'email' | AccessState; email: string };
+
+/**
+ * Acceso de participantes: correo → el sistema decide → contraseña.
+ * La pantalla solo conoce uno de tres estados (iniciar sesión, crear contraseña, registrarse); nunca datos personales.
+ */
 export default function StudentLogin() {
   const { theme, text } = usePublicTheme();
   const { edition } = useEdition();
   const { ready, profile, signInParticipant } = useAuth();
-  const [email, setEmail] = useState('');
-  const [birthDate, setBirthDate] = useState('');
-  const [error, setError] = useState('');
-  const [submitting, setSubmitting] = useState(false);
+  const [step, setStep] = useState<Step>({ kind: 'email', email: '' });
 
   if (!ready) return <Spinner />;
   if (profile) return <Navigate to="/bitacora" replace />;
 
-  const onSubmit = async (e: FormEvent) => {
-    e.preventDefault();
-    setError('');
-    setSubmitting(true);
-    try {
-      await signInParticipant(email, birthDate);
-    } catch (cause) {
-      setError(friendlyError(cause));
-      setSubmitting(false);
-    }
-  };
+  const back = () => setStep((s) => ({ kind: 'email', email: s.email }));
 
   return (
     <div className="relative min-h-dvh overflow-hidden">
@@ -61,39 +55,32 @@ export default function StudentLogin() {
           )}
         </div>
 
-        <form onSubmit={onSubmit} className="card mt-8 space-y-4 bg-surface/80 p-6 backdrop-blur animate-fade-up [animation-delay:120ms]">
-          <div>
-            <h2 className="text-xl font-extrabold">{text('loginTitle')}</h2>
-            <p className="mt-1 text-sm text-ink-muted">{text('loginSubtitle')}</p>
-          </div>
-          <Field
-            label="Correo electrónico"
-            type="email"
-            inputMode="email"
-            autoComplete="email"
-            autoCapitalize="none"
-            autoCorrect="off"
-            spellCheck={false}
-            enterKeyHint="next"
-            required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="tucorreo@ejemplo.com"
-          />
-          <Field
-            label="Fecha de nacimiento"
-            type="date"
-            required
-            value={birthDate}
-            onChange={(e) => setBirthDate(e.target.value)}
-            max={new Date().toISOString().slice(0, 10)}
-          />
-          {error && <Alert tone="error">{error}</Alert>}
-          <Button type="submit" className="w-full" loading={submitting}>
-            Entrar
-          </Button>
-          <p className="text-center text-xs text-ink-muted">{text('loginHelp')}</p>
-        </form>
+        <div className="card mt-8 bg-surface/80 p-6 backdrop-blur animate-fade-up [animation-delay:120ms]">
+          {step.kind === 'email' && <EmailStep title={text('loginTitle')} initial={step.email} onContinue={(email, kind) => setStep({ kind, email })} />}
+          {step.kind === 'password_login' && (
+            <LoginStep email={step.email} onBack={back} onSignIn={(password) => signInParticipant(step.email, password)} />
+          )}
+          {step.kind === 'password_setup' && (
+            <SetupStep
+              email={step.email}
+              onBack={back}
+              onSetup={async (password) => {
+                await studentAccess.setupPassword(step.email, password);
+                await signInParticipant(step.email, password);
+              }}
+            />
+          )}
+          {step.kind === 'self_registration' && (
+            <RegisterStep
+              email={step.email}
+              onBack={back}
+              onRegister={async ({ password, ...fields }) => {
+                await studentAccess.register({ ...fields, password, email: step.email });
+                await signInParticipant(step.email, password);
+              }}
+            />
+          )}
+        </div>
 
         <div className="mt-auto space-y-4 pt-10">
           <BrandFooter />

@@ -1,6 +1,6 @@
 import type { Session } from '@supabase/supabase-js';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { functionsUrl, supabase, supabaseAnonKey } from './supabase';
+import { supabase } from './supabase';
 
 export type ParticipantProfile = {
   participant_id: string;
@@ -23,7 +23,7 @@ type AuthContextValue = {
   profile: ParticipantProfile | null;
   staff: StaffMember | null;
   refreshIdentity: () => Promise<void>;
-  signInParticipant: (email: string, birthDate: string) => Promise<void>;
+  signInParticipant: (email: string, password: string) => Promise<void>;
   signInStaff: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
 };
@@ -87,23 +87,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const refreshIdentity = useCallback(() => loadIdentity(session), [loadIdentity, session]);
 
-  const signInParticipant = useCallback(async (email: string, birthDate: string) => {
-    let res: Response;
-    try {
-      res = await fetch(`${functionsUrl}/student-access`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${supabaseAnonKey}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, birth_date: birthDate }),
-      });
-    } catch {
-      throw new Error('NETWORK');
+  const signInParticipant = useCallback(async (email: string, password: string) => {
+    const { data, error } = await supabase.auth.signInWithPassword({ email: email.trim().toLowerCase(), password });
+    if (error || !data.user) throw new Error('INVALID_CREDENTIALS');
+    // Esta pantalla es solo para participantes: una cuenta de Staff no entra por aquí.
+    if (data.user.app_metadata?.kind !== 'participant') {
+      await supabase.auth.signOut();
+      throw new Error('INVALID_CREDENTIALS');
     }
-    const body = await res.json().catch(() => null);
-    if (!res.ok || !body?.access_token || !body?.refresh_token) {
-      throw new Error(typeof body?.error === 'string' ? body.error : 'SERVER_ERROR');
-    }
-    const { error } = await supabase.auth.setSession({ access_token: body.access_token, refresh_token: body.refresh_token });
-    if (error) throw error;
   }, []);
 
   const signInStaff = useCallback(async (email: string, password: string) => {

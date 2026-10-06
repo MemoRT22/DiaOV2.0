@@ -1,13 +1,10 @@
-import { FileSpreadsheet, LockOpen, Search, Upload, UserPlus } from 'lucide-react';
+import { FileSpreadsheet, Search, Upload } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Alert, Badge, Button, buttonClasses, Spinner } from '../../components/ui';
+import { Alert, Badge, buttonClasses, Spinner } from '../../components/ui';
 import { ORIGIN_LABELS, rpc } from '../../lib/adminApi';
 import { hasRole, useAuth } from '../../lib/auth';
-import { fetchCareers } from '../../lib/catalog';
 import { friendlyError } from '../../lib/errors';
-import { useLoad } from '../../lib/useLoad';
-import ParticipantForm, { EMPTY_VALUES } from './ParticipantForm';
 
 type Hit = {
   id: string;
@@ -18,10 +15,8 @@ type Hit = {
   career_name: string | null;
   origin: string;
   is_demo: boolean;
-  has_birth_date: boolean;
   has_logged_in: boolean;
-  /** Added with the access diagnosis in the search (absent on older servers). */
-  access_locked?: boolean;
+  access_configured: boolean;
   pending_conflicts?: number;
 };
 
@@ -33,10 +28,6 @@ export default function Participants() {
   const [hits, setHits] = useState<Hit[] | null>(null);
   const [error, setError] = useState('');
   const [searching, setSearching] = useState(false);
-  const [creating, setCreating] = useState(false);
-  const [unlocking, setUnlocking] = useState<string | null>(null);
-  const [refresh, setRefresh] = useState(0);
-  const careers = useLoad(() => fetchCareers(true), []);
 
   useEffect(() => {
     const q = query.trim();
@@ -61,20 +52,7 @@ export default function Participants() {
       cancelled = true;
       clearTimeout(t);
     };
-  }, [query, refresh]);
-
-  const unlock = async (id: string) => {
-    setUnlocking(id);
-    setError('');
-    try {
-      await rpc('clear_access_lock', { p_id: id });
-      setRefresh((n) => n + 1);
-    } catch (cause) {
-      setError(friendlyError(cause));
-    } finally {
-      setUnlocking(null);
-    }
-  };
+  }, [query]);
 
   return (
     <div className="space-y-6">
@@ -82,7 +60,7 @@ export default function Participants() {
         <div>
           <h1 className="text-2xl font-extrabold">Participantes</h1>
           <p className="mt-1 text-sm text-ink-muted">
-            Busca por nombre, correo o teléfono. Si alguien no puede entrar, búscalo aquí: verás qué le impide el acceso y podrás corregirlo.
+            Busca por nombre, correo o teléfono. Desde su expediente puedes corregir sus datos y restablecer su contraseña.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -98,10 +76,6 @@ export default function Participants() {
               </Link>
             </>
           )}
-          <Button onClick={() => setCreating(true)} disabled={!careers.data}>
-            <UserPlus className="h-4 w-4" aria-hidden />
-            Dar de alta
-          </Button>
         </div>
       </header>
 
@@ -123,7 +97,7 @@ export default function Participants() {
         <div className="card p-8 text-center text-sm text-ink-muted">
           <p>No hay ningún participante que coincida con <strong>{query.trim()}</strong>.</p>
           <p className="mt-1">
-            Si dice que no puede entrar, quizá se registró con otro correo: prueba con su nombre o teléfono. Si no aparece, dalo de alta.
+            Si dice que no puede entrar, quizá se registró con otro correo: prueba con su nombre o teléfono. Si no aparece, puede registrarse desde la pantalla de acceso.
           </p>
         </div>
       )}
@@ -153,22 +127,10 @@ export default function Participants() {
                     <div className="flex flex-wrap gap-1.5">
                       <Badge tone="neutral">{ORIGIN_LABELS[h.origin] ?? h.origin}</Badge>
                       {h.is_demo && <Badge tone="warning">Prueba</Badge>}
-                      {!h.has_birth_date && <Badge tone="error">Sin fecha</Badge>}
-                      {h.access_locked && <Badge tone="error">Bloqueado</Badge>}
+                      {!h.access_configured && <Badge tone="neutral">Acceso no configurado</Badge>}
                       {!!h.pending_conflicts && <Badge tone="warning">Por revisar</Badge>}
                       {h.has_logged_in && <Badge tone="success">Ya entró</Badge>}
                     </div>
-                    {h.access_locked && (
-                      <button
-                        type="button"
-                        disabled={unlocking === h.id}
-                        onClick={(e) => { e.stopPropagation(); unlock(h.id); }}
-                        className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-fg-info hover:underline disabled:opacity-60"
-                      >
-                        <LockOpen className="h-3.5 w-3.5" aria-hidden />
-                        Retirar bloqueo
-                      </button>
-                    )}
                   </td>
                 </tr>
               ))}
@@ -176,15 +138,6 @@ export default function Participants() {
           </table>
           {hits.length === 50 && <p className="p-3 text-center text-xs text-ink-muted">Se muestran 50 resultados. Afina la búsqueda.</p>}
         </div>
-      )}
-
-      {creating && careers.data && (
-        <ParticipantForm
-          initial={{ ...EMPTY_VALUES, email: query.includes('@') ? query.trim().toLowerCase() : '' }}
-          careers={careers.data}
-          onClose={() => setCreating(false)}
-          onSaved={(id) => navigate(id)}
-        />
       )}
     </div>
   );

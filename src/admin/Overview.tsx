@@ -1,6 +1,6 @@
 import {
   ArrowRight, CalendarDays, CheckCircle2, ClipboardList, GitMerge, MapPin,
-  MonitorDot, Users, UserRoundX, type LucideIcon,
+  MonitorDot, Users, type LucideIcon,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Alert, Badge, Button, Spinner } from '../components/ui';
@@ -16,7 +16,6 @@ type Summary = {
   activities: number;
   sessions: number;
   attendances: number;
-  missing_birth_date: number;
   pending_conflicts: number;
 };
 type Pending = { count: number; label: string; description: string; to: string; action: string; icon: LucideIcon };
@@ -47,10 +46,6 @@ export default function Overview() {
       label: summary.pending_conflicts === 1 ? 'dato de importación por revisar' : 'datos de importación por revisar',
       description: 'Una importación trajo datos distintos a correcciones hechas a mano.', to: '/coordinacion/participantes/importar',
       action: 'Revisar', icon: GitMerge }] : []),
-    ...(summary.missing_birth_date > 0 ? [{ count: summary.missing_birth_date,
-      label: summary.missing_birth_date === 1 ? 'participante sin fecha de nacimiento' : 'participantes sin fecha de nacimiento',
-      description: 'Corrige sus expedientes para que puedan entrar a la plataforma.', to: '/coordinacion/participantes',
-      action: 'Buscar participantes', icon: UserRoundX }] : []),
     ...(reviewCount > 0 ? [{ count: reviewCount, label: reviewCount === 1 ? 'propuesta por revisar' : 'propuestas por revisar',
       description: 'Hay propuestas nuevas o en revisión.', to: '/coordinacion/talleres',
       action: 'Revisar talleres', icon: ClipboardList }] : []),
@@ -60,7 +55,7 @@ export default function Overview() {
       action: 'Publicar talleres', icon: ClipboardList }] : []),
   ];
   const quickActions = [
-    { to: '/coordinacion/participantes', title: 'Gestionar participantes', description: 'Busca, corrige o registra aspirantes.', icon: Users },
+    { to: '/coordinacion/participantes', title: 'Gestionar participantes', description: 'Busca participantes, corrige datos y restablece contraseñas.', icon: Users },
     { to: '/coordinacion/talleres', title: 'Gestionar talleres', description: 'Revisa propuestas y publica actividades.', icon: ClipboardList },
     { to: '/coordinacion/operacion-en-vivo', title: 'Abrir operación del evento',
       description: 'Consulta sesiones, aforo y asistencias.', icon: MonitorDot },

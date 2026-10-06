@@ -59,7 +59,8 @@ export function parseCsv(text: string): string[][] {
   return rows.filter((r) => r.some((c) => c.trim() !== ''));
 }
 
-export function mapColumns(table: string[][], columns: CsvColumn[]): CsvMapping {
+/** `discard` recibe el encabezado normalizado: las columnas que devuelva true no se leen ni se conservan como información adicional. */
+export function mapColumns(table: string[][], columns: CsvColumn[], discard?: (foldedHeader: string) => boolean): CsvMapping {
   const [header = [], ...body] = table;
   const folded = header.map(fold);
   const matched: CsvMapping['matched'] = [];
@@ -76,7 +77,7 @@ export function mapColumns(table: string[][], columns: CsvColumn[]): CsvMapping 
   const indexOf = new Map(matched.map((m) => [m.column.key, m.index]));
   const width = Math.max(header.length, ...body.map((cells) => cells.length));
   const extraCols = Array.from({ length: width }, (_, i) => i).filter(
-    (i) => !used.has(i) && ((header[i] ?? '').trim() !== '' || body.some((cells) => (cells[i] ?? '').trim() !== '')),
+    (i) => !used.has(i) && !discard?.(folded[i] ?? '') && ((header[i] ?? '').trim() !== '' || body.some((cells) => (cells[i] ?? '').trim() !== '')),
   );
   const rows = body.map((cells) => {
     const out: Record<string, string> = {};
