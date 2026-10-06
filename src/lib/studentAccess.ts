@@ -2,6 +2,8 @@ import { functionsUrl, supabaseAnonKey } from './supabase';
 
 /** Lo único que la pantalla pública llega a saber de un correo: qué paso sigue. Nunca datos personales. */
 export type AccessState = 'password_login' | 'password_setup' | 'self_registration';
+export type CatalogHighSchool = { id: string; name: string };
+export type AccessCatalog = { careers: CatalogCareer[]; high_schools: CatalogHighSchool[] };
 export type CatalogCareer = { id: string; name: string; division: string | null };
 
 export type SelfRegistration = {
@@ -10,7 +12,7 @@ export type SelfRegistration = {
   first_name: string;
   last_name: string;
   phone: string;
-  high_school: string;
+  high_school_id: string;
   high_school_grade: string;
   entry_period: string;
   initial_career_id: string;
@@ -41,9 +43,9 @@ export const studentAccess = {
     if (state !== 'password_login' && state !== 'password_setup' && state !== 'self_registration') throw new Error('SERVER_ERROR');
     return state;
   },
-  async careers(): Promise<CatalogCareer[]> {
-    const { careers } = await call<{ careers: CatalogCareer[] }>({ action: 'catalog' });
-    return Array.isArray(careers) ? careers : [];
+  async catalog(): Promise<AccessCatalog> {
+    const result = await call<AccessCatalog>({ action: 'catalog' });
+    return { careers: Array.isArray(result.careers) ? result.careers : [], high_schools: Array.isArray(result.high_schools) ? result.high_schools : [] };
   },
   /** Prerregistro sin contraseña: la crea en Supabase Auth. Después el navegador inicia sesión con ella. */
   async setupPassword(email: string, password: string): Promise<void> {

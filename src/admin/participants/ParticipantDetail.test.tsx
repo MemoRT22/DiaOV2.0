@@ -7,7 +7,7 @@ import { resetParticipantPassword } from '../../lib/participantAdminApi';
 import ParticipantDetail from './ParticipantDetail';
 
 vi.mock('../../lib/adminApi', async (importOriginal) => ({ ...await importOriginal<typeof import('../../lib/adminApi')>(), rpc: vi.fn() }));
-vi.mock('../../lib/catalog', async (importOriginal) => ({ ...await importOriginal<typeof import('../../lib/catalog')>(), fetchCareers: vi.fn().mockResolvedValue([]) }));
+vi.mock('../../lib/catalog', async (importOriginal) => ({ ...await importOriginal<typeof import('../../lib/catalog')>(), fetchCareers: vi.fn().mockResolvedValue([]), fetchHighSchools: vi.fn().mockResolvedValue([]) }));
 vi.mock('../../lib/auth', async (importOriginal) => ({ ...await importOriginal<typeof import('../../lib/auth')>(), useAuth: vi.fn() }));
 vi.mock('../../lib/participantAdminApi', () => ({ resetParticipantPassword: vi.fn() }));
 vi.mock('../../edition/EditionProvider', () => ({ useEdition: () => ({ edition: { privacy_notice_version: 'v1' } }) }));
@@ -25,7 +25,7 @@ const show = () => render(<MemoryRouter initialEntries={['/coordinacion/particip
 beforeEach(() => {
   vi.clearAllMocks();
   role(['coordinacion']);
-  detail = { id: 'p-1', full_name: 'Ana López', email: 'ana@correo.com', phone: null, high_school: null,
+  detail = { id: 'p-1', full_name: 'Ana López', email: 'ana@correo.com', phone: null, high_school: null, high_school_id: null,
     high_school_grade: '3', entry_period: '2027-08', initial_career_id: null, initial_career_raw: null, origin: 'forms',
     is_demo: false, forms_consent: true, forms_consent_at: null, manual_consent_at: null, manual_consent_by: null,
     manual_overrides: {}, pending_conflicts: 0, has_logged_in: true, access_configured: true,

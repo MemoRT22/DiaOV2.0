@@ -24,6 +24,7 @@ export type ImportResult = {
   counts: Record<string, number>;
   rows: ImportRowResult[];
   unmatched_careers?: UnmatchedCareer[];
+  unmatched_high_schools?: UnmatchedCareer[];
   unmatched_careers_2?: UnmatchedCareer[];
 };
 export type ImportOptions = Record<string, unknown>;

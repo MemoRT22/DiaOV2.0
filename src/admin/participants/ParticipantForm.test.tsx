@@ -13,12 +13,12 @@ const careers = [
   { id: 'c-3', code: 'OLD', name: 'Carrera retirada', division_id: 'd', is_active: false, is_demo: false },
 ] as unknown as Career[];
 const initial: ParticipantValues = {
-  email: 'ana@correo.com', full_name: 'Ana López', phone: '9981234567', high_school: 'Colegio Ejemplo',
+  email: 'ana@correo.com', full_name: 'Ana López', phone: '9981234567', high_school: 'Colegio Ejemplo', high_school_id: 'h-1',
   high_school_grade: '3', entry_period: '2027-08', initial_career_id: 'c-1',
 };
 
 const onSaved = vi.fn();
-const show = (values = initial) => render(<ParticipantForm participantId="p-1" initial={values} careers={careers} onClose={() => undefined} onSaved={onSaved} />);
+const show = (values = initial) => render(<ParticipantForm participantId="p-1" initial={values} careers={careers} highSchools={[{ id: 'h-1', name: 'Colegio Ejemplo', is_active: true }, { id: 'h-2', name: 'Otra escuela', is_active: true }]} canEditHighSchool onClose={() => undefined} onSaved={onSaved} />);
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -92,4 +92,13 @@ test('the initial career can be changed to any active career; a retired one is o
   expect(options).toEqual(['Sin carrera', 'Psicología', 'Derecho', 'Carrera retirada']);
   const without = Array.from((screen.getByLabelText('Carrera de interés inicial') as HTMLSelectElement).options).length;
   expect(without).toBe(4);
+});
+
+test('changes the school by catalog ID and keeps an inactive historical school visible', async () => {
+  show({ ...initial, high_school_id: 'h-3', high_school: 'Plantel retirado' });
+  fireEvent.click(screen.getByRole('combobox', { name: 'Escuela / preparatoria' }));
+  expect(screen.getByRole('combobox', { name: 'Escuela / preparatoria' })).toHaveTextContent('Plantel retirado');
+  fireEvent.click(screen.getByRole('button', { name: 'Otra escuela' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Guardar cambios' }));
+  await waitFor(() => expect(rpc).toHaveBeenCalledWith('update_participant', { p_id: 'p-1', p: { high_school_id: 'h-2' } }));
 });

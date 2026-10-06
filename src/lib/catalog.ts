@@ -1,6 +1,7 @@
 import { supabase } from './supabase';
 
 export type Division = { id: string; code: string; name: string; sort_order: number; is_demo: boolean };
+export type HighSchool = { id: string; name: string; is_active: boolean };
 export type Career = { id: string; code: string; name: string; division_id: string; is_active: boolean; is_demo: boolean };
 export type SessionStatus = 'activa' | 'oculta' | 'cancelada';
 export type Session = {
@@ -65,6 +66,14 @@ export async function fetchDivisions(): Promise<Division[]> {
 
 export async function fetchCareers(includeInactive = false): Promise<Career[]> {
   let query = supabase.from('careers').select('id, code, name, division_id, is_active, is_demo');
+  if (!includeInactive) query = query.eq('is_active', true);
+  const { data, error } = await query.order('name');
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function fetchHighSchools(includeInactive = false): Promise<HighSchool[]> {
+  let query = supabase.from('high_schools').select('id, name, is_active');
   if (!includeInactive) query = query.eq('is_active', true);
   const { data, error } = await query.order('name');
   if (error) throw error;

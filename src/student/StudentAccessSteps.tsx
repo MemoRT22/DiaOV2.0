@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import { Alert, Button, Field, SelectField, Spinner } from '../components/ui';
+import HighSchoolPicker from '../components/HighSchoolPicker';
 import { useEdition } from '../edition/EditionProvider';
 import { friendlyError } from '../lib/errors';
 import { GRADE_OPTIONS, PERIOD_OPTIONS, passwordProblem } from '../lib/participantFields';
-import { studentAccess, type CatalogCareer } from '../lib/studentAccess';
+import { studentAccess, type AccessCatalog, type CatalogCareer } from '../lib/studentAccess';
 
 const Form = ({ onSubmit, children }: { onSubmit: (e: FormEvent) => void; children: ReactNode }) => (
   <form onSubmit={onSubmit} className="space-y-4">
@@ -160,10 +161,10 @@ export function SetupStep({ email, onBack, onSetup }: { email: string; onBack: (
 }
 
 type RegisterValues = {
-  first_name: string; last_name: string; phone: string; high_school: string; high_school_grade: string;
+  first_name: string; last_name: string; phone: string; high_school_id: string; high_school_grade: string;
   entry_period: string; initial_career_id: string;
 };
-const EMPTY: RegisterValues = { first_name: '', last_name: '', phone: '', high_school: '', high_school_grade: '', entry_period: '', initial_career_id: '' };
+const EMPTY: RegisterValues = { first_name: '', last_name: '', phone: '', high_school_id: '', high_school_grade: '', entry_period: '', initial_career_id: '' };
 
 /** Autorregistro: exactamente los campos del Forms, con el Aviso de Privacidad como paso obligatorio. */
 export function RegisterStep({ email, onBack, onRegister }: {
@@ -174,7 +175,8 @@ export function RegisterStep({ email, onBack, onRegister }: {
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [consent, setConsent] = useState(false);
-  const [careers, setCareers] = useState<CatalogCareer[] | null>(null);
+  const [catalog, setCatalog] = useState<AccessCatalog | null>(null);
+  const careers = catalog?.careers ?? null;
   const [catalogError, setCatalogError] = useState('');
   const [attempt, setAttempt] = useState(0);
   const [error, setError] = useState('');
@@ -183,8 +185,8 @@ export function RegisterStep({ email, onBack, onRegister }: {
   useEffect(() => {
     let cancelled = false;
     setCatalogError('');
-    studentAccess.careers().then(
-      (list) => { if (!cancelled) setCareers(list); },
+    studentAccess.catalog().then(
+      (snapshot) => { if (!cancelled) setCatalog(snapshot); },
       (cause) => { if (!cancelled) setCatalogError(friendlyError(cause)); },
     );
     return () => { cancelled = true; };
@@ -200,6 +202,7 @@ export function RegisterStep({ email, onBack, onRegister }: {
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
+    if (!catalog?.high_schools.some((school) => school.id === values.high_school_id)) return setError(friendlyError(new Error('INVALID_HIGH_SCHOOL')));
     if (!consent) return setError(friendlyError(new Error('CONSENT_REQUIRED')));
     const invalid = validatePasswords(password, confirm);
     if (invalid) return setError(invalid);
@@ -226,7 +229,7 @@ export function RegisterStep({ email, onBack, onRegister }: {
         Cambiar correo
       </button>
       <Field label="Teléfono con WhatsApp" type="tel" inputMode="tel" autoComplete="tel" required value={values.phone} onChange={set('phone')} />
-      <Field label="Escuela/preparatoria" required maxLength={200} autoComplete="organization" value={values.high_school} onChange={set('high_school')} />
+      {catalog && <HighSchoolPicker options={catalog.high_schools} value={values.high_school_id} onChange={(id) => setValues((v) => ({ ...v, high_school_id: id }))} label="Escuela/preparatoria" required />}
       <SelectField label="Grado" required value={values.high_school_grade} onChange={set('high_school_grade')}>
         <option value="">Elige tu grado…</option>
         {GRADE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}

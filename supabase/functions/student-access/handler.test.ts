@@ -31,6 +31,7 @@ function fixture(opts: {
     },
     participantByEmail: async () => opts.participant === undefined ? { id: PID, auth_user_id: null, password_configured_at: null } : opts.participant,
     careers: async () => [{ id: 'c1', name: 'Derecho', division: 'Ciencias Jurídicas' }],
+    highSchools: async () => [{ id: 'h1', name: 'Otra escuela' }],
     getUser: async () => opts.existing ?? null,
     createUser: async (email) => { calls.push(`createUser:${email}`); return opts.create ?? { id: UID }; },
     updateUser: async (id, email) => { calls.push(`updateUser:${id}:${email}`); return opts.update ?? { ok: true }; },
@@ -42,7 +43,7 @@ function fixture(opts: {
 
 const registerBody = (extra: Record<string, unknown> = {}) => ({
   action: 'register', email: 'Ana@Example.com ', password: SECRET, first_name: 'Ana', last_name: 'López', phone: '9981234567',
-  high_school: 'Colegio', high_school_grade: '3', entry_period: '2027-08', initial_career_id: 'c1', consent_accepted: true, ...extra,
+  high_school_id: 'h1', high_school_grade: '3', entry_period: '2027-08', initial_career_id: 'c1', consent_accepted: true, ...extra,
 });
 
 test('only POST and preflight are accepted, and malformed bodies are rejected', async () => {
@@ -75,7 +76,7 @@ test('identify returns only the access state, never personal data', async () => 
 test('catalog exposes only id, name and division of active official careers', async () => {
   const f = fixture();
   const response = await handleRequest(post({ action: 'catalog' }), f.deps);
-  assert.deepEqual(await response.json(), { careers: [{ id: 'c1', name: 'Derecho', division: 'Ciencias Jurídicas' }] });
+  assert.deepEqual(await response.json(), { careers: [{ id: 'c1', name: 'Derecho', division: 'Ciencias Jurídicas' }], high_schools: [{ id: 'h1', name: 'Otra escuela' }] });
 });
 
 test('setup_password creates a real-email identity, links it and never returns tokens or the password', async () => {
@@ -161,14 +162,14 @@ test('register sends the exact form fields to SQL and never the password', async
     },
   });
   await handleRequest(post(registerBody({ birth_date: '2008-01-01', extra: 'x' })), f.deps);
-  assert.deepEqual(Object.keys(sent!).sort(), ['consent_accepted', 'email', 'entry_period', 'first_name', 'high_school', 'high_school_grade',
+  assert.deepEqual(Object.keys(sent!).sort(), ['consent_accepted', 'email', 'entry_period', 'first_name', 'high_school_id', 'high_school_grade',
     'initial_career_id', 'last_name', 'phone'].sort());
   assert.equal(sent!.email, 'ana@example.com');
   assert.ok(!JSON.stringify(sent).includes(SECRET));
 });
 
 test('register maps database validation to user-facing codes and never touches Auth', async () => {
-  for (const code of ['EMAIL_EXISTS', 'INVALID_GRADE', 'INVALID_PERIOD', 'INVALID_CAREER', 'CONSENT_REQUIRED', 'INVALID_PHONE', 'INVALID_NAME']) {
+  for (const code of ['EMAIL_EXISTS', 'INVALID_GRADE', 'INVALID_PERIOD', 'INVALID_CAREER', 'INVALID_HIGH_SCHOOL', 'CONSENT_REQUIRED', 'INVALID_PHONE', 'INVALID_NAME']) {
     const f = fixture({ rpc: () => ({ data: null, error: { message: `P0001: ${code}` } }) });
     const response = await handleRequest(post(registerBody()), f.deps);
     assert.equal(response.status, code === 'EMAIL_EXISTS' ? 409 : 400);

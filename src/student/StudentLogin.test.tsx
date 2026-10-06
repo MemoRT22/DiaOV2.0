@@ -8,7 +8,7 @@ import StudentLogin from './StudentLogin';
 
 vi.mock('../lib/auth', () => ({ useAuth: vi.fn() }));
 vi.mock('../lib/studentAccess', () => ({
-  studentAccess: { identify: vi.fn(), careers: vi.fn(), setupPassword: vi.fn(), register: vi.fn() },
+  studentAccess: { identify: vi.fn(), catalog: vi.fn(), setupPassword: vi.fn(), register: vi.fn() },
 }));
 vi.mock('../components/themed', () => ({
   Backdrop: () => null, BrandFooter: () => null, Tagline: () => null, ThemedTitle: ({ children }: { children: string }) => <span>{children}</span>,
@@ -42,7 +42,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(useAuth).mockReturnValue({ ready: true, profile: null, signInParticipant } as unknown as ReturnType<typeof useAuth>);
   signInParticipant.mockResolvedValue(undefined);
-  vi.mocked(studentAccess.careers).mockResolvedValue(CAREERS);
+  vi.mocked(studentAccess.catalog).mockResolvedValue({ careers: CAREERS, high_schools: [{ id: 'h-1', name: 'Colegio Ejemplo' }, { id: 'h-2', name: 'Otra escuela' }, { id: 'h-3', name: 'Colegio Boston (Cancún)' }, { id: 'h-4', name: 'Cecyte Plantel Uno' }, { id: 'h-5', name: 'Cecyte Plantel Dos' }] });
 });
 
 test('the first screen asks only for the email: no birth date, no password, no registration fields', () => {
@@ -113,7 +113,9 @@ async function fillRegistration() {
   await userEvent.type(screen.getByLabelText('Nombre'), 'Ana María');
   await userEvent.type(screen.getByLabelText('Apellidos'), 'López Pérez');
   await userEvent.type(screen.getByLabelText('Teléfono con WhatsApp'), '9981234567');
-  await userEvent.type(screen.getByLabelText('Escuela/preparatoria'), 'Colegio Ejemplo');
+  fireEvent.click(screen.getByRole('combobox', { name: 'Escuela/preparatoria' }));
+  await userEvent.type(screen.getByRole('textbox', { name: 'Buscar preparatoria' }), 'Ejemplo');
+  fireEvent.click(screen.getByRole('button', { name: 'Colegio Ejemplo' }));
   await userEvent.selectOptions(screen.getByLabelText('Grado'), '3');
   await userEvent.selectOptions(screen.getByLabelText('Periodo de interés'), '2027-08');
   await userEvent.selectOptions(await screen.findByLabelText('Licenciatura'), 'c-1');
@@ -162,7 +164,7 @@ test('registration requires accepting the privacy notice; then it creates the ac
   fireEvent.click(submit);
   await waitFor(() => expect(studentAccess.register).toHaveBeenCalledWith({
     email: 'nueva@ejemplo.com', password: 'mi-clave-segura', first_name: 'Ana María', last_name: 'López Pérez', phone: '9981234567',
-    high_school: 'Colegio Ejemplo', high_school_grade: '3', entry_period: '2027-08', initial_career_id: 'c-1', consent_accepted: true,
+    high_school_id: 'h-1', high_school_grade: '3', entry_period: '2027-08', initial_career_id: 'c-1', consent_accepted: true,
   }));
   await waitFor(() => expect(signInParticipant).toHaveBeenCalledWith('nueva@ejemplo.com', 'mi-clave-segura'));
 });
@@ -215,4 +217,20 @@ test('a signed-in participant goes straight to the app', () => {
   vi.mocked(useAuth).mockReturnValue({ ready: true, profile: { participant_id: 'p-1' }, signInParticipant } as unknown as ReturnType<typeof useAuth>);
   show();
   expect(screen.getByText('Bitácora')).toBeInTheDocument();
+});
+
+test('school picker filters partial names and offers Otra escuela without free text submission', async () => {
+  vi.mocked(studentAccess.identify).mockResolvedValue('self_registration');
+  show();
+  await continueWith('nueva@ejemplo.com');
+  await screen.findByRole('combobox', { name: 'Escuela/preparatoria' });
+  fireEvent.click(screen.getByRole('combobox', { name: 'Escuela/preparatoria' }));
+  await userEvent.type(screen.getByRole('textbox', { name: 'Buscar preparatoria' }), 'boston');
+  expect(screen.getByRole('option', { name: 'Colegio Boston (Cancún)' })).toBeInTheDocument();
+  expect(screen.queryByRole('option', { name: 'Colegio Ejemplo' })).not.toBeInTheDocument();
+  await userEvent.clear(screen.getByRole('textbox', { name: 'Buscar preparatoria' }));
+  expect(screen.getByRole('option', { name: 'Otra escuela' })).toBeInTheDocument();
+  await userEvent.type(screen.getByRole('textbox', { name: 'Buscar preparatoria' }), 'cecyte');
+  expect(screen.getByRole('option', { name: 'Cecyte Plantel Uno' })).toBeInTheDocument();
+  expect(screen.getByRole('option', { name: 'Cecyte Plantel Dos' })).toBeInTheDocument();
 });
