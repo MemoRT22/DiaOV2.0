@@ -30,12 +30,9 @@ La pantalla pública pide solo el **correo**. El sistema decide el paso (`studen
 - Las identidades antiguas (`p.<id>@participantes.diaov.invalid`) se migran al correo real la primera vez que se configura una contraseña. Si Staff corrige el correo de un participante, `identify` alinea el correo de Auth antes del siguiente inicio de sesión.
 - **Reinicio de preparación**: encuentra las identidades de participantes por `participants.auth_user_id` (correo real o sintético, `kind = 'participant'`), nunca toca cuentas de Staff.
 
-### Orden de despliegue
+### Estado de despliegue
 
-1. Migraciones EXPAND `20261006191413_participant_password_access_expand` y `20261006192044_participant_import_conflict_fields` (compatibles con el frontend anterior).
-2. Edge Functions `student-access` (conserva `legacy.ts` para el frontend anterior; rechaza a quien ya tiene contraseña) y `participant-admin`.
-3. Publicar el frontend nuevo.
-4. Migración CONTRACT `20261007030100_participant_password_access_contract` (borra `participants.birth_date`, `access_attempts`, `access_lock_state`, `clear_access_lock`, `create_participant_manual` y las claves de compatibilidad de `get_participant`, `search_participants` y `coordination_summary`) y redesplegar `student-access` **sin** `legacy.ts`.
+El acceso nuevo está completamente desplegado. Las migraciones EXPAND `20261006191413_participant_password_access_expand` y `20261006192044_participant_import_conflict_fields` están aplicadas; el frontend de correo + contraseña/autorregistro está publicado; `student-access` ya no contiene `legacy.ts`; y el CONTRACT `20261006212716_participant_password_access_contract` retiró `participants.birth_date`, `access_attempts`, `access_lock_state`, `clear_access_lock`, `create_participant_manual` y las claves de compatibilidad antiguas.
 
 ## Regla para operaciones privadas del aspirante
 
@@ -72,7 +69,7 @@ La función `bootstrap_first_coordinator` no tiene permisos para ningún rol (`P
 
 ### Aviso de privacidad
 
-La edición tiene `privacy_notice_version = 'v1'` con contenido pendiente. Antes de activar `operacion_real`, el aviso definitivo es un requisito de preparación que se revisa aparte.
+La edición activa usa `privacy_notice_version = 'v1'` y el Aviso de Privacidad oficial de Anáhuac Cancún configurado en `privacy_notice_url`: `https://www.anahuac.mx/cancun/aviso-de-privacidad`.
 
 ## Seguridad
 
