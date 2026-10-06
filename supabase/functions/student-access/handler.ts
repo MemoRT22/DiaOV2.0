@@ -2,8 +2,6 @@
 // La función orquesta Supabase Auth con service_role (solo en el servidor) y la base de datos mediante funciones
 // internas que únicamente service_role puede ejecutar. Nunca devuelve tokens: tras crear o configurar la cuenta,
 // el navegador inicia sesión con `signInWithPassword`. La contraseña no se guarda, no se registra y no se audita.
-import { handleLegacy, type LegacyDeps } from './legacy.ts';
-
 export type RpcResult = { data: unknown; error: { code?: string; message: string } | null };
 export type ParticipantRow = { id: string; auth_user_id: string | null; password_configured_at: string | null };
 export type AuthUserInfo = { id: string; email: string | null; kind: string | null };
@@ -16,7 +14,6 @@ export type Deps = {
   createUser: (email: string, password: string) => Promise<{ id?: string; code?: 'EMAIL_TAKEN' | 'AUTH_ERROR' }>;
   updateUser: (id: string, email: string, password?: string) => Promise<{ ok: boolean; code?: 'EMAIL_TAKEN' | 'AUTH_ERROR' }>;
   deleteUser: (id: string) => Promise<void>;
-  legacy: LegacyDeps;
   log: (event: string, code?: string) => void;
 };
 
@@ -151,11 +148,6 @@ export async function handleRequest(req: Request, deps: Deps): Promise<Response>
   if (!body || typeof body !== 'object' || Array.isArray(body)) return fail('INVALID_INPUT');
   const input = body as Record<string, unknown>;
   try {
-    // Compatibilidad con el frontend anterior (correo + fecha de nacimiento). Se retira con la migración de contrato.
-    if (input.action === undefined && typeof input.birth_date === 'string') {
-      const result = await handleLegacy(input, deps.legacy);
-      return json(result.body, result.status);
-    }
     if (input.action === 'identify') return await identify(deps, input);
     if (input.action === 'catalog') return await catalog(deps);
     if (input.action === 'setup_password') return await setupPassword(deps, input);
