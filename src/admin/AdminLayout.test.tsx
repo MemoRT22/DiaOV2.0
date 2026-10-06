@@ -62,7 +62,7 @@ test('all advanced tools remain reachable in More', async () => {
     ['Catálogo', '/coordinacion/catalogo'], ['Check-in', '/coordinacion/checkin'],
     ['Reservaciones', '/coordinacion/reservaciones'], ['Sorteo final', '/coordinacion/sorteo-admin'],
     ['Personal', '/coordinacion/personal'], ['Edición y temática', '/coordinacion/tematica'],
-    ['Reglas de rangos', '/coordinacion/rangos'], ['Operación y datos de prueba', '/coordinacion/operacion'],
+    ['Reglas de rangos', '/coordinacion/rangos'], ['Preparación y puesta en marcha', '/coordinacion/operacion'],
     ['Auditoría', '/coordinacion/auditoria'], ['Mi cuenta', '/coordinacion/cuenta'],
   ];
   for (const [label, href] of expected) {

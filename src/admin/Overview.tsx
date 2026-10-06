@@ -138,8 +138,8 @@ export default function Overview() {
       <p className="mt-5 border-t border-line pt-4 text-xs text-ink-muted">
         {edition?.mode === 'operacion_real'
           ? `Operación real activa desde ${edition.real_operation_at ? formatDateTime(edition.real_operation_at) : '—'}.`
-          : <>El sistema está en preparación. Antes del evento, retira los datos de prueba y{' '}
-            <Link to="/coordinacion/operacion" className="font-semibold text-ink underline">activa la operación real</Link>.</>}
+          : <>El sistema está en preparación. Antes del evento,{' '}
+            <Link to="/coordinacion/operacion" className="font-semibold text-ink underline">realiza la puesta en marcha y activa la operación real</Link>.</>}
       </p>
     </section>
 

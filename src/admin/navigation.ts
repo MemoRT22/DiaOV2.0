@@ -47,7 +47,7 @@ export const COORD_MORE: { title: string; description: string; items: AdminNavIt
       { to: '/coordinacion/personal', label: 'Personal', icon: UsersRound, description: 'Gestiona cuentas y roles del equipo.' },
       { to: '/coordinacion/tematica', label: 'Edición y temática', icon: Palette, description: 'Ajusta la presentación de la edición.' },
       { to: '/coordinacion/rangos', label: 'Reglas de rangos', icon: Medal, description: 'Configura el progreso de participantes.' },
-      { to: '/coordinacion/operacion', label: 'Operación y datos de prueba', icon: Power, description: 'Administra el modo del evento.' },
+      { to: '/coordinacion/operacion', label: 'Preparación y puesta en marcha', icon: Power, description: 'Prepara el ambiente y realiza el paso final a operación real.' },
       { to: '/coordinacion/auditoria', label: 'Auditoría', icon: History, description: 'Consulta acciones registradas.' },
       { to: '/coordinacion/cuenta', label: 'Mi cuenta', icon: KeyRound, description: 'Actualiza tu acceso personal.' },
     ],

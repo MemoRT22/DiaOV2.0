@@ -45,6 +45,9 @@ test('shows a calm empty state, event context and useful indicators', async () =
   expect(screen.getByText('Día OV 2026')).toBeInTheDocument();
   expect(screen.getByText('Campus Cancún')).toBeInTheDocument();
   expect(screen.getByText('Preparación')).toBeInTheDocument();
+  expect(screen.getByRole('link', { name: 'realiza la puesta en marcha y activa la operación real' }))
+    .toHaveAttribute('href', '/coordinacion/operacion');
+  expect(screen.queryByText(/retira los datos de prueba/)).not.toBeInTheDocument();
   expect(screen.getByText('120')).toBeInTheDocument();
   expect(screen.getByText('22')).toBeInTheDocument();
   expect(screen.getByText('45')).toBeInTheDocument();
