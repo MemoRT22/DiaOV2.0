@@ -219,7 +219,8 @@ BEGIN
       ('admin_notes', '{"admin_notes": "aprobado"}'), ('is_demo', '{"is_demo": true}'), ('id', jsonb_build_object('id', v_other)),
       ('submitted_at', '{"submitted_at": "2000-01-01"}'),
       ('phone', '{"facilitator_phone": "998 123 4567"}'), ('division', jsonb_build_object('division_id', d_real)),
-      ('start', '{"operating_start_time": "08:00"}'), ('end', '{"operating_end_time": "20:00"}'), ('break', '{"break_minutes": 15}')
+      ('start', '{"operating_start_time": "08:00"}'), ('end', '{"operating_end_time": "20:00"}'), ('break', '{"break_minutes": 15}'),
+      ('why_join', '{"why_join": "texto"}'), ('student_experience', '{"student_experience": "texto"}')
     ) AS t(name, extra)
   LOOP
     v_err := NULL;
@@ -281,9 +282,9 @@ BEGIN
   -- ===================== 5. Constraints directos (defensa en profundidad) =====================
   -- experience_category se deriva del tipo (Vida Universitaria → 'otra'; académico → NULL) para no alterar los 12 argumentos
   v_tpl := $q$INSERT INTO workshop_submissions (edition_id, division_id, status, submitted_at, facilitator_name, facilitator_email, activity_type, title,
-      student_pitch,objective,takeaway, keywords, session_duration_minutes, capacity_per_session,
+      student_pitch, objective, takeaway, keywords, session_duration_minutes, capacity_per_session,
       operating_start_time, operating_end_time, break_minutes, building, room_space, experience_category)
-    VALUES (%1$L, %2$L, %3$s, now(), 'N', %4$s, %5$s, %6$s, 'p', 'w', 'o', 'e', 't', %7$s, %8$s, %9$s, %10$s, %11$s, %12$s, 'B', 'R',
+    VALUES (%1$L, %2$L, %3$s, now(), 'N', %4$s, %5$s, %6$s, 'p', 'o', 't', %7$s, %8$s, %9$s, %10$s, %11$s, %12$s, 'B', 'R',
       (CASE WHEN %5$s = 'vida_universitaria' THEN 'otra' END))$q$;
   FOR r IN SELECT * FROM (VALUES
       ('control_valid',    '{}'::jsonb,                                                   NULL),

@@ -138,7 +138,7 @@ BEGIN
     'title', 'Taller 9D VU', 'student_pitch', 'Pitch',
     'takeaway', 'Take',
     'keywords', jsonb_build_array('uno', 'dos', 'tres'), 'session_duration_minutes', 60, 'capacity_per_session', 20,
-    'building', 'Ed', 'room_space', 'Salón'));
+    'building', 'Ed', 'room_space', 'Salón', 'career_ids', '[]'::jsonb));
   v_id_vida := (v_result->>'submission_id')::uuid;
 
   PERFORM public.workshop_review_transition_internal(v_actor, v_id_vida, 'start_review');

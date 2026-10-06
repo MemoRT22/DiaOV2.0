@@ -143,7 +143,7 @@ test('POST válido: 201, respuesta mínima y payload normalizado sin campos del 
   }
   assert.deepEqual(Object.keys(sent).sort(), [
     'activity_type', 'building', 'capacity_per_session', 'career_ids', 'experience_category', 'facilitator_email', 'facilitator_name', 'keywords', 'notes',
-    'objective', 'requirements', 'room_space', 'session_duration_minutes', 'student_pitch', 'takeaway', 'title', 'why_join',
+    'objective', 'requirements', 'room_space', 'session_duration_minutes', 'student_pitch', 'takeaway', 'title',
   ]);
 });
 
@@ -271,8 +271,10 @@ test('tipo de actividad: solo academica | vida_universitaria; el valor antiguo l
   await expectInvalid((p) => { delete p.activity_type; }, 'activity_type:REQUIRED');
 });
 
-test('campos retirados del formulario (teléfono, división, horario, descanso) se rechazan como UNKNOWN_FIELDS sin escribir', async () => {
+test('campos retirados del formulario (teléfono, división, horario, descanso, why_join, student_experience) se rechazan como UNKNOWN_FIELDS sin escribir', async () => {
   const retired: Record<string, unknown>[] = [
+    { why_join: 'Porque sí' },
+    { student_experience: 'Hará cosas' },
     { facilitator_phone: '998 123 4567' },
     { division_id: DIV },
     { operating_start_time: '10:00' },
