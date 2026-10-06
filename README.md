@@ -67,6 +67,14 @@ La edición tiene `privacy_notice_version = 'v1'` con contenido pendiente. Antes
 - La disponibilidad en vivo usa un canal privado por edición que solo emite conteos; la app funciona igual si no hay conexión en vivo.
 - La tabla `reservations` no tiene permisos para `anon` ni `authenticated` (RLS sigue activo como defensa en profundidad). El aspirante solo lee mediante `my_reservation_board()` (exige aviso aceptado) y Coordinación mediante `session_reservation_counts()`, que solo devuelve conteos.
 
+## Centro de Operación
+
+Consola temporal y de excepciones para el día del evento (Operación → Centro de Operación). Organiza por momento, atención y búsqueda, no por tablas: **Ahora** (en curso, por empezar en 30 min y atención inmediata), **Próximas** (cronológicas por bloque horario), **Atención** y **Programa completo** (tabla compacta, una fila por sesión; cómoda con más de 100). Búsqueda por taller, lugar o división y filtro de división, que respetan talleres multidivisión. Antes del evento abre en Próximas con indicadores de preparación; el día del evento y mientras haya sesiones cerca, abre en Ahora. Todas las decisiones usan `server_time` (el reloj del navegador solo mide el tiempo transcurrido desde la última lectura).
+
+**Atención** solo incluye situaciones que Coordinación puede resolver: sesión en curso o a ≤60 min de iniciar sin ubicación; cancelada con reservaciones sin alternativa (`affected_unresolved`) y aún por ocurrir; terminada con reservaciones y cero check-ins dentro de la ventana de check-in; próxima a ≤30 min sin reservaciones; reservaciones por encima del cupo. «Lleno» y «Quedan pocos» son demanda, no incidente; una sesión lejana sin ubicación se avisa como tarea de configuración.
+
+**Contrato `event_operations_overview()`** (un solo JSON, sin datos personales; solo Staff/Coordinación): raíz con `server_time`, `mode`, `event_date`, `timezone`, `checkin_close_after_minutes`, `summary` y `sessions`. Cada sesión: `divisions [{id,code,name}]` (relación real `activity_divisions`), `location` (sesión con respaldo del taller; `null` si falta), `capacity`, `reserved` (vigente + expirada), `remaining`, `attended`, `affected_reservations`, `affected_unresolved`. Se calcula con agregaciones agrupadas (sin consulta por fila). Se conservan por compatibilidad, para retirar cuando no queden frontends anteriores: `division_id/division_name/division_code` (primera división; vacío si no hay), `summary.platform_consents` e `is_demo`.
+
 ## Producto administrativo (UX-3)
 
 El administrador se entiende con cinco áreas: **Inicio, Participantes, Talleres, Operación y Configuración**. Una capacidad técnica no se convierte en módulo: se integra donde se usa.
