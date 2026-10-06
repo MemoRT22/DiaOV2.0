@@ -19,7 +19,7 @@ vi.mock('../theme/PublicThemeProvider', () => ({
 vi.mock('../edition/EditionProvider', () => ({
   useEdition: () => ({ edition: {
     event_date: '2026-10-20', start_time: '09:00', venue: 'Campus Cancún', privacy_notice_version: 'v1',
-    privacy_notice_summary: 'Usaremos tus datos solo para el evento.', privacy_notice_url: 'https://example.test/aviso',
+    privacy_notice_summary: 'Usaremos tus datos solo para el evento.', privacy_notice_url: 'https://www.anahuac.mx/cancun/aviso-de-privacidad',
   } }),
 }));
 
@@ -139,7 +139,13 @@ test('an unknown email goes to self-registration with exactly the Forms fields a
   expect(Array.from(careers.options).map((o) => o.textContent)).toEqual(['Elige la licenciatura de tu interés…', 'Psicología', 'Derecho']);
   const notice = screen.getByRole('region', { name: 'Aviso de Privacidad' });
   expect(within(notice).getByText('Usaremos tus datos solo para el evento.')).toBeInTheDocument();
-  expect(within(notice).getByRole('link', { name: 'Leer el aviso completo' })).toHaveAttribute('href', 'https://example.test/aviso');
+  const link = within(notice).getByRole('link', { name: 'Leer el Aviso de Privacidad completo' });
+  expect(link).toHaveAttribute('href', 'https://www.anahuac.mx/cancun/aviso-de-privacidad');
+  expect(link).toHaveAttribute('target', '_blank');
+  expect(link.getAttribute('rel')).toMatch(/noopener/);
+  expect(link.getAttribute('rel')).toMatch(/noreferrer/);
+  // solo existe el Aviso de Privacidad: no se afirma aceptar términos que no se presentan
+  expect(screen.queryByText(/términos/i)).not.toBeInTheDocument();
 });
 
 test('registration requires accepting the privacy notice; then it creates the account and enters without repeating consent', async () => {
@@ -151,7 +157,7 @@ test('registration requires accepting the privacy notice; then it creates the ac
   await fillRegistration();
   const submit = screen.getByRole('button', { name: 'Registrarme y entrar' });
   expect(submit).toBeDisabled();
-  fireEvent.click(screen.getByRole('checkbox', { name: /acepto el Aviso de Privacidad y los términos/ }));
+  fireEvent.click(screen.getByRole('checkbox', { name: 'He leído y acepto el Aviso de Privacidad.' }));
   expect(submit).toBeEnabled();
   fireEvent.click(submit);
   await waitFor(() => expect(studentAccess.register).toHaveBeenCalledWith({
@@ -159,6 +165,19 @@ test('registration requires accepting the privacy notice; then it creates the ac
     high_school: 'Colegio Ejemplo', high_school_grade: '3', entry_period: '2027-08', initial_career_id: 'c-1', consent_accepted: true,
   }));
   await waitFor(() => expect(signInParticipant).toHaveBeenCalledWith('nueva@ejemplo.com', 'mi-clave-segura'));
+});
+
+test('if the server still reports missing consent, the message mentions only the Privacy Notice', async () => {
+  vi.mocked(studentAccess.identify).mockResolvedValue('self_registration');
+  vi.mocked(studentAccess.register).mockRejectedValue(new Error('CONSENT_REQUIRED'));
+  show();
+  await continueWith('nueva@ejemplo.com');
+  await screen.findByText(/No encontramos un prerregistro/);
+  await fillRegistration();
+  fireEvent.click(screen.getByRole('checkbox', { name: 'He leído y acepto el Aviso de Privacidad.' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Registrarme y entrar' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('Para continuar, acepta el Aviso de Privacidad.');
+  expect(screen.queryByText(/términos/i)).not.toBeInTheDocument();
 });
 
 test('a duplicate email found at the last moment is reported clearly', async () => {

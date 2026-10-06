@@ -260,13 +260,13 @@ export function RegisterStep({ email, onBack, onRegister }: {
         {edition?.privacy_notice_url && (
           <a href={edition.privacy_notice_url} target="_blank" rel="noopener noreferrer"
             className="inline-block text-sm font-semibold text-secondary-300 underline underline-offset-4">
-            Leer el aviso completo
+            Leer el Aviso de Privacidad completo
           </a>
         )}
         <label className="flex cursor-pointer items-start gap-3 pt-1 text-sm">
           <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)}
             className="mt-0.5 h-5 w-5 shrink-0 accent-[rgb(var(--c-primary-500))]" />
-          <span>He leído y acepto el Aviso de Privacidad y los términos de uso de la experiencia digital del evento.</span>
+          <span>He leído y acepto el Aviso de Privacidad.</span>
         </label>
       </section>
 

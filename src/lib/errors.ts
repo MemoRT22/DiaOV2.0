@@ -39,7 +39,7 @@ const MESSAGES: Record<string, string> = {
   INVALID_EMAIL: 'Escribe un correo válido.',
   INVALID_NAME: 'Escribe un nombre válido.',
   INVALID_PHONE: 'El teléfono debe tener entre 10 y 15 dígitos.',
-  CONSENT_REQUIRED: 'Para continuar, acepta el Aviso de Privacidad y los términos.',
+  CONSENT_REQUIRED: 'Para continuar, acepta el Aviso de Privacidad.',
   EMAIL_EXISTS: 'Este correo ya está registrado.',
   INVALID_PASSWORD: 'La contraseña debe tener entre 8 y 72 caracteres.',
   ACCESS_ALREADY_CONFIGURED: 'Este correo ya tiene una contraseña. Inicia sesión con ella.',
