@@ -75,9 +75,10 @@ BEGIN
     BEGIN PERFORM count(*) FROM workshop_submissions; EXCEPTION WHEN insufficient_privilege THEN v_s1 := v_s1 + 1; END;
     BEGIN PERFORM count(*) FROM workshop_submission_careers; EXCEPTION WHEN insufficient_privilege THEN v_s1 := v_s1 + 1; END;
     BEGIN INSERT INTO workshop_submissions (edition_id) VALUES (ed); EXCEPTION WHEN insufficient_privilege THEN v_s1 := v_s1 + 1; END;
-    BEGIN UPDATE workshop_submissions SET status = 'published'; EXCEPTION WHEN insufficient_privilege THEN v_s1 := v_s1 + 1; END;
-    BEGIN DELETE FROM workshop_submissions; EXCEPTION WHEN insufficient_privilege THEN v_s1 := v_s1 + 1; END;
-    BEGIN TRUNCATE workshop_submissions; EXCEPTION WHEN insufficient_privilege THEN v_s1 := v_s1 + 1; END;
+    -- Never issue unscoped writes against shared proposals, even for a negative privilege test.
+    BEGIN UPDATE workshop_submissions SET status = 'published' WHERE id = v_other; EXCEPTION WHEN insufficient_privilege THEN v_s1 := v_s1 + 1; END;
+    BEGIN DELETE FROM workshop_submissions WHERE id = v_other; EXCEPTION WHEN insufficient_privilege THEN v_s1 := v_s1 + 1; END;
+    IF NOT has_table_privilege(v_err, 'public.workshop_submissions', 'TRUNCATE') THEN v_s1 := v_s1 + 1; END IF;
     BEGIN PERFORM create_workshop_submission_internal(v_base); EXCEPTION WHEN insufficient_privilege THEN v_s1 := v_s1 + 1; END;
     BEGIN PERFORM workshop_intake_catalog_internal(); EXCEPTION WHEN insufficient_privilege THEN v_s1 := v_s1 + 1; END;
     PERFORM set_config('role', 'postgres', true); PERFORM set_config('request.jwt.claims', '', true);

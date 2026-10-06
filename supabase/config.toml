@@ -12,3 +12,6 @@ verify_jwt = false
 # La revisión exige sesión Staff con rol Coordinación; la función también valida el usuario.
 [functions.workshop-admin]
 verify_jwt = true
+
+[functions.preparation-reset]
+verify_jwt = true
