@@ -430,7 +430,7 @@ export default function WorkshopWizard({
           </button>
           <button
             type="submit"
-            disabled={submitting}
+            disabled={submitting || (current.id === 'taller' && academicUnavailable)}
             aria-busy={submitting || undefined}
             className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-primary-500 px-8 text-sm font-semibold text-on-primary shadow-[0_8px_24px_-8px_rgb(var(--c-primary-500)/0.6)] hover:bg-primary-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-secondary-300 disabled:cursor-not-allowed disabled:opacity-60"
           >

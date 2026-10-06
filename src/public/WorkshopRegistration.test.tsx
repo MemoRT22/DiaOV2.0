@@ -168,11 +168,12 @@ describe('catálogo', () => {
     expect(screen.queryByText(/talleres académicos aún no está disponible/)).not.toBeInTheDocument();
     await fillTaller(user);
     expect(screen.getByText(/registro de talleres académicos aún no está disponible/i)).toBeInTheDocument();
-    await next(user);
+    expect(screen.getByRole('button', { name: 'Siguiente' })).toBeDisabled();
     expect(heading('Tu taller')).toBeInTheDocument();
     // cambiar a Vida Universitaria quita el aviso y habilita el flujo
     await user.click(screen.getByRole('radio', { name: /Vida Universitaria/ }));
     expect(screen.queryByText(/talleres académicos aún no está disponible/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Siguiente' })).toBeEnabled();
   });
 
   it('sin edición activa (503): no disponible', async () => {

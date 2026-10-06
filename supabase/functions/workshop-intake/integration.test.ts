@@ -10,7 +10,7 @@ const URL_ = process.env.WORKSHOP_INTAKE_URL;
 const skip = URL_ ? false : 'WORKSHOP_INTAKE_URL no definida';
 const json = { 'content-type': 'application/json' };
 
-type Catalog = { edition: { name: string }; divisions: { division_id: string }[]; careers: { career_id: string; division_id: string }[]; activity_types: unknown[]; limits: unknown };
+type Catalog = { edition: { name: string }; divisions: { division_id: string; division_name: string }[]; careers: { career_id: string; career_name: string; division_id: string }[]; activity_types: unknown[]; limits: unknown };
 async function catalog(): Promise<Catalog> {
   const res = await fetch(URL_!);
   assert.equal(res.status, 200);
@@ -31,7 +31,10 @@ const payload = (cat: Catalog, over: Record<string, unknown> = {}) => ({
   capacity_per_session: 20,
   building: 'Edificio X',
   room_space: 'Por confirmar',
-  career_ids: cat.careers.slice(0, 2).map((c) => c.career_id),
+  career_ids: [
+    cat.careers[0]?.career_id,
+    cat.careers.find((c) => c.division_id !== cat.careers[0]?.division_id)?.career_id,
+  ].filter((id): id is string => Boolean(id)),
   ...over,
 });
 
@@ -48,8 +51,19 @@ test('GET: catálogo mínimo y CORS', { skip }, async () => {
   assert.deepEqual((b.experience_categories as { value: string }[]).map((c) => c.value), ['liderazgo', 'deportiva', 'artistica_cultural', 'vida_universitaria', 'otra']);
   assert.deepEqual((b.activity_types as { value: string }[]).map((t) => t.value), ['academica', 'vida_universitaria']);
   const cat = b as unknown as Catalog;
-  assert.ok(Array.isArray(cat.divisions) && Array.isArray(cat.careers));
+  assert.equal(cat.divisions.length, 6);
+  assert.equal(cat.careers.length, 35);
   if (cat.careers.length > 0) assert.deepEqual(Object.keys(cat.careers[0]).sort(), ['career_id', 'career_name', 'division_id']);
+  const counts = Object.fromEntries(cat.divisions.map((d) => [d.division_name, cat.careers.filter((c) => c.division_id === d.division_id).length]));
+  assert.deepEqual(counts, {
+    'Ciencias de la Salud': 7,
+    'Áreas Creativas': 12,
+    Negocios: 9,
+    'Ciencias Sociales y Jurídicas': 2,
+    Liderazgo: 1,
+    'Turismo, Hotelería y Gastronomía': 4,
+  });
+  assert.equal(new Set(cat.careers.map((c) => c.career_id)).size, 35);
 });
 
 // Opcional: ids de datos DEMO conocidos (WORKSHOP_INTAKE_DEMO_DIVISION / WORKSHOP_INTAKE_DEMO_CAREER): nunca deben ofrecerse ni aceptarse
