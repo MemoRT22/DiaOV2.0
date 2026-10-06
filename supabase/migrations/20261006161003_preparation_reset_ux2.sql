@@ -176,8 +176,11 @@ END;
 $$;
 
 -- The legacy partial purge must not remain a browser-callable destructive endpoint.
-REVOKE EXECUTE ON FUNCTION public.purge_demo_data(text) FROM PUBLIC, anon, authenticated;
-REVOKE EXECUTE ON FUNCTION public.demo_purge_preview() FROM PUBLIC, anon, authenticated;
+-- (TRANSITORIO) Mantenemos EXECUTE en primitivas legadas por compatibilidad temporal con frontend publicado
+-- REVOKE EXECUTE ON FUNCTION public.purge_demo_data(text) FROM PUBLIC, anon, authenticated;
+
+-- REVOKE EXECUTE ON FUNCTION public.demo_purge_preview() FROM PUBLIC, anon, authenticated;
+
 REVOKE ALL ON FUNCTION public.preparation_reset_preview_internal(uuid) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.reset_preparation_internal(uuid,text) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.preparation_auth_cleanup_result_internal(uuid,uuid,boolean,text) FROM PUBLIC, anon, authenticated;
