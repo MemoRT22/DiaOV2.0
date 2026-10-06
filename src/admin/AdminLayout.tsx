@@ -1,5 +1,6 @@
 import {
   BookOpen,
+  ClipboardList,
   CalendarClock,
   FileSpreadsheet,
   GitMerge,
@@ -48,6 +49,7 @@ const NAV: { title: string; items: NavItem[] }[] = [
       { to: '/coordinacion/importar', label: 'Padrón oficial', icon: Upload, coordOnly: true },
       { to: '/coordinacion/conflictos', label: 'Conflictos de importación', icon: GitMerge, coordOnly: true },
       { to: '/coordinacion/catalogo', label: 'Catálogo', icon: BookOpen, coordOnly: true },
+      { to: '/coordinacion/talleres', label: 'Propuestas de talleres', icon: ClipboardList, coordOnly: true },
       { to: '/coordinacion/exportacion', label: 'Exportación', icon: FileSpreadsheet, coordOnly: true },
     ],
   },
