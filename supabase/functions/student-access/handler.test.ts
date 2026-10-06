@@ -18,7 +18,6 @@ function fixture(opts: {
   create?: { id?: string; code?: 'EMAIL_TAKEN' | 'AUTH_ERROR' };
   update?: { ok: boolean; code?: 'EMAIL_TAKEN' | 'AUTH_ERROR' };
   rpc?: (name: string, args: Record<string, unknown>) => { data: unknown; error: { message: string } | null };
-  legacyParticipant?: { id: string; birth_date: string | null; auth_user_id: string | null; password_configured_at: string | null } | null;
 } = {}): Fixture {
   const calls: string[] = [];
   const logs: string[] = [];
@@ -36,17 +35,6 @@ function fixture(opts: {
     createUser: async (email) => { calls.push(`createUser:${email}`); return opts.create ?? { id: UID }; },
     updateUser: async (id, email) => { calls.push(`updateUser:${id}:${email}`); return opts.update ?? { ok: true }; },
     deleteUser: async (id) => { calls.push(`deleteUser:${id}`); },
-    legacy: {
-      sha256: async (t) => `h(${t})`,
-      isLocked: async () => false,
-      activeEditionId: async () => 'ed',
-      participant: async () => opts.legacyParticipant ?? null,
-      recordAttempt: async (_h, ok) => { calls.push(`attempt:${ok}`); },
-      ensureIdentity: async () => { calls.push('legacy:ensure'); },
-      magicLink: async () => ({ hashedToken: 't', userId: UID }),
-      linkParticipant: async () => { calls.push('legacy:link'); },
-      verify: async () => ({ access_token: 'a', refresh_token: 'r' }),
-    },
     log: (event, code) => { logs.push(`${event}:${code ?? ''}`); },
   };
   return { deps, calls, logs };
@@ -225,24 +213,6 @@ test('logs never contain the password or the email', async () => {
   await handleRequest(post(registerBody()), f.deps);
   const all = f.logs.join('|');
   assert.ok(!all.includes(SECRET) && !all.includes('ana@example.com'));
-});
-
-test('legacy frontend (email + birth date) still works for participants without a password', async () => {
-  const f = fixture({ legacyParticipant: { id: PID, birth_date: '2008-01-01', auth_user_id: null, password_configured_at: null } });
-  const response = await handleRequest(post({ email: 'ana@example.com', birth_date: '2008-01-01' }), f.deps);
-  assert.equal(response.status, 200);
-  assert.deepEqual(await response.json(), { access_token: 'a', refresh_token: 'r' });
-  assert.deepEqual(f.calls, ['legacy:ensure', 'legacy:link', 'attempt:true']);
-});
-
-test('legacy path refuses participants with a configured password and wrong dates', async () => {
-  const configured = fixture({ legacyParticipant: { id: PID, birth_date: '2008-01-01', auth_user_id: UID, password_configured_at: '2026-10-06T00:00:00Z' } });
-  const response = await handleRequest(post({ email: 'ana@example.com', birth_date: '2008-01-01' }), configured.deps);
-  assert.equal(response.status, 401);
-  assert.deepEqual(await response.json(), { error: 'INVALID_CREDENTIALS' });
-  const wrong = fixture({ legacyParticipant: { id: PID, birth_date: '2008-01-01', auth_user_id: null, password_configured_at: null } });
-  assert.equal((await handleRequest(post({ email: 'ana@example.com', birth_date: '2008-01-02' }), wrong.deps)).status, 401);
-  assert.equal((await handleRequest(post({ email: 'ana@example.com', birth_date: 'ayer' }), wrong.deps)).status, 400);
 });
 
 test('identify aligns the Auth email when Staff corrected the participant email', async () => {
