@@ -3,11 +3,9 @@ import { handleRequest, type Deps } from './handler.ts';
 
 const url = Deno.env.get('SUPABASE_URL');
 const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-const anonKey = Deno.env.get('SUPABASE_ANON_KEY');
 const authOptions = { auth: { persistSession: false, autoRefreshToken: false } };
 // service_role solo existe aquí, en el servidor. El navegador nunca la recibe.
 const admin = url && serviceKey ? createClient(url, serviceKey, authOptions) : null;
-const anon = url && anonKey ? createClient(url, anonKey, authOptions) : null;
 
 const need = () => {
   if (!admin) throw new Error('CONFIG');
@@ -60,50 +58,6 @@ const deps: Deps = {
   },
   deleteUser: async (id) => {
     await need().auth.admin.deleteUser(id);
-  },
-  legacy: {
-    sha256: async (text) => {
-      const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
-      return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, '0')).join('');
-    },
-    isLocked: async (email) => {
-      const { data, error } = await need().rpc('access_lock_state', { p_email: email });
-      if (error) throw error;
-      return Boolean(data?.locked);
-    },
-    activeEditionId: async () => {
-      const { data, error } = await need().from('editions').select('id').eq('is_active', true).maybeSingle();
-      if (error) throw error;
-      return data?.id ?? null;
-    },
-    participant: async (editionId, email) => {
-      const { data, error } = await need().from('participants')
-        .select('id, birth_date, auth_user_id, password_configured_at').eq('edition_id', editionId).eq('email', email).maybeSingle();
-      if (error) throw error;
-      return data;
-    },
-    recordAttempt: async (emailHash, succeeded) => {
-      await need().from('access_attempts').insert({ email_hash: emailHash, succeeded });
-    },
-    ensureIdentity: async (authEmail) => {
-      const { error } = await need().auth.admin.createUser({ email: authEmail, email_confirm: true, app_metadata: { kind: 'participant' } });
-      if (error && !/already/i.test(error.message)) throw error;
-    },
-    magicLink: async (authEmail) => {
-      const { data, error } = await need().auth.admin.generateLink({ type: 'magiclink', email: authEmail });
-      if (error || !data?.properties?.hashed_token || !data.user) throw error ?? new Error('link generation failed');
-      return { hashedToken: data.properties.hashed_token, userId: data.user.id };
-    },
-    linkParticipant: async (participantId, userId) => {
-      const { error } = await need().from('participants').update({ auth_user_id: userId }).eq('id', participantId);
-      if (error) throw error;
-    },
-    verify: async (hashedToken) => {
-      if (!anon) throw new Error('CONFIG');
-      const { data, error } = await anon.auth.verifyOtp({ token_hash: hashedToken, type: 'email' });
-      if (error || !data.session) throw error ?? new Error('no session');
-      return { access_token: data.session.access_token, refresh_token: data.session.refresh_token };
-    },
   },
   // Solo códigos de evento: nunca correo, contraseña ni datos personales.
   log: (event, code) => console.error(`[student-access] ${event}`, code ?? ''),
