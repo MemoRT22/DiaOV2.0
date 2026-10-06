@@ -49,22 +49,22 @@ export default function SessionRow({ row, now }: { row: Row; now: number }) {
     <div
       data-status={status}
       data-attention={attention.length > 0}
-      className={`admin-session-row flex flex-col gap-1 border-b border-line/70 px-5 py-3.5 last:border-b-0 lg:py-3 ${GRID}`}
+      className={`admin-session-row flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-line/70 px-4 py-3.5 last:border-b-0 sm:px-5 lg:py-3 ${GRID}`}
     >
-      <span className="text-[0.95rem] font-bold tabular-nums tracking-tight">
+      <span className="order-1 text-[0.95rem] font-bold tabular-nums tracking-tight lg:order-1">
         {formatTime(session.starts_at)}–{formatTime(session.ends_at)}
       </span>
 
-      <div className="min-w-0">
+      <div className="order-3 min-w-0 basis-full lg:order-2 lg:basis-auto">
         <p className="line-clamp-2 font-semibold leading-snug" title={session.title}>{session.title}</p>
         {shown && <p className="truncate text-xs text-ink-muted" title={divisions.join(' · ')}>{shown}</p>}
       </div>
 
-      <span className={`line-clamp-2 text-sm leading-snug ${located ? '' : 'font-semibold text-fg-warning'}`} title={session.location ?? undefined}>
+      <span className={`order-4 line-clamp-2 text-sm leading-snug lg:order-3 ${located ? 'text-ink-muted lg:text-ink' : 'font-semibold text-fg-warning'}`} title={session.location ?? undefined}>
         {located ? session.location : 'Sin ubicación'}
       </span>
 
-      <div className="text-sm">
+      <div className="order-5 ml-auto text-sm lg:order-4 lg:ml-0">
         <span className="font-semibold tabular-nums">{session.reserved}/{session.capacity}</span>
         <span className="ml-1.5 text-xs text-ink-muted">
           {demand === 'lleno' ? <span className="font-semibold text-fg-info">Lleno</span> : demand === 'pocos' ? `Quedan ${session.remaining}` : `${pct}%`}
@@ -74,12 +74,12 @@ export default function SessionRow({ row, now }: { row: Row; now: number }) {
         </div>
       </div>
 
-      <span className="text-sm tabular-nums">
+      <span className="order-6 text-sm tabular-nums lg:order-5">
         <span className="text-xs text-ink-muted lg:hidden">Asistencias </span>
         {session.attended}
       </span>
 
-      <div className="text-sm">
+      <div className="order-2 ml-auto text-sm lg:order-6 lg:ml-0">
         <p className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[0.7rem] font-bold uppercase tracking-wide ${STATE_TONE[status]}`}>
           {TEMPORAL_LABELS[status]}
           <span className="font-semibold normal-case tracking-normal text-ink-muted">{countdown}</span>
@@ -89,7 +89,7 @@ export default function SessionRow({ row, now }: { row: Row; now: number }) {
         ))}
       </div>
 
-      <div className="lg:text-right">
+      <div className="order-7 w-full lg:order-7 lg:w-auto lg:text-right">
         {canCheckin && (
           <Link
             to={checkinHref(session.session_id)}

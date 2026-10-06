@@ -124,11 +124,19 @@ export default function AdminLayout() {
       {open && <div className="fixed inset-0 z-30 bg-stone-950/40 backdrop-blur-sm lg:hidden" onClick={close} />}
 
       <div className="min-w-0 flex-1">
-        <header className="sticky top-0 z-20 flex h-14 items-center gap-3 border-b border-line/70 bg-surface/80 px-4 backdrop-blur-xl lg:hidden">
+        <header className="sticky top-0 z-20 flex h-16 items-center gap-3 border-b border-line/70 bg-surface/80 px-4 backdrop-blur-xl lg:hidden">
           <button onClick={() => setOpen(true)} className="rounded-xl p-2 text-ink hover:bg-surface-raised" aria-label="Abrir menú">
             <Menu className="h-5 w-5" />
           </button>
-          <span className="text-sm font-semibold">{roleLabel}</span>
+          <span className="flex min-w-0 items-center gap-2.5">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white p-1 shadow-sm ring-1 ring-line">
+              <img src={ADMIN_LOGO} alt="" className="h-full w-full object-contain" />
+            </span>
+            <span className="min-w-0">
+              <span className="block truncate text-sm font-extrabold leading-tight">{ADMIN_PRODUCT_NAME}</span>
+              <span className="block truncate text-[0.7rem] leading-tight text-ink-muted">{roleLabel}</span>
+            </span>
+          </span>
         </header>
         <main className={`admin-rise mx-auto p-4 sm:p-8 lg:p-10 ${pathname.startsWith('/coordinacion/operacion-en-vivo') ? 'max-w-7xl' : 'max-w-6xl'}`}>
           <Suspense fallback={<Spinner />}>

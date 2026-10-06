@@ -51,7 +51,7 @@ const FALLBACK = LOOK['Talleres'];
 
 export default function SummaryStrip({ items }: { items: Item[] }) {
   return (
-    <dl aria-label="Indicadores" className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+    <dl aria-label="Indicadores" className="grid grid-cols-2 gap-3 md:grid-cols-5">
       {items.map((item) => {
         const look = LOOK[item.label] ?? FALLBACK;
         const Icon = look.icon;
@@ -59,7 +59,7 @@ export default function SummaryStrip({ items }: { items: Item[] }) {
         return (
           <div
             key={item.label}
-            className={`card admin-stat flex flex-col gap-3 px-4 py-4 ${warn ? 'ring-1 ring-amber-500/40 bg-gradient-to-br from-amber-500/[0.07] to-surface' : ''}`}
+            className={`card admin-stat flex flex-col gap-3 px-4 py-4 last:odd:col-span-2 md:last:odd:col-span-1 ${warn ? 'ring-1 ring-amber-500/40 bg-gradient-to-br from-amber-500/[0.07] to-surface' : ''}`}
             style={{ ['--stat-glow' as string]: look.glow }}
           >
             <span className={`relative flex h-9 w-9 items-center justify-center rounded-xl ${look.chip}`}>

@@ -20,7 +20,7 @@ export default function AreaLayout({ label, tabs, hideAt }: Props) {
   return (
     <div className="space-y-6">
       {showTabs && (
-        <nav aria-label={label} className="flex max-w-full gap-1 self-start overflow-x-auto rounded-2xl border border-line/80 bg-surface/70 p-1.5 shadow-sm backdrop-blur [width:fit-content]">
+        <nav aria-label={label} className="no-scrollbar flex max-w-full gap-1 self-start overflow-x-auto rounded-2xl border border-line/80 bg-surface/70 p-1.5 shadow-sm backdrop-blur [width:fit-content]">
           {visible.map((tab) => {
             const active = tab.isActive(pathname);
             return (
