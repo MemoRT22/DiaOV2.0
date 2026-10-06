@@ -36,9 +36,7 @@ const LABELS: Record<string, string> = {
   experience_category: 'Categoría de la experiencia',
   title: 'Nombre del taller',
   student_pitch: 'Presentación del taller',
-  why_join: '¿Por qué debería elegirlo un alumno?',
   objective: 'Objetivo',
-  student_experience: '¿Qué hará el alumno?',
   takeaway: '¿Qué se llevará el alumno?',
   keywords: 'Palabras clave',
   session_duration_minutes: 'Duración',
@@ -321,7 +319,6 @@ export default function WorkshopWizard({
 
         {current.id === 'experiencia' && (
           <div className="space-y-5">
-            <TextAreaField field="why_join" label={copy.why_join.label} hint={copy.why_join.hint} required max={LIMITS.whyJoin.max} value={form.why_join} onChange={(v) => set('why_join', v)} error={errors.why_join} />
             <TextAreaField
               field="objective"
               label={copy.objective.label}
@@ -331,16 +328,6 @@ export default function WorkshopWizard({
               value={form.objective}
               onChange={(v) => set('objective', v)}
               error={errors.objective}
-            />
-            <TextAreaField
-              field="student_experience"
-              label={copy.student_experience.label}
-              hint={copy.student_experience.hint}
-              required
-              max={LIMITS.studentExperience.max}
-              value={form.student_experience}
-              onChange={(v) => set('student_experience', v)}
-              error={errors.student_experience}
             />
             <TextAreaField field="takeaway" label={copy.takeaway.label} hint={copy.takeaway.hint} required rows={3} max={LIMITS.takeaway.max} value={form.takeaway} onChange={(v) => set('takeaway', v)} error={errors.takeaway} />
             <KeywordInput value={form.keywords} onChange={(v) => set('keywords', v)} error={errors.keywords} />

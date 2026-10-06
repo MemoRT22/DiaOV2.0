@@ -55,7 +55,7 @@ BEGIN
   v_result := public.create_workshop_submission_internal(jsonb_build_object(
     'facilitator_name', 'Fase 9D Acad Single', 'facilitator_email', 'single@test.invalid',
     'activity_type', 'academica', 'title', 'Taller Single', 'student_pitch', 'Pitch',
-    'why_join', 'Why', 'objective', 'Obj', 'student_experience', 'Exp', 'takeaway', 'Take',
+    'objective', 'Obj', 'takeaway', 'Take',
     'keywords', jsonb_build_array('uno', 'dos', 'tres'), 'session_duration_minutes', 60, 'capacity_per_session', 20,
     'building', 'Ed', 'room_space', 'Salón', 'career_ids', to_jsonb(v_careers_single)));
   v_id_single := (v_result->>'submission_id')::uuid;
@@ -72,7 +72,7 @@ BEGIN
   v_result := public.create_workshop_submission_internal(jsonb_build_object(
     'facilitator_name', 'Fase 9D Acad', 'facilitator_email', '9d@test.invalid',
     'activity_type', 'academica', 'title', 'Taller 9D multi', 'student_pitch', 'Pitch',
-    'why_join', 'Why', 'objective', 'Obj', 'student_experience', 'Exp', 'takeaway', 'Take',
+    'objective', 'Obj', 'takeaway', 'Take',
     'keywords', jsonb_build_array('uno', 'dos', 'tres'), 'session_duration_minutes', 30, 'capacity_per_session', 20,
     'building', 'Ed', 'room_space', 'Salón', 'career_ids', to_jsonb(v_careers)));
   v_id := (v_result->>'submission_id')::uuid;
@@ -136,7 +136,7 @@ BEGIN
     'facilitator_name', 'Fase 9D VU', 'facilitator_email', '9dvu@test.invalid',
     'activity_type', 'vida_universitaria', 'experience_category', 'liderazgo',
     'title', 'Taller 9D VU', 'student_pitch', 'Pitch',
-    'why_join', 'Why', 'student_experience', 'Exp', 'takeaway', 'Take',
+    'takeaway', 'Take',
     'keywords', jsonb_build_array('uno', 'dos', 'tres'), 'session_duration_minutes', 60, 'capacity_per_session', 20,
     'building', 'Ed', 'room_space', 'Salón'));
   v_id_vida := (v_result->>'submission_id')::uuid;

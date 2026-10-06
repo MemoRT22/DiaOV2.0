@@ -25,9 +25,7 @@ export type FormState = {
   experience_category: '' | (typeof EXPERIENCE_CATEGORIES)[number]['value'];
   title: string;
   student_pitch: string;
-  why_join: string;
   objective: string;
-  student_experience: string;
   takeaway: string;
   keywords: string[];
   /** '30' | '60' (se elige con tarjetas; el horario 10:00–12:00 y el descanso los fija el servidor). */
@@ -48,9 +46,7 @@ export const emptyForm = (): FormState => ({
   experience_category: '',
   title: '',
   student_pitch: '',
-  why_join: '',
   objective: '',
-  student_experience: '',
   takeaway: '',
   keywords: [],
   session_duration_minutes: '',
@@ -73,7 +69,7 @@ export const STEPS: readonly StepDef[] = [
     id: 'experiencia',
     title: 'Experiencia del alumno',
     short: 'Experiencia',
-    fields: ['why_join', 'objective', 'student_experience', 'takeaway', 'keywords'],
+    fields: ['objective', 'takeaway', 'keywords'],
   },
   {
     id: 'operacion',
@@ -97,7 +93,7 @@ export const stepsFor = (type: FormState['activity_type']): readonly StepDef[] =
     : STEPS;
 
 export type FieldCopy = { label: string; hint?: string };
-export type TypeCopy = Record<'title' | 'student_pitch' | 'why_join' | 'objective' | 'student_experience' | 'takeaway', FieldCopy>;
+export type TypeCopy = Record<'title' | 'student_pitch' | 'objective' | 'takeaway', FieldCopy>;
 
 /** Lenguaje de cada pregunta según el tipo. Las columnas son las mismas; solo cambia el copy visible. */
 export const copyFor = (type: FormState['activity_type']): TypeCopy =>
@@ -105,20 +101,16 @@ export const copyFor = (type: FormState['activity_type']): TypeCopy =>
     ? {
         title: { label: 'Nombre de la actividad' },
         student_pitch: { label: 'Descripción corta', hint: 'En pocas palabras, ¿qué experiencia vivirán los alumnos?' },
-        why_join: { label: '¿Por qué debería sumarse un alumno?', hint: 'Cuéntanos qué hace atractiva o especial esta experiencia.' },
         objective: {
           label: '¿Qué buscas generar con esta experiencia?',
           hint: 'Por ejemplo: integración, creatividad, liderazgo, bienestar, convivencia o diversión.',
         },
-        student_experience: { label: '¿Qué harán los alumnos durante la actividad?', hint: 'Describe brevemente la dinámica o cómo participarán.' },
         takeaway: { label: '¿Con qué queremos que se queden después de participar?', hint: 'Puede ser una sensación, una experiencia, una habilidad o una integración.' },
       }
     : {
         title: { label: 'Nombre del taller' },
         student_pitch: { label: 'Presenta tu taller en pocas palabras', hint: 'Es lo primero que verán los alumnos al elegirlo.' },
-        why_join: { label: '¿Por qué debería elegir este taller un alumno?' },
         objective: { label: '¿Cuál es el objetivo del taller?', hint: 'Qué quieres que el alumno comprenda, descubra o experimente.' },
-        student_experience: { label: '¿Qué hará el alumno durante el taller?' },
         takeaway: { label: '¿Qué aprendizaje o idea quieres que se lleve?' },
       };
 
@@ -140,10 +132,8 @@ export function buildDraft(f: FormState): Record<string, unknown> {
     experience_category: f.activity_type === 'vida_universitaria' ? f.experience_category || undefined : undefined,
     title: f.title,
     student_pitch: f.student_pitch,
-    why_join: f.why_join,
     // Opcional en Vida Universitaria (vacío → null); obligatorio en académico.
     objective: f.activity_type === 'vida_universitaria' ? orNull(f.objective) : f.objective,
-    student_experience: f.student_experience,
     takeaway: f.takeaway,
     keywords: f.keywords,
     session_duration_minutes: num(f.session_duration_minutes),
@@ -164,9 +154,7 @@ const LENGTHS: Record<string, { min: number; max: number }> = {
   facilitator_name: LIMITS.facilitatorName,
   title: LIMITS.title,
   student_pitch: LIMITS.studentPitch,
-  why_join: LIMITS.whyJoin,
   objective: LIMITS.objective,
-  student_experience: LIMITS.studentExperience,
   takeaway: LIMITS.takeaway,
   building: LIMITS.building,
   room_space: LIMITS.roomSpace,

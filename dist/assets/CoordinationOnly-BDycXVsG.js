@@ -1,0 +1,1 @@
+import{u as o,y as s,j as t,N as n,O as r}from"./index-B0H0jzrW.js";function i(){const{staff:a}=o();return s(a,"coordinacion")?t.jsx(r,{}):t.jsx(n,{to:"/coordinacion/participantes",replace:!0})}export{i as default};

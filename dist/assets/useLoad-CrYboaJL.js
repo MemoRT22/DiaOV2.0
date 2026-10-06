@@ -1,0 +1,1 @@
+import{r as t}from"./index-B0H0jzrW.js";function p(e,n){const[o,c]=t.useState(null),[l,a]=t.useState(null),[f,r]=t.useState(!0),s=t.useRef(e);s.current=e;const u=t.useCallback(async()=>{r(!0),a(null);try{c(await s.current())}catch(i){a(i)}finally{r(!1)}},[]);return t.useEffect(()=>{u()},n),{data:o,error:l,loading:f,reload:u}}export{p as u};

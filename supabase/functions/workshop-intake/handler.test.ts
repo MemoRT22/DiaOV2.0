@@ -18,9 +18,7 @@ const valid = () => ({
   activity_type: 'academica',
   title: 'Código Rojo Cancún 2035',
   student_pitch: 'Resuelve una crisis digital en equipo durante una hora.',
-  why_join: 'Porque vivirás cómo se trabaja bajo presión con tecnología real.',
   objective: 'Que el alumno identifique el rol de las TI en una emergencia.',
-  student_experience: 'Simulación guiada con retos por equipos y retroalimentación.',
   takeaway: 'Una idea clara de qué hace un ingeniero en ciberseguridad.',
   keywords: ['ciberseguridad', 'inteligencia artificial', 'simulación'],
   session_duration_minutes: 60,
@@ -145,7 +143,7 @@ test('POST válido: 201, respuesta mínima y payload normalizado sin campos del 
   }
   assert.deepEqual(Object.keys(sent).sort(), [
     'activity_type', 'building', 'capacity_per_session', 'career_ids', 'experience_category', 'facilitator_email', 'facilitator_name', 'keywords', 'notes',
-    'objective', 'requirements', 'room_space', 'session_duration_minutes', 'student_experience', 'student_pitch', 'takeaway', 'title', 'why_join',
+    'objective', 'requirements', 'room_space', 'session_duration_minutes', 'student_pitch', 'takeaway', 'title', 'why_join',
   ]);
 });
 
@@ -244,8 +242,8 @@ test('Vida Universitaria: objetivo opcional (ausente, nulo o vacío → null, si
   await expectInvalid((q) => { vida(q); q.objective = 'x'.repeat(LIMITS.objective.max + 1); }, 'objective:TOO_LONG');
 });
 
-test('Vida Universitaria sigue exigiendo why_join, student_experience, takeaway y keywords', async () => {
-  for (const f of ['why_join', 'student_experience', 'takeaway', 'keywords']) {
+test('Vida Universitaria sigue exigiendo takeaway y keywords', async () => {
+  for (const f of ['takeaway', 'keywords']) {
     await expectInvalid((p) => { vida(p); delete p[f]; }, `${f}:REQUIRED`);
   }
 });
@@ -323,7 +321,7 @@ test('keywords: menos de 3, más de 5, vacía, duplicada y tipo inválido', asyn
 });
 
 test('campos requeridos vacíos, tipos y longitudes', async () => {
-  for (const f of ['facilitator_name', 'title', 'student_pitch', 'why_join', 'objective', 'student_experience', 'takeaway', 'building', 'room_space']) {
+  for (const f of ['facilitator_name', 'title', 'student_pitch', 'objective', 'takeaway', 'building', 'room_space']) {
     await expectInvalid((p) => { p[f] = '   \n  '; }, `${f}:REQUIRED`);
     await expectInvalid((p) => { delete p[f]; }, `${f}:REQUIRED`);
     await expectInvalid((p) => { p[f] = 42; }, `${f}:INVALID_TYPE`);

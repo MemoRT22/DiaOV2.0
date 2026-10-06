@@ -31,7 +31,7 @@ BEGIN
   v_base := jsonb_build_object(
     'facilitator_name', 'Ana Pérez', 'facilitator_email', 'ana@example.com',
     'activity_type', 'academica', 'title', 'Código Rojo Cancún 2035',
-    'student_pitch', 'Pitch', 'why_join', 'Porque sí', 'objective', 'Objetivo', 'student_experience', 'Experiencia', 'takeaway', 'Aprendizaje',
+    'student_pitch', 'Pitch', 'objective', 'Objetivo', 'takeaway', 'Aprendizaje',
     'keywords', jsonb_build_array('ciberseguridad', 'ia', 'simulación'),
     'session_duration_minutes', 60, 'capacity_per_session', 30,
     'building', 'Edificio A', 'room_space', 'Por confirmar', 'requirements', NULL, 'notes', NULL,
@@ -281,7 +281,7 @@ BEGIN
   -- ===================== 5. Constraints directos (defensa en profundidad) =====================
   -- experience_category se deriva del tipo (Vida Universitaria → 'otra'; académico → NULL) para no alterar los 12 argumentos
   v_tpl := $q$INSERT INTO workshop_submissions (edition_id, division_id, status, submitted_at, facilitator_name, facilitator_email, activity_type, title,
-      student_pitch, why_join, objective, student_experience, takeaway, keywords, session_duration_minutes, capacity_per_session,
+      student_pitch,objective,takeaway, keywords, session_duration_minutes, capacity_per_session,
       operating_start_time, operating_end_time, break_minutes, building, room_space, experience_category)
     VALUES (%1$L, %2$L, %3$s, now(), 'N', %4$s, %5$s, %6$s, 'p', 'w', 'o', 'e', 't', %7$s, %8$s, %9$s, %10$s, %11$s, %12$s, 'B', 'R',
       (CASE WHEN %5$s = 'vida_universitaria' THEN 'otra' END))$q$;

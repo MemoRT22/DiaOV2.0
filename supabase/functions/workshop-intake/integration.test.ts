@@ -22,9 +22,7 @@ const payload = (cat: Catalog, over: Record<string, unknown> = {}) => ({
   activity_type: 'academica',
   title: `ZZ-INTAKE-IT-${crypto.randomUUID().slice(0, 8)}`,
   student_pitch: 'Pitch de prueba de integración para el formulario.',
-  why_join: 'Razón de prueba de integración para el formulario.',
   objective: 'Objetivo de prueba de integración para el formulario.',
-  student_experience: 'Experiencia de prueba de integración para el formulario.',
   takeaway: 'Aprendizaje de prueba',
   keywords: ['uno', 'dos', 'tres'],
   session_duration_minutes: 30,
@@ -77,8 +75,6 @@ test('catálogo público sin datos demo y POST rechaza división/carrera demo', 
   const base = {
     facilitator_name: 'Prueba Integración', facilitator_email: 'integracion@example.com', activity_type: 'academica',
     title: `ZZ-INTAKE-IT-${crypto.randomUUID().slice(0, 8)}`,
-    student_pitch: 'Pitch de prueba de integración para el formulario.', why_join: 'Razón de prueba de integración para el formulario.',
-    objective: 'Objetivo de prueba de integración para el formulario.', student_experience: 'Experiencia de prueba de integración para el formulario.',
     takeaway: 'Aprendizaje de prueba', keywords: ['uno', 'dos', 'tres'], session_duration_minutes: 30, capacity_per_session: 20,
     building: 'Edificio X', room_space: 'Por confirmar',
   };
