@@ -5,7 +5,7 @@ import { fieldId, foldSearch } from '../../lib/workshopForm';
 
 /**
  * Selección múltiple de carreras relacionadas, sin límite. Con ~35 carreras: búsqueda sin acentos y
- * agrupación por escuela/división. La escuela organizadora del taller es un concepto distinto: un taller
+ * agrupación por escuela/división. La división ya no es una respuesta del formulario: un taller académico
  * puede ser multidisciplinario y relacionarse con carreras de varias escuelas.
  */
 export default function CareerPicker({

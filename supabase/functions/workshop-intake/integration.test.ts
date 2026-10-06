@@ -19,8 +19,7 @@ async function catalog(): Promise<Catalog> {
 const payload = (cat: Catalog, over: Record<string, unknown> = {}) => ({
   facilitator_name: 'Prueba Integración',
   facilitator_email: 'integracion@example.com',
-  division_id: cat.divisions[0].division_id,
-  activity_type: 'liderazgo',
+  activity_type: 'academica',
   title: `ZZ-INTAKE-IT-${crypto.randomUUID().slice(0, 8)}`,
   student_pitch: 'Pitch de prueba de integración para el formulario.',
   why_join: 'Razón de prueba de integración para el formulario.',
@@ -30,9 +29,6 @@ const payload = (cat: Catalog, over: Record<string, unknown> = {}) => ({
   keywords: ['uno', 'dos', 'tres'],
   session_duration_minutes: 30,
   capacity_per_session: 20,
-  operating_start_time: '09:00',
-  operating_end_time: '13:00',
-  break_minutes: 5,
   building: 'Edificio X',
   room_space: 'Por confirmar',
   career_ids: cat.careers.slice(0, 2).map((c) => c.career_id),
@@ -54,7 +50,8 @@ test('GET: catálogo mínimo y CORS', { skip }, async () => {
   if (cat.careers.length > 0) assert.deepEqual(Object.keys(cat.careers[0]).sort(), ['career_id', 'career_name', 'division_id']);
 });
 
-// Opcional: ids de datos DEMO conocidos (WORKSHOP_INTAKE_DEMO_DIVISION / WORKSHOP_INTAKE_DEMO_CAREER): nunca deben ofrecerse ni aceptarse.
+// Opcional: ids de datos DEMO conocidos (WORKSHOP_INTAKE_DEMO_DIVISION / WORKSHOP_INTAKE_DEMO_CAREER): nunca deben ofrecerse ni aceptarse
+// (la división ya no es entrada del formulario; una carrera demo se rechaza con INVALID_CAREER).
 const demoDiv = process.env.WORKSHOP_INTAKE_DEMO_DIVISION;
 const demoCareer = process.env.WORKSHOP_INTAKE_DEMO_CAREER;
 test('catálogo público sin datos demo y POST rechaza división/carrera demo', { skip: skip || (demoDiv && demoCareer ? false : 'sin ids demo') }, async () => {
@@ -62,16 +59,37 @@ test('catálogo público sin datos demo y POST rechaza división/carrera demo', 
   assert.ok(!cat.divisions.some((d) => d.division_id === demoDiv));
   assert.ok(!cat.careers.some((c) => c.career_id === demoCareer || c.division_id === demoDiv));
   const base = {
-    facilitator_name: 'Prueba Integración', facilitator_email: 'integracion@example.com', activity_type: 'liderazgo',
+    facilitator_name: 'Prueba Integración', facilitator_email: 'integracion@example.com', activity_type: 'academica',
     title: `ZZ-INTAKE-IT-${crypto.randomUUID().slice(0, 8)}`,
     student_pitch: 'Pitch de prueba de integración para el formulario.', why_join: 'Razón de prueba de integración para el formulario.',
     objective: 'Objetivo de prueba de integración para el formulario.', student_experience: 'Experiencia de prueba de integración para el formulario.',
     takeaway: 'Aprendizaje de prueba', keywords: ['uno', 'dos', 'tres'], session_duration_minutes: 30, capacity_per_session: 20,
-    operating_start_time: '09:00', operating_end_time: '13:00', break_minutes: 5, building: 'Edificio X', room_space: 'Por confirmar',
+    building: 'Edificio X', room_space: 'Por confirmar',
   };
-  let res = await fetch(URL_!, { method: 'POST', headers: json, body: JSON.stringify({ ...base, division_id: demoDiv, career_ids: [demoCareer] }) });
+  const res = await fetch(URL_!, { method: 'POST', headers: json, body: JSON.stringify({ ...base, career_ids: [demoCareer] }) });
   assert.equal(res.status, 422);
-  assert.equal(((await res.json()) as { error: string }).error, 'INVALID_DIVISION');
+  assert.equal(((await res.json()) as { error: string }).error, 'INVALID_CAREER');
+});
+
+test('POST con campos retirados (teléfono, división, horario, descanso): 400 UNKNOWN_FIELDS sin guardar', { skip }, async () => {
+  const cat = await catalog();
+  const base = payload({ ...cat, careers: [{ career_id: crypto.randomUUID(), division_id: '' }], divisions: [] });
+  for (const extra of [{ facilitator_phone: '998 123 4567' }, { division_id: crypto.randomUUID() }, { operating_start_time: '10:00' }, { operating_end_time: '12:00' }, { break_minutes: 0 }]) {
+    const res = await fetch(URL_!, { method: 'POST', headers: json, body: JSON.stringify({ ...base, ...extra }) });
+    assert.equal(res.status, 400, JSON.stringify(extra));
+    assert.equal(((await res.json()) as { error: string }).error, 'UNKNOWN_FIELDS');
+  }
+});
+
+test('POST con duración distinta de 30 o 60 y tipo antiguo liderazgo: 422 sin guardar', { skip }, async () => {
+  const cat = await catalog();
+  const base = payload({ ...cat, careers: [{ career_id: crypto.randomUUID(), division_id: '' }], divisions: [] });
+  let res = await fetch(URL_!, { method: 'POST', headers: json, body: JSON.stringify({ ...base, session_duration_minutes: 45 }) });
+  assert.equal(res.status, 422);
+  assert.ok(((await res.json()) as { errors: { field: string; code: string }[] }).errors.some((e) => e.field === 'session_duration_minutes' && e.code === 'INVALID_DURATION'));
+  res = await fetch(URL_!, { method: 'POST', headers: json, body: JSON.stringify({ ...base, activity_type: 'liderazgo' }) });
+  assert.equal(res.status, 422);
+  assert.ok(((await res.json()) as { errors: { field: string; code: string }[] }).errors.some((e) => e.field === 'activity_type' && e.code === 'INVALID_ACTIVITY_TYPE'));
 });
 
 test('POST válido: 201 submitted, respuesta mínima', { skip: await noReal() }, async () => {
@@ -90,19 +108,22 @@ test('POST con propiedades administrativas: 400 y nada se guarda', { skip: await
   assert.equal(((await res.json()) as { error: string }).error, 'UNKNOWN_FIELDS');
 });
 
-test('POST con carrera inexistente o división inválida: 422 desde la base', { skip: await noReal() }, async () => {
+test('POST con carrera inexistente: 422 INVALID_CAREER desde la base (no requiere catálogo real)', { skip }, async () => {
   const cat = await catalog();
-  let res = await fetch(URL_!, { method: 'POST', headers: json, body: JSON.stringify(payload(cat, { career_ids: [crypto.randomUUID()] })) });
+  const res = await fetch(URL_!, { method: 'POST', headers: json, body: JSON.stringify(payload({ ...cat, careers: [], divisions: [] }, { career_ids: [crypto.randomUUID()] })) });
   assert.equal(res.status, 422);
   assert.equal(((await res.json()) as { error: string }).error, 'INVALID_CAREER');
-  res = await fetch(URL_!, { method: 'POST', headers: json, body: JSON.stringify(payload(cat, { division_id: crypto.randomUUID() })) });
-  assert.equal(res.status, 422);
-  assert.equal(((await res.json()) as { error: string }).error, 'INVALID_DIVISION');
+});
+
+test('POST Vida Universitaria sin carreras: 201 (no requiere catálogo real)', { skip }, async () => {
+  const cat = await catalog();
+  const res = await fetch(URL_!, { method: 'POST', headers: json, body: JSON.stringify(payload({ ...cat, careers: [], divisions: [] }, { activity_type: 'vida_universitaria', career_ids: [] })) });
+  assert.equal(res.status, 201);
 });
 
 test('POST con validación de formulario: 422 con errores por campo', { skip: await noReal() }, async () => {
   const cat = await catalog();
-  const res = await fetch(URL_!, { method: 'POST', headers: json, body: JSON.stringify(payload(cat, { keywords: ['a', 'b'], break_minutes: -1, career_ids: [] })) });
+  const res = await fetch(URL_!, { method: 'POST', headers: json, body: JSON.stringify(payload(cat, { keywords: ['a', 'b'], session_duration_minutes: 45, career_ids: [] })) });
   assert.equal(res.status, 422);
   const b = (await res.json()) as { errors: { field: string; code: string }[] };
   assert.ok(b.errors.some((e) => e.field === 'keywords' && e.code === 'TOO_FEW_KEYWORDS'));

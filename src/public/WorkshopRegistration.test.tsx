@@ -63,9 +63,8 @@ function fillResponsable() {
   setVal(/Nombre completo/, 'Ana Pérez');
   setVal(/Correo electrónico/, 'ana@example.com');
 }
-async function fillTaller(user: ReturnType<typeof userEvent.setup>) {
-  await user.selectOptions(screen.getByLabelText(/Escuela o división que organiza/), D1);
-  await user.click(screen.getByRole('radio', { name: /Académica/ }));
+async function fillTaller(user: ReturnType<typeof userEvent.setup>, type: RegExp = /Taller académico/) {
+  await user.click(screen.getByRole('radio', { name: type }));
   setVal(/Nombre del taller/, 'Código Rojo Cancún 2035');
   setVal(/Presenta tu taller/, 'Resuelve una crisis digital en equipo durante una hora.');
 }
@@ -78,11 +77,8 @@ async function fillExperiencia(user: ReturnType<typeof userEvent.setup>) {
   for (const k of ['ciberseguridad', 'inteligencia artificial', 'simulación']) await user.type(kw, `${k}{Enter}`);
 }
 async function fillOperacion(user: ReturnType<typeof userEvent.setup>) {
-  setVal(/Duración de cada sesión/, '45');
+  await user.click(screen.getByRole('radio', { name: '1 hora' }));
   setVal(/Cupo por sesión/, '30');
-  setVal(/Desde/, '10:00');
-  setVal(/Hasta/, '14:00');
-  setVal(/Descanso entre sesiones/, '10');
   setVal(/^Edificio/, 'Edificio A');
   await user.click(screen.getByRole('checkbox', { name: /Aún no tengo el espacio/ }));
 }
@@ -91,7 +87,7 @@ async function fillCarreras(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getByRole('checkbox', { name: 'Administración de Empresas' }));
 }
 
-/** Completa todos los pasos y llega a la revisión. */
+/** Completa todos los pasos (académico) y llega a la revisión. */
 async function toReview(user: ReturnType<typeof userEvent.setup>) {
   fillResponsable();
   await next(user);
@@ -106,11 +102,28 @@ async function toReview(user: ReturnType<typeof userEvent.setup>) {
   await screen.findByRole('heading', { level: 2, name: 'Revisa y envía' });
 }
 
+/** Vida Universitaria: no hay paso de carreras; de Logística se pasa directo a la revisión. */
+async function toReviewVida(user: ReturnType<typeof userEvent.setup>) {
+  fillResponsable();
+  await next(user);
+  await fillTaller(user, /Vida Universitaria/);
+  await next(user);
+  await fillExperiencia(user);
+  await next(user);
+  await fillOperacion(user);
+  await next(user);
+  await screen.findByRole('heading', { level: 2, name: 'Revisa y envía' });
+}
+
 describe('catálogo', () => {
   it('catálogo válido: muestra el asistente en el paso 1 y consume solo la Edge Function', async () => {
     await open();
     expect(screen.getByText('Paso 1 de 6: Tus datos')).toBeInTheDocument();
     expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '1');
+    // solo nombre y correo del responsable
+    expect(screen.getByLabelText(/Nombre completo/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Correo electrónico/)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/Teléfono|WhatsApp/)).not.toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(String(fetchMock.mock.calls[0][0])).toBe('https://example.supabase.co/functions/v1/workshop-intake');
     expect(fetchMock.mock.calls[0][1]?.method).toBe('GET');
@@ -206,6 +219,49 @@ describe('pasos y validaciones', () => {
   });
 });
 
+describe('tipo de taller y logística simplificada', () => {
+  async function toTaller() {
+    const user = await open();
+    fillResponsable();
+    await next(user);
+    return user;
+  }
+
+  it('solo hay dos tipos y no se pregunta la escuela o división', async () => {
+    await toTaller();
+    const radios = screen.getAllByRole('radio');
+    expect(radios).toHaveLength(2);
+    expect(screen.getByRole('radio', { name: /Taller académico/ })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: /Vida Universitaria/ })).toBeInTheDocument();
+    expect(screen.queryByRole('radio', { name: /Liderazgo$/ })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Escuela o división/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
+  });
+
+  it('la duración es un selector de dos opciones (30 minutos / 1 hora), sin horario ni descanso', async () => {
+    const user = await toTaller();
+    await fillTaller(user);
+    await next(user);
+    await fillExperiencia(user);
+    await next(user);
+    expect(heading('Logística')).toBeInTheDocument();
+    const group = screen.getByRole('group', { name: /Duración del taller/ });
+    expect(within(group).getAllByRole('radio').map((r) => (r as HTMLInputElement).value)).toEqual(['30', '60']);
+    expect(within(group).getByRole('radio', { name: '30 minutos' })).toBeInTheDocument();
+    expect(within(group).getByRole('radio', { name: '1 hora' })).toBeInTheDocument();
+    expect(screen.getByText(/entre las 10:00 a\. m\. y las 12:00 p\. m\./)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/Desde|Hasta|Descanso/)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Duración de cada sesión/)).not.toBeInTheDocument();
+    // sin duración no avanza
+    await user.click(screen.getByRole('checkbox', { name: /Aún no tengo el espacio/ }));
+    setVal(/Cupo por sesión/, '30');
+    setVal(/^Edificio/, 'Edificio A');
+    await next(user);
+    expect(heading('Logística')).toBeInTheDocument();
+    expect(document.getElementById('wf-session_duration_minutes-error')).toHaveTextContent(/obligatorio|Elige/);
+  });
+});
+
 describe('palabras clave', () => {
   async function toKeywords() {
     const user = await open();
@@ -242,7 +298,7 @@ describe('palabras clave', () => {
     setVal(/Qué se llevará el alumno/, 'Una idea clara de qué hace un ingeniero en ciberseguridad.');
     await user.type(screen.getByRole('textbox', { name: /Palabras clave/ }), 'ia{Enter}');
     await next(user);
-    expect(heading('La experiencia del alumno')).toBeInTheDocument();
+    expect(heading('Experiencia del alumno')).toBeInTheDocument();
     expect(document.getElementById('wf-keywords-error')).toHaveTextContent(/al menos 3 palabras clave/);
   });
 });
@@ -287,6 +343,16 @@ describe('carreras relacionadas', () => {
     expect(screen.getByText('No encontramos carreras con ese nombre.')).toBeInTheDocument();
   });
 
+  it('Vida Universitaria no muestra el paso de carreras; vuelve si cambia a académico', async () => {
+    const user = await open();
+    fillResponsable();
+    await next(user);
+    await fillTaller(user, /Vida Universitaria/);
+    expect(screen.getByText('Paso 2 de 5: Tu taller')).toBeInTheDocument();
+    await user.click(screen.getByRole('radio', { name: /Taller académico/ }));
+    expect(screen.getByText('Paso 2 de 6: Tu taller')).toBeInTheDocument();
+  });
+
   it('sin carreras no deja continuar', async () => {
     const user = await toCarreras();
     await next(user);
@@ -301,11 +367,17 @@ describe('revisión y envío', () => {
     await toReview(user);
     expect(screen.getByText('Código Rojo Cancún 2035')).toBeInTheDocument();
     expect(screen.getByText('ana@example.com')).toBeInTheDocument();
-    expect(screen.getByText('Escuela de Ingeniería')).toBeInTheDocument();
+    expect(screen.getByText('Taller académico')).toBeInTheDocument();
+    expect(screen.getByText('1 hora')).toBeInTheDocument();
     expect(screen.getByText('Por confirmar')).toBeInTheDocument();
     expect(screen.getByText('Ingeniería en TI e IA')).toBeInTheDocument();
     expect(screen.getByText('Administración de Empresas')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Enviar propuesta' })).toBeInTheDocument();
+    // la revisión muestra únicamente datos vigentes
+    for (const gone of [/Teléfono/, /Escuela o división/, /Horario disponible/, /Descanso entre sesiones/, /Desde|Hasta/]) {
+      expect(screen.queryByText(gone)).not.toBeInTheDocument();
+    }
+    expect(screen.getByRole('region', { name: 'Carreras relacionadas' })).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Editar Tus datos' }));
     expect(heading('Tus datos')).toBeInTheDocument();
@@ -332,10 +404,53 @@ describe('revisión y envío', () => {
     expect(body.career_ids).toEqual([C1, C3]);
     expect(body.keywords).toEqual(['ciberseguridad', 'inteligencia artificial', 'simulación']);
     expect(body.room_space).toBe('Por confirmar');
-    expect(body.session_duration_minutes).toBe(45);
-    for (const forbidden of ['status', 'edition_id', 'reviewed_by', 'reviewed_at', 'published_activity_id', 'admin_notes', 'is_demo']) {
+    expect(body.session_duration_minutes).toBe(60);
+    expect(body.activity_type).toBe('academica');
+    for (const forbidden of ['status', 'edition_id', 'reviewed_by', 'reviewed_at', 'published_activity_id', 'admin_notes', 'is_demo',
+      'facilitator_phone', 'division_id', 'operating_start_time', 'operating_end_time', 'break_minutes']) {
       expect(body).not.toHaveProperty(forbidden);
     }
+  });
+
+  it('académico multidisciplinario: envía carreras de divisiones distintas', async () => {
+    const user = await open();
+    await toReview(user);
+    await user.click(screen.getByRole('button', { name: 'Enviar propuesta' }));
+    await screen.findByRole('heading', { name: '¡Recibimos tu propuesta!' });
+    const body = JSON.parse((posts()[0][1] as RequestInit).body as string);
+    const divisionOf = (id: string) => catalog.careers.find((c) => c.career_id === id)?.division_id;
+    expect(new Set(body.career_ids.map(divisionOf)).size).toBe(2);
+  });
+
+  it('Vida Universitaria: salta carreras, la revisión no las muestra y se envía con career_ids vacío', async () => {
+    const user = await open();
+    await toReviewVida(user);
+    expect(screen.getByText('Paso 5 de 5: Revisa y envía')).toBeInTheDocument();
+    expect(screen.getByText('Vida Universitaria')).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Carreras relacionadas' })).not.toBeInTheDocument();
+    expect(screen.queryByText(/Ingeniería en TI e IA|Administración de Empresas/)).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Enviar propuesta' }));
+    expect(await screen.findByRole('heading', { name: '¡Recibimos tu propuesta!' })).toBeInTheDocument();
+    expect(posts()).toHaveLength(1);
+    const body = JSON.parse((posts()[0][1] as RequestInit).body as string);
+    expect(body.activity_type).toBe('vida_universitaria');
+    expect(body.career_ids).toEqual([]);
+    for (const retired of ['facilitator_phone', 'division_id', 'operating_start_time', 'operating_end_time', 'break_minutes']) {
+      expect(body).not.toHaveProperty(retired);
+    }
+  });
+
+  it('si el alumno marcó carreras y luego cambia a Vida Universitaria, no se envían', async () => {
+    const user = await open();
+    await toReview(user);
+    await user.click(screen.getByRole('button', { name: 'Editar Tu taller' }));
+    await user.click(screen.getByRole('radio', { name: /Vida Universitaria/ }));
+    await next(user); // Guardar y volver a la revisión
+    await screen.findByRole('heading', { level: 2, name: 'Revisa y envía' });
+    expect(screen.queryByRole('region', { name: 'Carreras relacionadas' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Enviar propuesta' }));
+    await screen.findByRole('heading', { name: '¡Recibimos tu propuesta!' });
+    expect(JSON.parse((posts()[0][1] as RequestInit).body as string).career_ids).toEqual([]);
   });
 
   it('bloquea el doble envío mientras la petición está pendiente', async () => {
@@ -380,7 +495,7 @@ describe('errores HTTP del envío (mensajes humanos, sin detalles internos)', ()
 
   it.each(['INVALID_CAREER', 'CATALOG_MISMATCH'])('%s: catálogo actualizado, ofrece recargar las opciones', async (code) => {
     const user = await submitWith(() => json({ error: code }, 422));
-    expect(await screen.findByText(/catálogo de escuelas y carreras se actualizó/)).toBeInTheDocument();
+    expect(await screen.findByText(/catálogo de carreras se actualizó/)).toBeInTheDocument();
     const before = gets().length;
     await user.click(screen.getByRole('button', { name: 'Actualizar opciones' }));
     await waitFor(() => expect(gets().length).toBe(before + 1));

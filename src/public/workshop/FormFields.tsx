@@ -165,37 +165,3 @@ export function RadioCards<T extends string>({
     </fieldset>
   );
 }
-
-export function SelectBox({
-  field,
-  label,
-  hint,
-  error,
-  required,
-  value,
-  onChange,
-  placeholder,
-  options,
-}: Common & { value: string; onChange: (v: string) => void; placeholder: string; options: readonly { value: string; label: string }[] }) {
-  return (
-    <Shell field={field} label={label} hint={hint} error={error} required={required}>
-      <select
-        id={fieldId(field)}
-        name={field}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        aria-required={required || undefined}
-        aria-invalid={error ? true : undefined}
-        aria-describedby={describedBy(field, hint, error)}
-        className={`h-12 ${INPUT} ${error ? BAD : OK}`}
-      >
-        <option value="">{placeholder}</option>
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </select>
-    </Shell>
-  );
-}

@@ -8,19 +8,21 @@ import {
   type SubmissionReceipt,
 } from '../../lib/workshopIntakeApi';
 import {
+  ACTIVITY_TYPES,
   LIMITS,
-  STEPS,
+  SESSION_DURATIONS,
   describeSubmitError,
   emptyForm,
   fieldId,
-  stepOfField,
+  stepIdOfField,
+  stepsFor,
   validateForm,
   validateStep,
   type FieldErrors,
   type FormState,
 } from '../../lib/workshopForm';
 import CareerPicker from './CareerPicker';
-import { RadioCards, SelectBox, TextAreaField, TextField } from './FormFields';
+import { RadioCards, TextAreaField, TextField } from './FormFields';
 import KeywordInput from './KeywordInput';
 import ReviewSummary from './ReviewSummary';
 import StepIndicator from './StepIndicator';
@@ -28,9 +30,7 @@ import StepIndicator from './StepIndicator';
 const LABELS: Record<string, string> = {
   facilitator_name: 'Nombre',
   facilitator_email: 'Correo electrónico',
-  facilitator_phone: 'Teléfono',
-  division_id: 'Escuela o división',
-  activity_type: 'Tipo de experiencia',
+  activity_type: 'Tipo de taller',
   title: 'Nombre del taller',
   student_pitch: 'Presentación del taller',
   why_join: '¿Por qué debería elegirlo un alumno?',
@@ -38,24 +38,14 @@ const LABELS: Record<string, string> = {
   student_experience: '¿Qué hará el alumno?',
   takeaway: '¿Qué se llevará el alumno?',
   keywords: 'Palabras clave',
-  session_duration_minutes: 'Duración por sesión',
+  session_duration_minutes: 'Duración',
   capacity_per_session: 'Cupo por sesión',
-  operating_start_time: 'Hora de inicio',
-  operating_end_time: 'Hora de fin',
-  break_minutes: 'Descanso entre sesiones',
   building: 'Edificio',
   room_space: 'Salón o espacio',
   requirements: 'Requerimientos',
   notes: 'Notas',
   career_ids: 'Carreras relacionadas',
 };
-
-const TYPE_HINTS: Record<string, string> = {
-  academica: 'Un acercamiento práctico a una disciplina o carrera.',
-  liderazgo: 'Habilidades de liderazgo, trabajo en equipo y comunicación.',
-};
-
-const LAST = STEPS.length - 1;
 
 export default function WorkshopWizard({
   catalog,
@@ -83,6 +73,14 @@ export default function WorkshopWizard({
   const firstRun = useRef(true);
 
   const dirty = JSON.stringify(form) !== JSON.stringify(emptyForm());
+  // Vida Universitaria omite el paso de carreras; con el tipo aún sin elegir se muestra el flujo académico.
+  const steps = stepsFor(form.activity_type);
+  const LAST = steps.length - 1;
+  const current = steps[Math.min(step, LAST)];
+  const stepIndexOf = (field: string) => {
+    const id = stepIdOfField(field);
+    return id ? steps.findIndex((s) => s.id === id) : -1;
+  };
 
   // Aviso al salir con datos sin enviar.
   useEffect(() => {
@@ -98,13 +96,11 @@ export default function WorkshopWizard({
   // Si el catálogo cambia (recarga), quita selecciones que ya no existen.
   useEffect(() => {
     const careers = new Set(catalog.careers.map((c) => c.career_id));
-    const divisions = new Set(catalog.divisions.map((d) => d.division_id));
     setForm((f) => {
       const keptCareers = f.career_ids.filter((id) => careers.has(id));
-      const divisionOk = !f.division_id || divisions.has(f.division_id);
-      if (keptCareers.length === f.career_ids.length && divisionOk) return f;
-      setNotice('Actualizamos las opciones de escuelas y carreras; revisa tu selección.');
-      return { ...f, career_ids: keptCareers, division_id: divisionOk ? f.division_id : '' };
+      if (keptCareers.length === f.career_ids.length) return f;
+      setNotice('Actualizamos las opciones de carreras; revisa tu selección.');
+      return { ...f, career_ids: keptCareers };
     });
   }, [catalog]);
 
@@ -140,12 +136,12 @@ export default function WorkshopWizard({
 
   const showErrors = (found: FieldErrors, targetStep: number) => {
     setErrors(found);
-    const first = (STEPS[targetStep].fields.find((f) => found[f]) ?? Object.keys(found)[0]) as string | undefined;
+    const first = (steps[targetStep].fields.find((f) => found[f]) ?? Object.keys(found)[0]) as string | undefined;
     goTo(targetStep, first);
   };
 
   const next = () => {
-    const found = validateStep(form, step);
+    const found = validateStep(form, current.id);
     if (Object.keys(found).length > 0) {
       showErrors(found, step);
       return;
@@ -160,8 +156,8 @@ export default function WorkshopWizard({
     if (submittingRef.current) return; // bloquea el doble envío aunque el botón aún no se haya deshabilitado
     const { errors: found, payload } = validateForm(form);
     if (!payload) {
-      const firstField = Object.keys(found).filter((k) => k !== '_form').sort((a, b) => stepOfField(a) - stepOfField(b))[0];
-      showErrors(found, firstField ? Math.max(stepOfField(firstField), 0) : LAST);
+      const firstField = Object.keys(found).filter((k) => k !== '_form').sort((a, b) => stepIndexOf(a) - stepIndexOf(b))[0];
+      showErrors(found, firstField ? Math.max(stepIndexOf(firstField), 0) : LAST);
       return;
     }
     submittingRef.current = true;
@@ -178,9 +174,9 @@ export default function WorkshopWizard({
       }
       setFailure(f);
       if (Object.keys(f.fieldErrors).length > 0) {
-        const firstField = Object.keys(f.fieldErrors).sort((a, b) => stepOfField(a) - stepOfField(b))[0];
+        const firstField = Object.keys(f.fieldErrors).sort((a, b) => stepIndexOf(a) - stepIndexOf(b))[0];
         setErrors(f.fieldErrors);
-        goTo(Math.max(stepOfField(firstField), 0), firstField);
+        goTo(Math.max(stepIndexOf(firstField), 0), firstField);
       }
       if (err instanceof IntakeError && err.kind === 'http' && err.status >= 500) setFocusTick((t) => t + 1);
     } finally {
@@ -191,23 +187,23 @@ export default function WorkshopWizard({
 
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();
-    if (step < LAST) next();
+    if (current.id !== 'revision') next();
     else void submit();
   };
 
   const errorList = Object.entries(errors).filter(([k]) => k !== '_form');
-  const isReview = step === LAST;
+  const isReview = current.id === 'revision';
 
   return (
     <div className="space-y-6">
-      <StepIndicator steps={STEPS} current={step} reached={reached} />
+      <StepIndicator steps={steps} current={Math.min(step, LAST)} reached={reached} />
 
       <form onSubmit={onSubmit} noValidate aria-labelledby="wf-step-title" className="card space-y-6 bg-surface/80 p-5 backdrop-blur sm:p-7">
         <div>
           <h2 id="wf-step-title" ref={headingRef} tabIndex={-1} className="text-xl font-extrabold focus:outline-none">
-            {STEPS[step].title}
+            {current.title}
           </h2>
-          <p className="mt-1 text-sm text-ink-muted">{stepIntro(step)}</p>
+          <p className="mt-1 text-sm text-ink-muted">{stepIntro(current.id)}</p>
         </div>
 
         {notice && <Alert tone="warning">{notice}</Alert>}
@@ -239,7 +235,7 @@ export default function WorkshopWizard({
                   <button
                     type="button"
                     onClick={() => {
-                      const s = stepOfField(field);
+                      const s = stepIndexOf(field);
                       if (s >= 0 && s !== step) goTo(s, field);
                       else document.getElementById(fieldId(field))?.focus();
                     }}
@@ -253,7 +249,7 @@ export default function WorkshopWizard({
           </div>
         )}
 
-        {step === 0 && (
+        {current.id === 'responsable' && (
           <div className="space-y-5">
             <TextField field="facilitator_name" label="Nombre completo" required autoComplete="name" value={form.facilitator_name} onChange={(v) => set('facilitator_name', v)} error={errors.facilitator_name} />
             <TextField
@@ -270,38 +266,18 @@ export default function WorkshopWizard({
               onChange={(v) => set('facilitator_email', v)}
               error={errors.facilitator_email}
             />
-            <TextField
-              field="facilitator_phone"
-              label="Teléfono o WhatsApp"
-              type="tel"
-              inputMode="tel"
-              autoComplete="tel"
-              value={form.facilitator_phone}
-              onChange={(v) => set('facilitator_phone', v)}
-              error={errors.facilitator_phone}
-            />
           </div>
         )}
 
-        {step === 1 && (
+        {current.id === 'taller' && (
           <div className="space-y-5">
-            <SelectBox
-              field="division_id"
-              label="Escuela o división que organiza el taller"
-              required
-              placeholder="Elige una opción"
-              value={form.division_id}
-              onChange={(v) => set('division_id', v)}
-              options={catalog.divisions.map((d) => ({ value: d.division_id, label: d.division_name }))}
-              error={errors.division_id}
-            />
             <RadioCards
               field="activity_type"
-              legend="Tipo de experiencia"
+              legend="Tipo de taller"
               required
               value={form.activity_type}
               onChange={(v) => set('activity_type', v)}
-              options={catalog.activity_types.map((t) => ({ value: t.value, label: t.label, description: TYPE_HINTS[t.value] }))}
+              options={ACTIVITY_TYPES.map((t) => ({ value: t.value, label: t.label, description: t.description }))}
               error={errors.activity_type}
             />
             <TextField field="title" label="Nombre del taller" required value={form.title} onChange={(v) => set('title', v)} error={errors.title} />
@@ -319,7 +295,7 @@ export default function WorkshopWizard({
           </div>
         )}
 
-        {step === 2 && (
+        {current.id === 'experiencia' && (
           <div className="space-y-5">
             <TextAreaField field="why_join" label="¿Por qué debería elegirlo un alumno?" required max={LIMITS.whyJoin.max} value={form.why_join} onChange={(v) => set('why_join', v)} error={errors.why_join} />
             <TextAreaField field="objective" label="¿Cuál es el objetivo del taller?" required max={LIMITS.objective.max} value={form.objective} onChange={(v) => set('objective', v)} error={errors.objective} />
@@ -337,44 +313,27 @@ export default function WorkshopWizard({
           </div>
         )}
 
-        {step === 3 && (
+        {current.id === 'operacion' && (
           <div className="space-y-5">
-            <div className="grid gap-5 sm:grid-cols-2">
-              <TextField
-                field="session_duration_minutes"
-                label="Duración de cada sesión (minutos)"
-                required
-                inputMode="numeric"
-                value={form.session_duration_minutes}
-                onChange={(v) => set('session_duration_minutes', v)}
-                error={errors.session_duration_minutes}
-                hint={`Entre ${LIMITS.sessionDurationMinutes.min} y ${LIMITS.sessionDurationMinutes.max}.`}
-              />
-              <TextField
-                field="capacity_per_session"
-                label="Cupo por sesión (personas)"
-                required
-                inputMode="numeric"
-                value={form.capacity_per_session}
-                onChange={(v) => set('capacity_per_session', v)}
-                error={errors.capacity_per_session}
-                hint={`Entre ${LIMITS.capacityPerSession.min} y ${LIMITS.capacityPerSession.max}.`}
-              />
-            </div>
-            <fieldset className="grid gap-5 sm:grid-cols-2">
-              <legend className="mb-2 text-sm font-semibold text-ink">Horario en el que puedes dar el taller</legend>
-              <TextField field="operating_start_time" label="Desde" required type="time" value={form.operating_start_time} onChange={(v) => set('operating_start_time', v)} error={errors.operating_start_time} />
-              <TextField field="operating_end_time" label="Hasta" required type="time" value={form.operating_end_time} onChange={(v) => set('operating_end_time', v)} error={errors.operating_end_time} />
-            </fieldset>
+            <RadioCards
+              field="session_duration_minutes"
+              legend="Duración del taller"
+              hint="Todos los talleres se realizan entre las 10:00 a. m. y las 12:00 p. m."
+              required
+              value={form.session_duration_minutes}
+              onChange={(v) => set('session_duration_minutes', v)}
+              options={SESSION_DURATIONS.map((d) => ({ value: String(d.value), label: d.label }))}
+              error={errors.session_duration_minutes}
+            />
             <TextField
-              field="break_minutes"
-              label="Descanso entre sesiones (minutos)"
+              field="capacity_per_session"
+              label="Cupo por sesión (personas)"
               required
               inputMode="numeric"
-              hint="Si no necesitas descanso, escribe 0."
-              value={form.break_minutes}
-              onChange={(v) => set('break_minutes', v)}
-              error={errors.break_minutes}
+              value={form.capacity_per_session}
+              onChange={(v) => set('capacity_per_session', v)}
+              error={errors.capacity_per_session}
+              hint={`Entre ${LIMITS.capacityPerSession.min} y ${LIMITS.capacityPerSession.max}.`}
             />
             <TextField field="building" label="Edificio" required value={form.building} onChange={(v) => set('building', v)} error={errors.building} />
             <div>
@@ -406,14 +365,16 @@ export default function WorkshopWizard({
           </div>
         )}
 
-        {step === 4 && <CareerPicker catalog={catalog} value={form.career_ids} onChange={(v) => set('career_ids', v)} error={errors.career_ids} />}
+        {current.id === 'carreras' && <CareerPicker catalog={catalog} value={form.career_ids} onChange={(v) => set('career_ids', v)} error={errors.career_ids} />}
 
         {isReview && (
           <div className="space-y-4">
             <ReviewSummary
               form={form}
               catalog={catalog}
-              onEdit={(i) => {
+              onEdit={(stepId) => {
+                const i = steps.findIndex((s) => s.id === stepId);
+                if (i < 0) return;
                 setFromReview(true);
                 goTo(i);
               }}
@@ -440,7 +401,7 @@ export default function WorkshopWizard({
             className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-primary-500 px-8 text-sm font-semibold text-on-primary shadow-[0_8px_24px_-8px_rgb(var(--c-primary-500)/0.6)] hover:bg-primary-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-secondary-300 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {submitting && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}
-            {isReview ? (submitting ? 'Enviando…' : 'Enviar propuesta') : fromReview ? 'Guardar y volver a la revisión' : step === LAST - 1 ? 'Revisar propuesta' : 'Siguiente'}
+            {isReview ? (submitting ? 'Enviando…' : 'Enviar propuesta') : fromReview ? 'Guardar y volver a la revisión' : current.id === steps[LAST - 1].id ? 'Revisar propuesta' : 'Siguiente'}
           </button>
         </div>
       </form>
@@ -448,18 +409,18 @@ export default function WorkshopWizard({
   );
 }
 
-function stepIntro(step: number): string {
-  switch (step) {
-    case 0:
+function stepIntro(stepId: string): string {
+  switch (stepId) {
+    case 'responsable':
       return 'Cuéntanos quién será el contacto del equipo organizador.';
-    case 1:
-      return 'Lo básico de tu taller: quién lo organiza, de qué trata y cómo se llama.';
-    case 2:
+    case 'taller':
+      return 'Lo básico de tu taller: de qué tipo es, cómo se llama y de qué trata.';
+    case 'experiencia':
       return 'Ayúdanos a explicarle a los alumnos qué van a vivir.';
-    case 3:
-      return 'Para armar el programa necesitamos saber cuándo y dónde puedes darlo.';
-    case 4:
-      return 'Elige todas las carreras con las que se relaciona tu taller. Puede ser multidisciplinario: no tiene que pertenecer solo a la escuela que lo organiza.';
+    case 'operacion':
+      return 'Para armar el programa necesitamos saber cuánto dura, cuántas personas caben y dónde será.';
+    case 'carreras':
+      return 'Elige todas las carreras con las que se relaciona tu taller. Puede ser multidisciplinario: las carreras pueden ser de distintas escuelas.';
     default:
       return 'Revisa que todo esté bien. Puedes editar cualquier sección antes de enviar.';
   }

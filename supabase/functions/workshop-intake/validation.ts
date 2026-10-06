@@ -7,7 +7,6 @@ export const LIMITS = {
   bodyMaxBytes: 32 * 1024,
   facilitatorName: { min: 3, max: 120 },
   facilitatorEmailMax: 254,
-  facilitatorPhone: { min: 7, max: 20 },
   title: { min: 5, max: 150 },
   studentPitch: { min: 20, max: 600 },
   whyJoin: { min: 20, max: 1000 },
@@ -15,26 +14,36 @@ export const LIMITS = {
   studentExperience: { min: 20, max: 1500 },
   takeaway: { min: 10, max: 600 },
   keywords: { minCount: 3, maxCount: 5, maxLength: 40 },
-  sessionDurationMinutes: { min: 5, max: 480 },
   capacityPerSession: { min: 1, max: 500 },
-  breakMinutes: { min: 0, max: 240 },
   building: { min: 1, max: 100 },
   roomSpace: { min: 1, max: 100 },
   requirementsMax: 1500,
   notesMax: 1500,
 } as const;
 
+/** Solo dos categorías. Vida Universitaria engloba liderazgo extracurricular, arte, deporte y similares. */
 export const ACTIVITY_TYPES = [
-  { value: 'academica', label: 'Académica' },
-  { value: 'liderazgo', label: 'Liderazgo' },
+  { value: 'academica', label: 'Taller académico', description: 'Un taller ligado a una o más carreras.' },
+  {
+    value: 'vida_universitaria',
+    label: 'Vida Universitaria',
+    description: 'Liderazgo extracurricular, vida universitaria, arte, deporte y experiencias similares.',
+  },
 ] as const;
+
+/** Única duración permitida: 30 minutos o 1 hora. */
+export const SESSION_DURATIONS = [
+  { value: 30, label: '30 minutos' },
+  { value: 60, label: '1 hora' },
+] as const;
+
+/** Todos los talleres operan en esta ventana. La fija el servidor; el formulario no la pregunta ni la envía. */
+export const FIXED_SCHEDULE = { start: '10:00', end: '12:00', breakMinutes: 0 } as const;
 
 /** Única lista blanca de propiedades aceptadas en el POST. */
 export const ALLOWED_FIELDS = [
   'facilitator_name',
   'facilitator_email',
-  'facilitator_phone',
-  'division_id',
   'activity_type',
   'title',
   'student_pitch',
@@ -45,9 +54,6 @@ export const ALLOWED_FIELDS = [
   'keywords',
   'session_duration_minutes',
   'capacity_per_session',
-  'operating_start_time',
-  'operating_end_time',
-  'break_minutes',
   'building',
   'room_space',
   'requirements',
@@ -79,9 +85,7 @@ export type FieldError = { field: string; code: string };
 export type SubmissionPayload = {
   facilitator_name: string;
   facilitator_email: string;
-  facilitator_phone: string | null;
-  division_id: string;
-  activity_type: 'academica' | 'liderazgo';
+  activity_type: 'academica' | 'vida_universitaria';
   title: string;
   student_pitch: string;
   why_join: string;
@@ -91,9 +95,6 @@ export type SubmissionPayload = {
   keywords: string[];
   session_duration_minutes: number;
   capacity_per_session: number;
-  operating_start_time: string;
-  operating_end_time: string;
-  break_minutes: number;
   building: string;
   room_space: string;
   requirements: string | null;
@@ -106,12 +107,10 @@ export type ValidationResult =
   | { ok: false; kind: 'unknown_fields'; fields: string[] }
   | { ok: false; kind: 'invalid'; errors: FieldError[] };
 
-const INVISIBLE = /[​-‏‪-‮⁠-⁤⁦-⁩﻿]/g;
+const INVISIBLE = /[\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF]/g;
 const CONTROL_EXCEPT_NEWLINE = /[\u0000-\u0009\u000B-\u001F\u007F-\u009F]/g;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const PHONE = /^[0-9+()\-.\s]+$/;
-const TIME = /^([01]\d|2[0-3]):([0-5]\d)(?::[0-5]\d)?$/;
 
 /** Una sola línea: sin saltos, whitespace colapsado. */
 export function normalizeLine(s: string): string {
@@ -139,7 +138,7 @@ export function normalizeText(s: string): string {
 
 /** Comparación de keywords sin acentos ni mayúsculas. */
 function foldKeyword(s: string): string {
-  return s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  return s.normalize('NFD').replace(/[\u0300-\u036F]/g, '').toLowerCase();
 }
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
@@ -191,14 +190,6 @@ export function validateSubmission(input: unknown): ValidationResult {
     else if (raw > max) err(field, 'TOO_HIGH');
     return raw;
   };
-  const time = (field: string): { text: string; minutes: number } => {
-    const raw = input[field];
-    if (raw === undefined || raw === null || raw === '') { err(field, 'REQUIRED'); return { text: '', minutes: -1 }; }
-    if (typeof raw !== 'string') { err(field, 'INVALID_TYPE'); return { text: '', minutes: -1 }; }
-    const m = TIME.exec(raw.trim());
-    if (!m) { err(field, 'INVALID_TIME'); return { text: '', minutes: -1 }; }
-    return { text: `${m[1]}:${m[2]}`, minutes: Number(m[1]) * 60 + Number(m[2]) };
-  };
 
   // Responsable
   const facilitator_name = line('facilitator_name', LIMITS.facilitatorName.min, LIMITS.facilitatorName.max);
@@ -212,30 +203,7 @@ export function validateSubmission(input: unknown): ValidationResult {
       else if (facilitator_email.length > LIMITS.facilitatorEmailMax || !EMAIL.test(facilitator_email)) err('facilitator_email', 'INVALID_EMAIL');
     }
   }
-  let facilitator_phone: string | null = null;
-  {
-    const raw = input.facilitator_phone;
-    if (raw !== undefined && raw !== null) {
-      if (typeof raw !== 'string') err('facilitator_phone', 'INVALID_TYPE');
-      else {
-        const v = normalizeLine(raw);
-        if (v.length > 0) {
-          const digits = v.replace(/\D/g, '').length;
-          if (!PHONE.test(v) || v.length > LIMITS.facilitatorPhone.max || digits < 7) err('facilitator_phone', 'INVALID_PHONE');
-          else facilitator_phone = v;
-        }
-      }
-    }
-  }
-
-  // Organización
-  let division_id = '';
-  {
-    const raw = input.division_id;
-    if (typeof raw !== 'string') err('division_id', raw === undefined || raw === null ? 'REQUIRED' : 'INVALID_TYPE');
-    else if (!UUID.test(raw.trim())) err('division_id', 'INVALID_DIVISION');
-    else division_id = raw.trim().toLowerCase();
-  }
+  // Tipo de taller
   let activity_type: SubmissionPayload['activity_type'] = 'academica';
   {
     const raw = input.activity_type;
@@ -276,13 +244,16 @@ export function validateSubmission(input: unknown): ValidationResult {
     }
   }
 
-  // Operación
-  const session_duration_minutes = int('session_duration_minutes', LIMITS.sessionDurationMinutes.min, LIMITS.sessionDurationMinutes.max);
+  // Operación: la duración es una de las opciones permitidas; el horario y el descanso los fija el servidor.
+  let session_duration_minutes = 0;
+  {
+    const raw = input.session_duration_minutes;
+    if (raw === undefined || raw === null) err('session_duration_minutes', 'REQUIRED');
+    else if (typeof raw !== 'number' || !Number.isInteger(raw)) err('session_duration_minutes', 'INVALID_TYPE');
+    else if (!SESSION_DURATIONS.some((d) => d.value === raw)) err('session_duration_minutes', 'INVALID_DURATION');
+    else session_duration_minutes = raw;
+  }
   const capacity_per_session = int('capacity_per_session', LIMITS.capacityPerSession.min, LIMITS.capacityPerSession.max);
-  const break_minutes = int('break_minutes', LIMITS.breakMinutes.min, LIMITS.breakMinutes.max);
-  const start = time('operating_start_time');
-  const end = time('operating_end_time');
-  if (start.minutes >= 0 && end.minutes >= 0 && end.minutes <= start.minutes) err('operating_end_time', 'END_BEFORE_START');
 
   // Ubicación (edificio y espacio por separado; "Por confirmar" es válido en room_space)
   const building = line('building', LIMITS.building.min, LIMITS.building.max);
@@ -292,13 +263,15 @@ export function validateSubmission(input: unknown): ValidationResult {
   const requirements = optionalText('requirements', LIMITS.requirementsMax);
   const notes = optionalText('notes', LIMITS.notesMax);
 
-  // Carreras afines: una o más, sin duplicados (sin máximo arbitrario; el tamaño del body ya acota la lista)
+  // Carreras afines. Académico: una o más (de cualquier división), sin duplicados y sin máximo arbitrario.
+  // Vida Universitaria: no se piden; la lista puede venir vacía o ausente.
   const career_ids: string[] = [];
   {
     const raw = input.career_ids;
-    if (raw === undefined || raw === null) err('career_ids', 'CAREERS_REQUIRED');
+    const needed = activity_type === 'academica';
+    if (raw === undefined || raw === null) { if (needed) err('career_ids', 'CAREERS_REQUIRED'); }
     else if (!Array.isArray(raw)) err('career_ids', 'INVALID_TYPE');
-    else if (raw.length === 0) err('career_ids', 'CAREERS_REQUIRED');
+    else if (raw.length === 0) { if (needed) err('career_ids', 'CAREERS_REQUIRED'); }
     else {
       const seen = new Set<string>();
       raw.forEach((c, i) => {
@@ -319,8 +292,6 @@ export function validateSubmission(input: unknown): ValidationResult {
     value: {
       facilitator_name,
       facilitator_email,
-      facilitator_phone,
-      division_id,
       activity_type,
       title,
       student_pitch,
@@ -331,9 +302,6 @@ export function validateSubmission(input: unknown): ValidationResult {
       keywords,
       session_duration_minutes,
       capacity_per_session,
-      operating_start_time: start.text,
-      operating_end_time: end.text,
-      break_minutes,
       building,
       room_space,
       requirements,

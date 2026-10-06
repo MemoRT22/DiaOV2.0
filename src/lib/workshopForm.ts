@@ -2,7 +2,9 @@
 // La validación REUTILIZA la de la Edge Function (mismo módulo) para no duplicar reglas: lo que el formulario
 // acepta es exactamente lo que el servidor acepta. El servidor y la base de datos siguen siendo la autoridad final.
 import {
+  ACTIVITY_TYPES,
   LIMITS,
+  SESSION_DURATIONS,
   normalizeLine,
   validateSubmission,
   type FieldError,
@@ -10,16 +12,14 @@ import {
 } from '../../supabase/functions/workshop-intake/validation.ts';
 import { IntakeError } from './workshopIntakeApi';
 
-export { LIMITS };
+export { ACTIVITY_TYPES, LIMITS, SESSION_DURATIONS };
 
 export const ROOM_TBD = 'Por confirmar';
 
 export type FormState = {
   facilitator_name: string;
   facilitator_email: string;
-  facilitator_phone: string;
-  division_id: string;
-  activity_type: '' | 'academica' | 'liderazgo';
+  activity_type: '' | 'academica' | 'vida_universitaria';
   title: string;
   student_pitch: string;
   why_join: string;
@@ -27,11 +27,9 @@ export type FormState = {
   student_experience: string;
   takeaway: string;
   keywords: string[];
+  /** '30' | '60' (se elige con tarjetas; el horario 10:00–12:00 y el descanso los fija el servidor). */
   session_duration_minutes: string;
   capacity_per_session: string;
-  operating_start_time: string;
-  operating_end_time: string;
-  break_minutes: string;
   building: string;
   room_space: string;
   room_tbd: boolean;
@@ -43,8 +41,6 @@ export type FormState = {
 export const emptyForm = (): FormState => ({
   facilitator_name: '',
   facilitator_email: '',
-  facilitator_phone: '',
-  division_id: '',
   activity_type: '',
   title: '',
   student_pitch: '',
@@ -55,9 +51,6 @@ export const emptyForm = (): FormState => ({
   keywords: [],
   session_duration_minutes: '',
   capacity_per_session: '',
-  operating_start_time: '',
-  operating_end_time: '',
-  break_minutes: '',
   building: '',
   room_space: '',
   room_tbd: false,
@@ -68,35 +61,32 @@ export const emptyForm = (): FormState => ({
 
 export type StepDef = { id: string; title: string; short: string; fields: readonly string[] };
 
-/** Pasos del asistente, en lenguaje natural. El último (revisión) valida todo el formulario. */
+/** Todos los pasos posibles, en lenguaje natural. El último (revisión) valida todo el formulario. */
 export const STEPS: readonly StepDef[] = [
-  { id: 'responsable', title: 'Tus datos', short: 'Tus datos', fields: ['facilitator_name', 'facilitator_email', 'facilitator_phone'] },
-  { id: 'taller', title: 'Tu taller', short: 'Taller', fields: ['division_id', 'activity_type', 'title', 'student_pitch'] },
+  { id: 'responsable', title: 'Tus datos', short: 'Tus datos', fields: ['facilitator_name', 'facilitator_email'] },
+  { id: 'taller', title: 'Tu taller', short: 'Taller', fields: ['activity_type', 'title', 'student_pitch'] },
   {
     id: 'experiencia',
-    title: 'La experiencia del alumno',
+    title: 'Experiencia del alumno',
     short: 'Experiencia',
     fields: ['why_join', 'objective', 'student_experience', 'takeaway', 'keywords'],
   },
   {
     id: 'operacion',
-    title: 'Horarios y logística',
+    title: 'Logística',
     short: 'Logística',
-    fields: [
-      'session_duration_minutes',
-      'capacity_per_session',
-      'operating_start_time',
-      'operating_end_time',
-      'break_minutes',
-      'building',
-      'room_space',
-      'requirements',
-      'notes',
-    ],
+    fields: ['session_duration_minutes', 'capacity_per_session', 'building', 'room_space', 'requirements', 'notes'],
   },
   { id: 'carreras', title: 'Carreras relacionadas', short: 'Carreras', fields: ['career_ids'] },
   { id: 'revision', title: 'Revisa y envía', short: 'Revisión', fields: [] },
 ];
+
+/** Vida Universitaria no se relaciona con carreras: ese paso se omite. */
+export const needsCareers = (type: FormState['activity_type']) => type !== 'vida_universitaria';
+
+/** Pasos visibles según el tipo de taller (con tipo aún sin elegir se asume el flujo académico). */
+export const stepsFor = (type: FormState['activity_type']): readonly StepDef[] =>
+  needsCareers(type) ? STEPS : STEPS.filter((s) => s.id !== 'carreras');
 
 export const fieldId = (field: string) => `wf-${field}`;
 
@@ -111,8 +101,6 @@ export function buildDraft(f: FormState): Record<string, unknown> {
   return {
     facilitator_name: f.facilitator_name,
     facilitator_email: f.facilitator_email,
-    facilitator_phone: orNull(f.facilitator_phone),
-    division_id: f.division_id || undefined,
     activity_type: f.activity_type || undefined,
     title: f.title,
     student_pitch: f.student_pitch,
@@ -123,14 +111,12 @@ export function buildDraft(f: FormState): Record<string, unknown> {
     keywords: f.keywords,
     session_duration_minutes: num(f.session_duration_minutes),
     capacity_per_session: num(f.capacity_per_session),
-    operating_start_time: f.operating_start_time || undefined,
-    operating_end_time: f.operating_end_time || undefined,
-    break_minutes: num(f.break_minutes),
     building: f.building,
     room_space: f.room_tbd ? ROOM_TBD : f.room_space,
     requirements: orNull(f.requirements),
     notes: orNull(f.notes),
-    career_ids: f.career_ids,
+    // Vida Universitaria no pide carreras: siempre viaja vacío aunque antes se hubiera marcado alguna.
+    career_ids: needsCareers(f.activity_type) ? f.career_ids : [],
   };
 }
 
@@ -151,9 +137,7 @@ const LENGTHS: Record<string, { min: number; max: number }> = {
   notes: { min: 0, max: LIMITS.notesMax },
 };
 const NUMBERS: Record<string, { min: number; max: number }> = {
-  session_duration_minutes: LIMITS.sessionDurationMinutes,
   capacity_per_session: LIMITS.capacityPerSession,
-  break_minutes: LIMITS.breakMinutes,
 };
 
 /** Mensaje en lenguaje natural para un código de validación (de la Edge Function o de este formulario). */
@@ -172,12 +156,10 @@ export function messageFor(field: string, code: string): string {
         : `Es demasiado largo (máximo ${LENGTHS[f]?.max ?? 1000} caracteres).`;
     case 'INVALID_EMAIL':
       return 'Escribe un correo válido, por ejemplo nombre@dominio.com.';
-    case 'INVALID_PHONE':
-      return 'Escribe un teléfono válido (solo números, espacios, + o guiones).';
-    case 'INVALID_DIVISION':
-      return 'Elige la escuela o división que organiza el taller.';
     case 'INVALID_ACTIVITY_TYPE':
-      return 'Elige el tipo de experiencia.';
+      return 'Elige el tipo de taller.';
+    case 'INVALID_DURATION':
+      return 'Elige 30 minutos o 1 hora.';
     case 'TOO_FEW_KEYWORDS':
       return `Agrega al menos ${LIMITS.keywords.minCount} palabras clave.`;
     case 'TOO_MANY_KEYWORDS':
@@ -189,10 +171,6 @@ export function messageFor(field: string, code: string): string {
     case 'TOO_LOW':
     case 'TOO_HIGH':
       return NUMBERS[f] ? `Debe estar ${range(NUMBERS[f].min, NUMBERS[f].max)}.` : 'El valor está fuera de rango.';
-    case 'INVALID_TIME':
-      return 'Elige una hora válida.';
-    case 'END_BEFORE_START':
-      return 'La hora de fin debe ser posterior a la de inicio.';
     case 'CAREERS_REQUIRED':
       return 'Elige al menos una carrera relacionada.';
     case 'INVALID_CAREER':
@@ -223,17 +201,18 @@ export function validateForm(f: FormState): { errors: FieldErrors; payload: Subm
   return { errors: collect(result.errors), payload: null };
 }
 
-/** Errores de un paso concreto. La revisión (último paso) valida todo. */
-export function validateStep(f: FormState, stepIndex: number): FieldErrors {
+/** Errores de un paso concreto (por id). La revisión (último paso) valida todo. */
+export function validateStep(f: FormState, stepId: string): FieldErrors {
   const { errors } = validateForm(f);
-  const step = STEPS[stepIndex];
-  if (step.fields.length === 0) return errors;
+  const step = STEPS.find((s) => s.id === stepId);
+  if (!step || step.fields.length === 0) return errors;
   const out: FieldErrors = {};
   for (const field of step.fields) if (errors[field]) out[field] = errors[field];
   return out;
 }
 
-export const stepOfField = (field: string): number => STEPS.findIndex((s) => s.fields.includes(baseField(field)));
+/** Id del paso al que pertenece un campo (undefined si no pertenece a ninguno). */
+export const stepIdOfField = (field: string): string | undefined => STEPS.find((s) => s.fields.includes(baseField(field)))?.id;
 
 /** Carreras sin acentos ni mayúsculas, para el filtro de búsqueda. */
 export const foldSearch = (s: string) => normalizeLine(s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
@@ -260,14 +239,16 @@ export function describeSubmitError(err: unknown): SubmitFailure {
       return { message: 'El registro aún no está disponible. Vuelve a intentarlo más tarde.', fieldErrors: {}, unavailable: true };
     case 'INVALID_CAREER':
     case 'CATALOG_MISMATCH':
-    case 'INVALID_DIVISION':
     case 'DUPLICATE_CAREER':
     case 'CAREERS_REQUIRED':
       return {
-        message: 'El catálogo de escuelas y carreras se actualizó. Recarga las opciones y vuelve a elegir.',
+        message: 'El catálogo de carreras se actualizó. Recarga las opciones y vuelve a elegir.',
         fieldErrors: {},
         reloadCatalog: true,
       };
+    case 'UNKNOWN_FIELDS':
+    case 'INVALID_PAYLOAD':
+      return { message: 'Esta página está desactualizada. Recárgala e inténtalo de nuevo.', fieldErrors: {} };
     case 'PAYLOAD_TOO_LARGE':
       return { message: 'El contenido es demasiado extenso. Acorta los textos e inténtalo de nuevo.', fieldErrors: {} };
     default:

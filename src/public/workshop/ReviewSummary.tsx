@@ -1,7 +1,7 @@
 import { Pencil } from 'lucide-react';
 import type { ReactNode } from 'react';
 import type { IntakeCatalog } from '../../lib/workshopIntakeApi';
-import { ROOM_TBD, type FormState } from '../../lib/workshopForm';
+import { ACTIVITY_TYPES, ROOM_TBD, SESSION_DURATIONS, needsCareers, type FormState } from '../../lib/workshopForm';
 
 function Section({ title, onEdit, children }: { title: string; onEdit: () => void; children: ReactNode }) {
   return (
@@ -40,25 +40,23 @@ export default function ReviewSummary({
 }: {
   form: FormState;
   catalog: IntakeCatalog;
-  onEdit: (stepIndex: number) => void;
+  onEdit: (stepId: string) => void;
 }) {
-  const division = catalog.divisions.find((d) => d.division_id === form.division_id)?.division_name ?? '—';
-  const type = catalog.activity_types.find((t) => t.value === form.activity_type)?.label ?? '—';
+  const type = ACTIVITY_TYPES.find((t) => t.value === form.activity_type)?.label ?? '—';
+  const duration = SESSION_DURATIONS.find((d) => String(d.value) === form.session_duration_minutes)?.label ?? '—';
   const careerNames = form.career_ids.map((id) => catalog.careers.find((c) => c.career_id === id)?.career_name ?? 'Carrera no disponible');
   return (
     <div className="space-y-4">
-      <Section title="Tus datos" onEdit={() => onEdit(0)}>
+      <Section title="Tus datos" onEdit={() => onEdit('responsable')}>
         <Row label="Nombre">{form.facilitator_name}</Row>
         <Row label="Correo electrónico">{form.facilitator_email}</Row>
-        <Row label="Teléfono">{form.facilitator_phone.trim() || 'No indicado'}</Row>
       </Section>
-      <Section title="Tu taller" onEdit={() => onEdit(1)}>
-        <Row label="Escuela o división organizadora">{division}</Row>
-        <Row label="Tipo de experiencia">{type}</Row>
+      <Section title="Tu taller" onEdit={() => onEdit('taller')}>
+        <Row label="Tipo de taller">{type}</Row>
         <Row label="Nombre del taller">{form.title}</Row>
         <Row label="Presentación">{form.student_pitch}</Row>
       </Section>
-      <Section title="La experiencia del alumno" onEdit={() => onEdit(2)}>
+      <Section title="Experiencia del alumno" onEdit={() => onEdit('experiencia')}>
         <Row label="¿Por qué debería elegirlo un alumno?">{form.why_join}</Row>
         <Row label="Objetivo">{form.objective}</Row>
         <Row label="¿Qué hará el alumno?">{form.student_experience}</Row>
@@ -73,27 +71,25 @@ export default function ReviewSummary({
           </ul>
         </Row>
       </Section>
-      <Section title="Horarios y logística" onEdit={() => onEdit(3)}>
-        <Row label="Duración por sesión">{form.session_duration_minutes} minutos</Row>
+      <Section title="Logística" onEdit={() => onEdit('operacion')}>
+        <Row label="Duración">{duration}</Row>
         <Row label="Cupo por sesión">{form.capacity_per_session} personas</Row>
-        <Row label="Horario disponible">
-          {form.operating_start_time} a {form.operating_end_time}
-        </Row>
-        <Row label="Descanso entre sesiones">{form.break_minutes} minutos</Row>
         <Row label="Edificio">{form.building}</Row>
         <Row label="Salón o espacio">{form.room_tbd ? ROOM_TBD : form.room_space}</Row>
         <Row label="Requerimientos">{form.requirements.trim() || 'Ninguno'}</Row>
         <Row label="Notas">{form.notes.trim() || 'Ninguna'}</Row>
       </Section>
-      <Section title="Carreras relacionadas" onEdit={() => onEdit(4)}>
-        <Row label={`${careerNames.length} ${careerNames.length === 1 ? 'carrera' : 'carreras'}`}>
-          <ul className="list-disc space-y-1 pl-5">
-            {careerNames.map((n, i) => (
-              <li key={`${n}-${i}`}>{n}</li>
-            ))}
-          </ul>
-        </Row>
-      </Section>
+      {needsCareers(form.activity_type) && (
+        <Section title="Carreras relacionadas" onEdit={() => onEdit('carreras')}>
+          <Row label={`${careerNames.length} ${careerNames.length === 1 ? 'carrera' : 'carreras'}`}>
+            <ul className="list-disc space-y-1 pl-5">
+              {careerNames.map((n, i) => (
+                <li key={`${n}-${i}`}>{n}</li>
+              ))}
+            </ul>
+          </Row>
+        </Section>
+      )}
     </div>
   );
 }

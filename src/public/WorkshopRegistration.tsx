@@ -17,7 +17,7 @@ type View =
   | { kind: 'error' }
   | { kind: 'unavailable' }
   | { kind: 'ready'; catalog: IntakeCatalog }
-  | { kind: 'done'; receipt: SubmissionReceipt; catalog: IntakeCatalog; contact: Pick<FormState, 'facilitator_name' | 'facilitator_email' | 'facilitator_phone'> };
+  | { kind: 'done'; receipt: SubmissionReceipt; catalog: IntakeCatalog; contact: Pick<FormState, 'facilitator_name' | 'facilitator_email'> };
 
 /** Página pública `/registro-taller`: sin login, solo consume la Edge Function `workshop-intake`. */
 export default function WorkshopRegistration() {
@@ -120,7 +120,7 @@ export default function WorkshopRegistration() {
                 kind: 'done',
                 receipt,
                 catalog: view.catalog,
-                contact: { facilitator_name: form.facilitator_name, facilitator_email: form.facilitator_email, facilitator_phone: form.facilitator_phone },
+                contact: { facilitator_name: form.facilitator_name, facilitator_email: form.facilitator_email },
               })
             }
           />

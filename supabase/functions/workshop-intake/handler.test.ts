@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { handleRequest, type Deps, type RpcResult } from './handler.ts';
-import { LIMITS } from './validation.ts';
+import { LIMITS, SESSION_DURATIONS } from './validation.ts';
 
 const URL_ = 'https://example.test/functions/v1/workshop-intake';
 const DIV = '11111111-1111-4111-8111-111111111111';
@@ -15,8 +15,6 @@ const C2 = '33333333-3333-4333-8333-333333333333';
 const valid = () => ({
   facilitator_name: 'Ana Pérez',
   facilitator_email: 'ana@example.com',
-  facilitator_phone: '998 123 4567',
-  division_id: DIV,
   activity_type: 'academica',
   title: 'Código Rojo Cancún 2035',
   student_pitch: 'Resuelve una crisis digital en equipo durante una hora.',
@@ -25,11 +23,8 @@ const valid = () => ({
   student_experience: 'Simulación guiada con retos por equipos y retroalimentación.',
   takeaway: 'Una idea clara de qué hace un ingeniero en ciberseguridad.',
   keywords: ['ciberseguridad', 'inteligencia artificial', 'simulación'],
-  session_duration_minutes: 45,
+  session_duration_minutes: 60,
   capacity_per_session: 30,
-  operating_start_time: '10:00',
-  operating_end_time: '14:00',
-  break_minutes: 10,
   building: 'Edificio A',
   room_space: 'Por confirmar',
   requirements: null,
@@ -86,7 +81,8 @@ test('GET devuelve solo el catálogo del formulario', async () => {
   const b = await bodyOf(res);
   assert.deepEqual(Object.keys(b).sort(), ['activity_types', 'careers', 'divisions', 'edition', 'limits']);
   assert.deepEqual(b.careers[0], { career_id: C1, career_name: 'TI e IA', division_id: DIV });
-  assert.deepEqual(b.activity_types.map((t: any) => t.value), ['academica', 'liderazgo']);
+  assert.deepEqual(b.activity_types.map((t: any) => t.value), ['academica', 'vida_universitaria']);
+  assert.deepEqual(b.activity_types.map((t: any) => t.label), ['Taller académico', 'Vida Universitaria']);
   assert.deepEqual(Object.keys(b.edition).sort(), ['event_date', 'name']);
   assert.deepEqual(calls.map((c) => c.fn), ['workshop_intake_catalog_internal']);
 });
@@ -136,23 +132,56 @@ test('POST válido: 201, respuesta mínima y payload normalizado sin campos del 
   assert.equal(sent.title, 'Código Rojo Cancún 2035');
   assert.equal(sent.requirements, 'Laptop\n\nProyector');
   assert.equal(sent.room_space, 'Por confirmar');
-  for (const forbidden of ['status', 'edition_id', 'reviewed_by', 'reviewed_at', 'published_activity_id', 'admin_notes', 'is_demo']) {
+  for (const forbidden of ['status', 'edition_id', 'reviewed_by', 'reviewed_at', 'published_activity_id', 'admin_notes', 'is_demo',
+    'facilitator_phone', 'division_id', 'operating_start_time', 'operating_end_time', 'break_minutes']) {
     assert.ok(!(forbidden in sent), `${forbidden} no debe viajar a la base`);
   }
+  assert.deepEqual(Object.keys(sent).sort(), [
+    'activity_type', 'building', 'capacity_per_session', 'career_ids', 'facilitator_email', 'facilitator_name', 'keywords', 'notes',
+    'objective', 'requirements', 'room_space', 'session_duration_minutes', 'student_experience', 'student_pitch', 'takeaway', 'title', 'why_join',
+  ]);
 });
 
-test('POST: acepta correo no institucional, varias carreras, teléfono y requisitos opcionales', async () => {
+test('POST: acepta correo no institucional y varias carreras (de divisiones distintas) sin tope', async () => {
   const { deps, calls } = makeDeps();
-  const p = { ...valid(), facilitator_email: 'persona@gmail.com', facilitator_phone: undefined, career_ids: [C1, C2, '44444444-4444-4444-8444-444444444444'] };
+  const many = Array.from({ length: 35 }, (_, i) => `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`);
+  const p = { ...valid(), facilitator_email: 'persona@gmail.com', career_ids: [C1, C2, ...many] };
   const res = await handleRequest(post(p), deps);
   assert.equal(res.status, 201);
   const sent = calls[0].args!.p_payload as Record<string, any>;
-  assert.equal(sent.facilitator_phone, null);
-  assert.equal(sent.career_ids.length, 3);
+  assert.equal(sent.career_ids.length, 37);
+  assert.equal(sent.requirements, null);
+});
+
+test('POST: duración 30 y 60 son válidas', async () => {
+  for (const d of SESSION_DURATIONS.map((x) => x.value)) {
+    const { deps, calls } = makeDeps();
+    const res = await handleRequest(post({ ...valid(), session_duration_minutes: d }), deps);
+    assert.equal(res.status, 201, String(d));
+    assert.equal((calls[0].args!.p_payload as Record<string, any>).session_duration_minutes, d);
+  }
+});
+
+test('Vida Universitaria: sin carreras (vacías o ausentes) es válido y viaja con el tipo correcto', async () => {
+  for (const variant of ['empty', 'absent'] as const) {
+    const { deps, calls } = makeDeps();
+    const p = { ...valid(), activity_type: 'vida_universitaria' } as Record<string, any>;
+    if (variant === 'empty') p.career_ids = []; else delete p.career_ids;
+    const res = await handleRequest(post(p), deps);
+    assert.equal(res.status, 201, variant);
+    const sent = calls[0].args!.p_payload as Record<string, any>;
+    assert.equal(sent.activity_type, 'vida_universitaria');
+    assert.deepEqual(sent.career_ids, []);
+  }
+});
+
+test('Vida Universitaria con carreras opcionales sigue validando que sean UUID sin duplicados', async () => {
+  await expectInvalid((p) => { p.activity_type = 'vida_universitaria'; p.career_ids = [C1, C1]; }, 'career_ids[1]:DUPLICATE_CAREER');
+  await expectInvalid((p) => { p.activity_type = 'vida_universitaria'; p.career_ids = ['no-es-uuid']; }, 'career_ids[0]:INVALID_CAREER');
 });
 
 // ---------- POST inválido ----------
-test('carreras: cero, ausentes, duplicadas e inválidas', async () => {
+test('académico: carreras cero, ausentes, duplicadas e inválidas', async () => {
   await expectInvalid((p) => { p.career_ids = []; }, 'career_ids:CAREERS_REQUIRED');
   await expectInvalid((p) => { delete p.career_ids; }, 'career_ids:CAREERS_REQUIRED');
   await expectInvalid((p) => { p.career_ids = [C1, C1]; }, 'career_ids[1]:DUPLICATE_CAREER');
@@ -161,32 +190,45 @@ test('carreras: cero, ausentes, duplicadas e inválidas', async () => {
   await expectInvalid((p) => { p.career_ids = [123]; }, 'career_ids[0]:INVALID_CAREER');
 });
 
-test('división y tipo de actividad inválidos', async () => {
-  await expectInvalid((p) => { p.division_id = 'abc'; }, 'division_id:INVALID_DIVISION');
-  await expectInvalid((p) => { delete p.division_id; }, 'division_id:REQUIRED');
+test('tipo de actividad: solo academica | vida_universitaria; el valor antiguo liderazgo se rechaza', async () => {
+  await expectInvalid((p) => { p.activity_type = 'liderazgo'; }, 'activity_type:INVALID_ACTIVITY_TYPE');
   await expectInvalid((p) => { p.activity_type = 'taller'; }, 'activity_type:INVALID_ACTIVITY_TYPE');
+  await expectInvalid((p) => { p.activity_type = 'Vida Universitaria'; }, 'activity_type:INVALID_ACTIVITY_TYPE');
+  await expectInvalid((p) => { p.activity_type = 7; }, 'activity_type:INVALID_TYPE');
   await expectInvalid((p) => { delete p.activity_type; }, 'activity_type:REQUIRED');
 });
 
-test('duración, capacidad y descanso', async () => {
-  await expectInvalid((p) => { p.session_duration_minutes = 0; }, 'session_duration_minutes:TOO_LOW');
-  await expectInvalid((p) => { p.session_duration_minutes = -5; }, 'session_duration_minutes:TOO_LOW');
-  await expectInvalid((p) => { p.session_duration_minutes = 30.5; }, 'session_duration_minutes:INVALID_TYPE');
-  await expectInvalid((p) => { p.session_duration_minutes = '45'; }, 'session_duration_minutes:INVALID_TYPE');
-  await expectInvalid((p) => { p.session_duration_minutes = LIMITS.sessionDurationMinutes.max + 1; }, 'session_duration_minutes:TOO_HIGH');
-  await expectInvalid((p) => { p.capacity_per_session = 0; }, 'capacity_per_session:TOO_LOW');
-  await expectInvalid((p) => { p.capacity_per_session = LIMITS.capacityPerSession.max + 1; }, 'capacity_per_session:TOO_HIGH');
-  await expectInvalid((p) => { p.break_minutes = -1; }, 'break_minutes:TOO_LOW');
-  await expectInvalid((p) => { delete p.break_minutes; }, 'break_minutes:REQUIRED');
+test('campos retirados del formulario (teléfono, división, horario, descanso) se rechazan como UNKNOWN_FIELDS sin escribir', async () => {
+  const retired: Record<string, unknown>[] = [
+    { facilitator_phone: '998 123 4567' },
+    { division_id: DIV },
+    { operating_start_time: '10:00' },
+    { operating_end_time: '12:00' },
+    { break_minutes: 0 },
+    { facilitator_phone: '998 123 4567', division_id: DIV, operating_start_time: '10:00', operating_end_time: '12:00', break_minutes: 0 },
+  ];
+  for (const extra of retired) {
+    const { deps, calls } = makeDeps();
+    const res = await handleRequest(post({ ...valid(), ...extra }), deps);
+    assert.equal(res.status, 400, JSON.stringify(extra));
+    const b = await bodyOf(res);
+    assert.equal(b.error, 'UNKNOWN_FIELDS');
+    for (const k of Object.keys(extra)) assert.ok(b.fields.includes(k));
+    assert.equal(b.admin_fields_forbidden, false);
+    assert.equal(calls.length, 0);
+  }
 });
 
-test('horarios', async () => {
-  await expectInvalid((p) => { p.operating_start_time = '14:00'; p.operating_end_time = '10:00'; }, 'operating_end_time:END_BEFORE_START');
-  await expectInvalid((p) => { p.operating_end_time = p.operating_start_time; }, 'operating_end_time:END_BEFORE_START');
-  await expectInvalid((p) => { p.operating_start_time = '25:00'; }, 'operating_start_time:INVALID_TIME');
-  await expectInvalid((p) => { p.operating_start_time = '10:75'; }, 'operating_start_time:INVALID_TIME');
-  await expectInvalid((p) => { p.operating_start_time = 'mañana'; }, 'operating_start_time:INVALID_TIME');
-  await expectInvalid((p) => { delete p.operating_end_time; }, 'operating_end_time:REQUIRED');
+test('duración: solo 30 o 60 minutos; capacidad dentro de límites', async () => {
+  for (const bad of [0, -5, 5, 15, 29, 31, 45, 59, 61, 90, 120, 480]) {
+    await expectInvalid((p) => { p.session_duration_minutes = bad; }, 'session_duration_minutes:INVALID_DURATION');
+  }
+  await expectInvalid((p) => { p.session_duration_minutes = 30.5; }, 'session_duration_minutes:INVALID_TYPE');
+  await expectInvalid((p) => { p.session_duration_minutes = '60'; }, 'session_duration_minutes:INVALID_TYPE');
+  await expectInvalid((p) => { p.session_duration_minutes = null; }, 'session_duration_minutes:REQUIRED');
+  await expectInvalid((p) => { delete p.session_duration_minutes; }, 'session_duration_minutes:REQUIRED');
+  await expectInvalid((p) => { p.capacity_per_session = 0; }, 'capacity_per_session:TOO_LOW');
+  await expectInvalid((p) => { p.capacity_per_session = LIMITS.capacityPerSession.max + 1; }, 'capacity_per_session:TOO_HIGH');
 });
 
 test('keywords: menos de 3, más de 5, vacía, duplicada y tipo inválido', async () => {
@@ -218,13 +260,11 @@ test('campos requeridos vacíos, tipos y longitudes', async () => {
   await expectInvalid((p) => { p.requirements = 5; }, 'requirements:INVALID_TYPE');
 });
 
-test('correo y teléfono', async () => {
+test('correo', async () => {
   for (const bad of ['', 'sin-arroba', 'a@b', 'a b@c.com', '@c.com', `${'a'.repeat(250)}@x.com`]) {
     await expectInvalid((p) => { p.facilitator_email = bad; }, bad === '' ? 'facilitator_email:REQUIRED' : 'facilitator_email:INVALID_EMAIL');
   }
   await expectInvalid((p) => { delete p.facilitator_email; }, 'facilitator_email:REQUIRED');
-  await expectInvalid((p) => { p.facilitator_phone = 'llámame'; }, 'facilitator_phone:INVALID_PHONE');
-  await expectInvalid((p) => { p.facilitator_phone = '123'; }, 'facilitator_phone:INVALID_PHONE');
 });
 
 test('muchos errores se reportan juntos', async () => {
