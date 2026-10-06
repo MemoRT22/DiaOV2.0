@@ -22,9 +22,7 @@ const payload = (cat: Catalog, over: Record<string, unknown> = {}) => ({
   activity_type: 'academica',
   title: `ZZ-INTAKE-IT-${crypto.randomUUID().slice(0, 8)}`,
   student_pitch: 'Pitch de prueba de integración para el formulario.',
-  why_join: 'Razón de prueba de integración para el formulario.',
   objective: 'Objetivo de prueba de integración para el formulario.',
-  student_experience: 'Experiencia de prueba de integración para el formulario.',
   takeaway: 'Aprendizaje de prueba',
   keywords: ['uno', 'dos', 'tres'],
   session_duration_minutes: 30,
@@ -77,8 +75,6 @@ test('catálogo público sin datos demo y POST rechaza división/carrera demo', 
   const base = {
     facilitator_name: 'Prueba Integración', facilitator_email: 'integracion@example.com', activity_type: 'academica',
     title: `ZZ-INTAKE-IT-${crypto.randomUUID().slice(0, 8)}`,
-    student_pitch: 'Pitch de prueba de integración para el formulario.', why_join: 'Razón de prueba de integración para el formulario.',
-    objective: 'Objetivo de prueba de integración para el formulario.', student_experience: 'Experiencia de prueba de integración para el formulario.',
     takeaway: 'Aprendizaje de prueba', keywords: ['uno', 'dos', 'tres'], session_duration_minutes: 30, capacity_per_session: 20,
     building: 'Edificio X', room_space: 'Por confirmar',
   };
@@ -89,7 +85,7 @@ test('catálogo público sin datos demo y POST rechaza división/carrera demo', 
 
 test('POST con campos retirados (teléfono, división, horario, descanso): 400 UNKNOWN_FIELDS sin guardar', { skip }, async () => {
   const cat = await catalog();
-  const base = payload({ ...cat, careers: [{ career_id: crypto.randomUUID(), division_id: '' }], divisions: [] });
+  const base = payload({ ...cat, careers: [{ career_id: crypto.randomUUID(), career_name: '', division_id: '' }], divisions: [] });
   for (const extra of [{ facilitator_phone: '998 123 4567' }, { division_id: crypto.randomUUID() }, { operating_start_time: '10:00' }, { operating_end_time: '12:00' }, { break_minutes: 0 }]) {
     const res = await fetch(URL_!, { method: 'POST', headers: json, body: JSON.stringify({ ...base, ...extra }) });
     assert.equal(res.status, 400, JSON.stringify(extra));
@@ -99,7 +95,7 @@ test('POST con campos retirados (teléfono, división, horario, descanso): 400 U
 
 test('POST con duración distinta de 30 o 60 y tipo antiguo liderazgo: 422 sin guardar', { skip }, async () => {
   const cat = await catalog();
-  const base = payload({ ...cat, careers: [{ career_id: crypto.randomUUID(), division_id: '' }], divisions: [] });
+  const base = payload({ ...cat, careers: [{ career_id: crypto.randomUUID(), career_name: '', division_id: '' }], divisions: [] });
   let res = await fetch(URL_!, { method: 'POST', headers: json, body: JSON.stringify({ ...base, session_duration_minutes: 45 }) });
   assert.equal(res.status, 422);
   assert.ok(((await res.json()) as { errors: { field: string; code: string }[] }).errors.some((e) => e.field === 'session_duration_minutes' && e.code === 'INVALID_DURATION'));
@@ -142,7 +138,7 @@ test('POST Vida Universitaria sin carreras ni objetivo: 201 (no requiere catálo
 
 test('POST: reglas de categoría de experiencia y objetivo condicional (422 sin guardar)', { skip }, async () => {
   const cat = await catalog();
-  const base = payload({ ...cat, careers: [{ career_id: crypto.randomUUID(), division_id: '' }], divisions: [] }) as Record<string, unknown>;
+  const base = payload({ ...cat, careers: [{ career_id: crypto.randomUUID(), career_name: '', division_id: '' }], divisions: [] }) as Record<string, unknown>;
   const errors = async (body: Record<string, unknown>) => {
     const res = await fetch(URL_!, { method: 'POST', headers: json, body: JSON.stringify(body) });
     assert.equal(res.status, 422);

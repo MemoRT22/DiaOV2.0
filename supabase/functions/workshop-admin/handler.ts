@@ -3,7 +3,7 @@ export type DbError = { code?: string; message?: string };
 export type AuthResult = { kind: 'ok'; userId: string } | { kind: 'unauthorized' | 'forbidden' };
 export type Deps = {
   authorize: (token: string) => Promise<AuthResult>;
-  rpc: (name: 'workshop_admin_list_internal' | 'workshop_admin_get_internal' | 'workshop_review_transition_internal', args: Record<string, unknown>) => Promise<{ data: unknown; error: DbError | null }>;
+  rpc: (name: 'workshop_admin_list_internal' | 'workshop_admin_get_internal' | 'workshop_review_transition_internal' | 'publish_workshop_submission_internal', args: Record<string, unknown>) => Promise<{ data: unknown; error: DbError | null }>;
   log?: (event: string, code?: string) => void;
 };
 
@@ -17,7 +17,7 @@ const CORS = {
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const STATUSES = new Set(['submitted', 'in_review', 'changes_requested', 'approved', 'published', 'archived']);
 const TYPES = new Set(['academica', 'vida_universitaria']);
-const MUTATIONS = new Set(['start_review', 'save_notes', 'request_changes', 'resume_review', 'archive']);
+const MUTATIONS = new Set(['start_review', 'save_notes', 'request_changes', 'resume_review', 'archive', 'approve', 'publish']);
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { ...CORS, 'Content-Type': 'application/json; charset=utf-8' } });
@@ -28,6 +28,7 @@ function dbFailure(error: DbError, deps: Deps): Response {
   if (message.includes('NOT_FOUND')) return json({ error: 'NOT_FOUND' }, 404);
   if (message.includes('NOT_AUTHORIZED')) return json({ error: 'NOT_AUTHORIZED' }, 403);
   if (message.includes('INVALID_TRANSITION')) return json({ error: 'INVALID_TRANSITION' }, 409);
+  if (message.includes('PUBLISH_STATE_INCONSISTENT')) return json({ error: 'PUBLISH_STATE_INCONSISTENT' }, 409);
   if (message.includes('NO_ACTIVE_EDITION')) return json({ error: 'NO_ACTIVE_EDITION' }, 503);
   for (const code of ['INVALID_FILTER', 'INVALID_ACTION', 'NOTES_REQUIRED', 'FEEDBACK_REQUIRED', 'TEXT_TOO_LONG']) {
     if (message.includes(code)) return json({ error: code }, 422);
@@ -82,6 +83,12 @@ export async function handleRequest(req: Request, deps: Deps): Promise<Response>
       return data ? json({ submission: data }) : json({ error: 'NOT_FOUND' }, 404);
     }
     if (!MUTATIONS.has(body.action)) return json({ error: 'INVALID_ACTION' }, 400);
+    if (body.action === 'publish') {
+      const { data, error } = await deps.rpc('publish_workshop_submission_internal', {
+        p_actor: caller.userId, p_submission_id: id
+      });
+      return error ? dbFailure(error, deps) : json(data);
+    }
     const notes = body.admin_notes;
     const feedback = body.review_feedback;
     if (notes !== undefined && (typeof notes !== 'string' || notes.length > 5000)

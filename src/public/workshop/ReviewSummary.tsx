@@ -61,9 +61,7 @@ export default function ReviewSummary({
         <Row label={vida ? 'Descripción corta' : 'Presentación'}>{form.student_pitch}</Row>
       </Section>
       <Section title={vida ? 'Experiencia' : 'Experiencia del alumno'} onEdit={() => onEdit('experiencia')}>
-        <Row label={copy.why_join.label}>{form.why_join}</Row>
         {(!vida || form.objective.trim()) && <Row label={copy.objective.label}>{form.objective}</Row>}
-        <Row label={copy.student_experience.label}>{form.student_experience}</Row>
         <Row label={copy.takeaway.label}>{form.takeaway}</Row>
         <Row label="Palabras clave">
           <ul className="flex flex-wrap gap-2">

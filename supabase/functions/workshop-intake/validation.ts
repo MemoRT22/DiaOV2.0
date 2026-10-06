@@ -9,9 +9,7 @@ export const LIMITS = {
   facilitatorEmailMax: 254,
   title: { min: 5, max: 150 },
   studentPitch: { min: 20, max: 600 },
-  whyJoin: { min: 20, max: 1000 },
   objective: { min: 20, max: 1000 },
-  studentExperience: { min: 20, max: 1500 },
   takeaway: { min: 10, max: 600 },
   keywords: { minCount: 3, maxCount: 5, maxLength: 40 },
   capacityPerSession: { min: 1, max: 500 },
@@ -57,9 +55,7 @@ export const ALLOWED_FIELDS = [
   'experience_category',
   'title',
   'student_pitch',
-  'why_join',
   'objective',
-  'student_experience',
   'takeaway',
   'keywords',
   'session_duration_minutes',
@@ -100,10 +96,8 @@ export type SubmissionPayload = {
   experience_category: (typeof EXPERIENCE_CATEGORIES)[number]['value'] | null;
   title: string;
   student_pitch: string;
-  why_join: string;
   /** Obligatorio para académico; opcional (null) para Vida Universitaria. */
   objective: string | null;
-  student_experience: string;
   takeaway: string;
   keywords: string[];
   session_duration_minutes: number;
@@ -241,13 +235,11 @@ export function validateSubmission(input: unknown): ValidationResult {
   // Contenido
   const title = line('title', LIMITS.title.min, LIMITS.title.max);
   const student_pitch = text('student_pitch', LIMITS.studentPitch.min, LIMITS.studentPitch.max);
-  const why_join = text('why_join', LIMITS.whyJoin.min, LIMITS.whyJoin.max);
   // El objetivo es obligatorio para académico y opcional para Vida Universitaria (nunca se rellena con textos por defecto).
   const objective =
     activity_type === 'academica'
       ? text('objective', LIMITS.objective.min, LIMITS.objective.max)
       : optionalText('objective', LIMITS.objective.max);
-  const student_experience = text('student_experience', LIMITS.studentExperience.min, LIMITS.studentExperience.max);
   const takeaway = text('takeaway', LIMITS.takeaway.min, LIMITS.takeaway.max);
 
   // Keywords: estructura (arreglo) con 3 a 5 elementos únicos
@@ -326,9 +318,7 @@ export function validateSubmission(input: unknown): ValidationResult {
       experience_category,
       title,
       student_pitch,
-      why_join,
       objective,
-      student_experience,
       takeaway,
       keywords,
       session_duration_minutes,

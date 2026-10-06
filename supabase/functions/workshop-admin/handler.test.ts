@@ -69,12 +69,14 @@ test('review actions call only the atomic SQL primitive and use authenticated ac
     ['start_review', {}], ['save_notes', { admin_notes: 'Nota interna' }],
     ['request_changes', { review_feedback: 'Especifica materiales' }],
     ['resume_review', {}], ['archive', { admin_notes: 'Conservar historial' }],
+    ['approve', {}], ['publish', {}]
   ] as const) {
     assert.equal((await handleRequest(post({ action, submission_id: ID, ...extra, p_actor: 'untrusted' }), deps)).status, 200);
   }
-  assert.equal(calls.length, 5);
-  assert.ok(calls.every((c) => c.name === 'workshop_review_transition_internal' && c.args.p_actor === ACTOR));
-  assert.deepEqual(calls.map((c) => c.args.p_action), ['start_review', 'save_notes', 'request_changes', 'resume_review', 'archive']);
+  assert.equal(calls.length, 7);
+  assert.ok(calls.every((c) => (c.name === 'workshop_review_transition_internal' || c.name === 'publish_workshop_submission_internal') && c.args.p_actor === ACTOR));
+  assert.deepEqual(calls.filter(c => c.name === 'workshop_review_transition_internal').map((c) => c.args.p_action), ['start_review', 'save_notes', 'request_changes', 'resume_review', 'archive', 'approve']);
+  assert.ok(calls.some(c => c.name === 'publish_workshop_submission_internal'));
 });
 
 test('empty feedback, missing notes and malformed id are rejected', async () => {
@@ -96,6 +98,11 @@ test('invalid transition is a conflict, and SQL errors do not reveal details', a
   const conflict = await handleRequest(post({ action: 'start_review', submission_id: ID }), deps);
   assert.equal(conflict.status, 409);
   assert.deepEqual(await body(conflict), { error: 'INVALID_TRANSITION' });
+  ({ deps } = fixture(undefined, async () => ({ data: null, error: { message: 'PUBLISH_STATE_INCONSISTENT' } })));
+  const inconsistent = await handleRequest(post({ action: 'publish', submission_id: ID }), deps);
+  assert.equal(inconsistent.status, 409);
+  assert.deepEqual(await body(inconsistent), { error: 'PUBLISH_STATE_INCONSISTENT' });
+
   ({ deps } = fixture(undefined, async () => ({ data: null, error: { message: 'sensitive row contents' } })));
   const failed = await handleRequest(post({ action: 'list' }), deps);
   assert.equal(failed.status, 500);

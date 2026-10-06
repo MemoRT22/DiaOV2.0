@@ -23,9 +23,7 @@ const valid = (over: Partial<FormState> = {}): FormState => ({
   activity_type: 'academica',
   title: 'Código Rojo Cancún 2035',
   student_pitch: 'Resuelve una crisis digital en equipo durante una hora.',
-  why_join: 'Porque vivirás cómo se trabaja bajo presión con tecnología real.',
   objective: 'Que el alumno identifique el rol de las TI en una emergencia.',
-  student_experience: 'Simulación guiada con retos por equipos y retroalimentación.',
   takeaway: 'Una idea clara de qué hace un ingeniero en ciberseguridad.',
   keywords: ['ciberseguridad', 'inteligencia artificial', 'simulación'],
   session_duration_minutes: '60',
@@ -52,8 +50,7 @@ describe('validateForm (misma validación que la Edge Function)', () => {
       expect(payload).not.toHaveProperty(retired);
     }
     expect(Object.keys(buildDraft(valid())).sort()).toEqual([
-      'activity_type', 'building', 'capacity_per_session', 'career_ids', 'experience_category', 'facilitator_email', 'facilitator_name', 'keywords', 'notes',
-      'objective', 'requirements', 'room_space', 'session_duration_minutes', 'student_experience', 'student_pitch', 'takeaway', 'title', 'why_join',
+      'activity_type', 'building', 'capacity_per_session', 'career_ids', 'experience_category', 'facilitator_email', 'facilitator_name', 'keywords', 'notes', 'objective', 'requirements', 'room_space', 'session_duration_minutes', 'student_pitch', 'takeaway', 'title'
     ]);
   });
 

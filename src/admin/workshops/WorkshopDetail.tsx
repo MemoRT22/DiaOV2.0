@@ -91,9 +91,7 @@ export default function WorkshopDetail() {
 
       <Section title={life ? 'Experiencia de Vida Universitaria' : 'Experiencia académica'}>
         <dl className="grid gap-4 sm:grid-cols-2">
-          <Item label={life ? 'Por qué participar' : 'Por qué tomar este taller'}>{data.why_join}</Item>
           <Item label="Objetivo">{text(data.objective)}</Item>
-          <Item label="Experiencia del alumno">{data.student_experience}</Item>
           <Item label="Qué se llevará el alumno">{data.takeaway}</Item>
         </dl>
       </Section>

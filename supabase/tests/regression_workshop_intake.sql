@@ -1,5 +1,6 @@
 -- Regresión: capa de datos de propuestas de talleres (workshop_submissions). Un solo bloque DO, autocontenido;
--- termina con RAISE EXCEPTION ("N ok M fail: detalle") para revertir todo. No toca triggers ni protecciones.
+-- termina SIEMPRE con RAISE EXCEPTION ("N ok M fail: detalle") para revertir todo. CONVENCIÓN: el resultado se lee en el mensaje;
+-- éxito = "N ok 0 fail: (none)", cualquier otro valor de fail > 0 es fallo (la excepción no implica error). No toca triggers ni protecciones.
 -- Cubre: primitivas internas (catálogo y creación), constraints, atomicidad, auditoría, independencia del catálogo
 -- oficial y permisos (anon / authenticated / service_role). Modelo simplificado: solo nombre y correo del responsable,
 -- tipo academica | vida_universitaria, sin división en la entrada, duración 30/60, horario fijo 10:00–12:00 sin descanso,
@@ -31,7 +32,7 @@ BEGIN
   v_base := jsonb_build_object(
     'facilitator_name', 'Ana Pérez', 'facilitator_email', 'ana@example.com',
     'activity_type', 'academica', 'title', 'Código Rojo Cancún 2035',
-    'student_pitch', 'Pitch', 'why_join', 'Porque sí', 'objective', 'Objetivo', 'student_experience', 'Experiencia', 'takeaway', 'Aprendizaje',
+    'student_pitch', 'Pitch', 'objective', 'Objetivo', 'takeaway', 'Aprendizaje',
     'keywords', jsonb_build_array('ciberseguridad', 'ia', 'simulación'),
     'session_duration_minutes', 60, 'capacity_per_session', 30,
     'building', 'Edificio A', 'room_space', 'Por confirmar', 'requirements', NULL, 'notes', NULL,
@@ -219,7 +220,8 @@ BEGIN
       ('admin_notes', '{"admin_notes": "aprobado"}'), ('is_demo', '{"is_demo": true}'), ('id', jsonb_build_object('id', v_other)),
       ('submitted_at', '{"submitted_at": "2000-01-01"}'),
       ('phone', '{"facilitator_phone": "998 123 4567"}'), ('division', jsonb_build_object('division_id', d_real)),
-      ('start', '{"operating_start_time": "08:00"}'), ('end', '{"operating_end_time": "20:00"}'), ('break', '{"break_minutes": 15}')
+      ('start', '{"operating_start_time": "08:00"}'), ('end', '{"operating_end_time": "20:00"}'), ('break', '{"break_minutes": 15}'),
+      ('why_join', '{"why_join": "texto"}'), ('student_experience', '{"student_experience": "texto"}')
     ) AS t(name, extra)
   LOOP
     v_err := NULL;
@@ -281,9 +283,9 @@ BEGIN
   -- ===================== 5. Constraints directos (defensa en profundidad) =====================
   -- experience_category se deriva del tipo (Vida Universitaria → 'otra'; académico → NULL) para no alterar los 12 argumentos
   v_tpl := $q$INSERT INTO workshop_submissions (edition_id, division_id, status, submitted_at, facilitator_name, facilitator_email, activity_type, title,
-      student_pitch, why_join, objective, student_experience, takeaway, keywords, session_duration_minutes, capacity_per_session,
+      student_pitch, objective, takeaway, keywords, session_duration_minutes, capacity_per_session,
       operating_start_time, operating_end_time, break_minutes, building, room_space, experience_category)
-    VALUES (%1$L, %2$L, %3$s, now(), 'N', %4$s, %5$s, %6$s, 'p', 'w', 'o', 'e', 't', %7$s, %8$s, %9$s, %10$s, %11$s, %12$s, 'B', 'R',
+    VALUES (%1$L, %2$L, %3$s, now(), 'N', %4$s, %5$s, %6$s, 'p', 'o', 't', %7$s, %8$s, %9$s, %10$s, %11$s, %12$s, 'B', 'R',
       (CASE WHEN %5$s = 'vida_universitaria' THEN 'otra' END))$q$;
   FOR r IN SELECT * FROM (VALUES
       ('control_valid',    '{}'::jsonb,                                                   NULL),

@@ -15,7 +15,7 @@ const academic = (): Detail => ({
   submitted_at: '2026-10-05T15:00:00Z', reviewed_at: null, reviewed_by: null, reviewer_name: null,
   facilitator_name: 'Ana Ruiz', facilitator_email: 'ana@example.com', activity_type: 'academica',
   experience_category: null, title: 'Taller de medicina', student_pitch: 'Experiencia médica',
-  why_join: 'Aprender medicina', objective: 'Conocer el trabajo médico', student_experience: 'Simulación',
+  objective: 'Conocer el trabajo médico', 
   takeaway: 'Conocimiento', keywords: ['medicina', 'salud', 'alumnos'], session_duration_minutes: 30,
   capacity_per_session: 20, career_count: 2, operating_start_time: '10:00:00', operating_end_time: '12:00:00',
   building: 'Edificio A', room_space: 'Salón 1', requirements: 'Proyector', notes: 'Traer material',

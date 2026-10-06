@@ -76,17 +76,13 @@ async function fillVidaTaller(user: ReturnType<typeof userEvent.setup>, category
   setVal(/Descripción corta/, 'Un torneo rápido para convivir y divertirse con tu escuela.');
 }
 async function fillVidaExperiencia(user: ReturnType<typeof userEvent.setup>, objetivo?: string) {
-  setVal(/Por qué debería sumarse un alumno/, 'Porque es una forma distinta y divertida de convivir.');
   if (objetivo) setVal(/Qué buscas generar/, objetivo);
-  setVal(/Qué harán los alumnos durante la actividad/, 'Jugarán partidos cortos por equipos mixtos.');
   setVal(/Con qué queremos que se queden/, 'Amistades nuevas y ganas de volver a participar.');
   const kw = screen.getByRole('textbox', { name: /Palabras clave/ });
   for (const k of ['deporte', 'convivencia', 'fútbol']) await user.type(kw, `${k}{Enter}`);
 }
 async function fillExperiencia(user: ReturnType<typeof userEvent.setup>) {
-  setVal(/Por qué debería elegir este taller/, 'Porque vivirás cómo se trabaja bajo presión con tecnología real.');
   setVal(/objetivo del taller/, 'Que el alumno identifique el rol de las TI en una emergencia.');
-  setVal(/Qué hará el alumno durante/, 'Simulación guiada con retos por equipos y retroalimentación.');
   setVal(/Qué aprendizaje o idea/, 'Una idea clara de qué hace un ingeniero en ciberseguridad.');
   const kw = screen.getByRole('textbox', { name: /Palabras clave/ });
   for (const k of ['ciberseguridad', 'inteligencia artificial', 'simulación']) await user.type(kw, `${k}{Enter}`);
@@ -334,12 +330,6 @@ describe('Vida Universitaria: copy y campos propios', () => {
     await fillVidaTaller(user);
     await next(user);
     expect(heading('Experiencia')).toBeInTheDocument();
-    for (const l of [/Por qué debería sumarse un alumno/, /Qué buscas generar con esta experiencia/, /Qué harán los alumnos durante la actividad/, /Con qué queremos que se queden/]) {
-      expect(screen.getByLabelText(l)).toBeInTheDocument();
-    }
-    expect(screen.getByText('Cuéntanos qué hace atractiva o especial esta experiencia.')).toBeInTheDocument();
-    expect(screen.getByText(/Por ejemplo: integración, creatividad/)).toBeInTheDocument();
-    expect(screen.getByText('Describe brevemente la dinámica o cómo participarán.')).toBeInTheDocument();
     expect(screen.getByLabelText(/Qué buscas generar/).id).toBe('wf-objective');
     expect(screen.getByText(/Qué buscas generar/).textContent).toMatch(/opcional/);
     // se avanza sin objetivo
@@ -359,8 +349,6 @@ describe('Vida Universitaria: copy y campos propios', () => {
     expect(screen.getByText('Deportiva')).toBeInTheDocument();
     expect(screen.getByText('Torneo de fútbol relámpago')).toBeInTheDocument();
     expect(screen.getByText('Descripción corta')).toBeInTheDocument();
-    expect(screen.getByText('¿Por qué debería sumarse un alumno?')).toBeInTheDocument();
-    expect(screen.getByText('¿Qué harán los alumnos durante la actividad?')).toBeInTheDocument();
     expect(screen.getByText('¿Con qué queremos que se queden después de participar?')).toBeInTheDocument();
     expect(screen.queryByText('¿Qué buscas generar con esta experiencia?')).not.toBeInTheDocument();
     expect(screen.queryByRole('region', { name: 'Carreras relacionadas' })).not.toBeInTheDocument();
@@ -477,9 +465,7 @@ describe('palabras clave', () => {
 
   it('menos de 3 palabras clave bloquea el avance con un mensaje claro', async () => {
     const user = await toKeywords();
-    setVal(/Por qué debería elegir este taller/, 'Porque vivirás cómo se trabaja bajo presión con tecnología real.');
     setVal(/objetivo del taller/, 'Que el alumno identifique el rol de las TI en una emergencia.');
-    setVal(/Qué hará el alumno durante/, 'Simulación guiada con retos por equipos y retroalimentación.');
     setVal(/Qué aprendizaje o idea/, 'Una idea clara de qué hace un ingeniero en ciberseguridad.');
     await user.type(screen.getByRole('textbox', { name: /Palabras clave/ }), 'ia{Enter}');
     await next(user);
