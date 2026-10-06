@@ -31,7 +31,7 @@ export type WorkshopCareer = {
 export type WorkshopDetail = WorkshopSummary & {
   created_at: string; updated_at: string; reviewed_at: string | null;
   reviewed_by: string | null; reviewer_name: string | null;
-  facilitator_email: string; student_pitch: string; why_join: string; objective: string;
+  facilitator_email: string; student_pitch: string; why_join: string; objective: string | null;
   student_experience: string; takeaway: string; keywords: string[];
   operating_start_time: string; operating_end_time: string; building: string; room_space: string;
   requirements: string | null; notes: string | null; admin_notes: string | null;
