@@ -106,7 +106,7 @@ export default function AdminLayout() {
           </button>
           <span className="text-sm font-semibold">{roleLabel}</span>
         </header>
-        <main className="mx-auto max-w-5xl p-4 sm:p-8">
+        <main className={`mx-auto p-4 sm:p-8 ${pathname.startsWith('/coordinacion/operacion-en-vivo') ? 'max-w-7xl' : 'max-w-5xl'}`}>
           <Suspense fallback={<Spinner />}>
             <Outlet />
           </Suspense>
