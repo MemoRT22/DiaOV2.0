@@ -144,7 +144,7 @@ export default function OperationsCenter() {
         )}
       </div>
 
-      <div role="tablist" aria-label="Vistas del Centro de Operación" className="flex max-w-full gap-1 self-start overflow-x-auto rounded-xl bg-neutral-500/10 p-1 [width:fit-content]">
+      <div role="tablist" aria-label="Vistas del Centro de Operación" className="no-scrollbar flex max-w-full gap-1 self-start overflow-x-auto rounded-xl bg-neutral-500/10 p-1 [width:fit-content]">
         {VIEWS.map(({ key, label }) => {
           const selected = active === key;
           return (

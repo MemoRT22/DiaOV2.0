@@ -1,4 +1,5 @@
 import { Loader2, X } from 'lucide-react';
+import { createPortal } from 'react-dom';
 import { useEffect, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes } from 'react';
 import { friendlyError } from '../lib/errors';
 
@@ -151,13 +152,23 @@ export function Modal({ title, onClose, children }: { title: string; onClose: ()
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  return (
+  // Lock page scroll while a dialog is open so it always stays centred on the viewport.
+  useEffect(() => {
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previous;
+    };
+  }, []);
+
+  // Rendered on <body>: a dialog must never be positioned relative to an animated or transformed ancestor.
+  return createPortal(
     <div className="modal-backdrop fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-4 backdrop-blur-sm sm:items-center" onClick={onClose}>
       <div
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className="card modal-panel max-h-[90dvh] w-full max-w-lg animate-fade-up overflow-y-auto bg-surface-raised p-6"
+        className="card modal-panel max-h-[92dvh] w-full max-w-lg animate-fade-up sm:max-w-xl overflow-y-auto bg-surface-raised p-6"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-start justify-between gap-4">
@@ -168,6 +179,7 @@ export function Modal({ title, onClose, children }: { title: string; onClose: ()
         </div>
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

@@ -305,12 +305,14 @@ html[data-surface='admin'] ::-webkit-scrollbar-thumb:hover {
 }
 
 /* Entrance and hero ornaments */
+/* `backwards` (not `both`): after the entrance no transform is left behind, so position:fixed descendants keep
+   resolving against the viewport instead of the animated block. */
 @keyframes admin-rise {
   from { opacity: 0; transform: translateY(14px); }
-  to { opacity: 1; transform: translateY(0); }
+  to { opacity: 1; transform: none; }
 }
 .admin-rise {
-  animation: admin-rise 0.6s var(--admin-ease, ease) both;
+  animation: admin-rise 0.6s var(--admin-ease, ease) backwards;
 }
 .admin-hero {
   position: relative;
@@ -371,7 +373,7 @@ html[data-surface='admin'] ::-webkit-scrollbar-thumb:hover {
 
 /* Staggered entrance of a page's top-level blocks */
 html[data-surface='admin'] main > div > * {
-  animation: admin-rise 0.6s var(--admin-ease, ease) both;
+  animation: admin-rise 0.6s var(--admin-ease, ease) backwards;
 }
 html[data-surface='admin'] main > div > *:nth-child(2) { animation-delay: 0.05s; }
 html[data-surface='admin'] main > div > *:nth-child(3) { animation-delay: 0.1s; }
@@ -381,5 +383,41 @@ html[data-surface='admin'] main > div > *:nth-child(n + 6) { animation-delay: 0.
 @media (prefers-reduced-motion: reduce) {
   html[data-surface='admin'] main > div > * {
     animation: none !important;
+  }
+}
+
+/* Horizontal strips (tabs) scroll without a visible bar */
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* Hero ornaments recede on phones so text stays clean */
+@media (max-width: 639px) {
+  .admin-hero::after {
+    opacity: 0.45;
+    right: -11rem;
+  }
+}
+
+/* Tables in cards scroll sideways instead of clipping on narrow screens */
+html[data-surface='admin'] .card:has(> table) {
+  overflow-x: auto;
+}
+
+/* Dialog: the form body scrolls, the heading stays put */
+html[data-surface='admin'] .modal-panel {
+  padding: clamp(1.1rem, 4vw, 1.75rem);
+}
+@media (max-width: 639px) {
+  html[data-surface='admin'] .modal-backdrop {
+    align-items: flex-end;
+    padding: 0.5rem;
+  }
+  html[data-surface='admin'] .modal-panel {
+    border-radius: 22px 22px 16px 16px;
   }
 }

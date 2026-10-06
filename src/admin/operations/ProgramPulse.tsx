@@ -44,8 +44,8 @@ export default function ProgramPulse({ summary }: { summary: OperationsSummary }
       <div className="relative flex shrink-0 items-center justify-center self-center">
         <Ring value={fill} />
         <div className="absolute text-center">
-          <p className="font-display text-3xl font-extrabold leading-none tabular-nums">{fill}%</p>
-          <p className="mt-1 text-[0.65rem] font-bold uppercase tracking-wider text-ink-muted">ocupación</p>
+          <p className="font-display text-2xl font-extrabold leading-none tabular-nums sm:text-3xl">{fill}%</p>
+          <p className="mt-1 text-[0.55rem] font-bold uppercase tracking-wider text-ink-muted sm:text-[0.65rem]">ocupación</p>
         </div>
       </div>
       <div className="relative z-10 min-w-0 flex-1 space-y-4">
