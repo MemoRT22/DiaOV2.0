@@ -24,7 +24,7 @@ export default function SettingsHome() {
                 to={to}
                 className="card group flex min-h-24 items-start gap-4 p-4 transition-colors hover:border-secondary-400 hover:bg-surface-raised focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-secondary-500"
               >
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-theme bg-primary-500/10 text-fg-brand">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary-500/15 to-primary-300/10 text-fg-brand">
                   <Icon className="h-5 w-5" aria-hidden />
                 </span>
                 <span className="min-w-0 flex-1">

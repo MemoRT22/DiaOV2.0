@@ -20,7 +20,7 @@ export default function AreaLayout({ label, tabs, hideAt }: Props) {
   return (
     <div className="space-y-6">
       {showTabs && (
-        <nav aria-label={label} className="-mx-1 flex gap-1 overflow-x-auto border-b border-line px-1">
+        <nav aria-label={label} className="flex max-w-full gap-1 self-start overflow-x-auto rounded-2xl border border-line/80 bg-surface/70 p-1.5 shadow-sm backdrop-blur [width:fit-content]">
           {visible.map((tab) => {
             const active = tab.isActive(pathname);
             return (
@@ -28,8 +28,10 @@ export default function AreaLayout({ label, tabs, hideAt }: Props) {
                 key={tab.to}
                 to={tab.to}
                 aria-current={active ? 'page' : undefined}
-                className={`-mb-px whitespace-nowrap border-b-2 px-4 py-3 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-secondary-500 ${
-                  active ? 'border-primary-500 text-ink' : 'border-transparent text-ink-muted hover:text-ink'
+                className={`whitespace-nowrap rounded-xl px-4 py-2 text-sm font-semibold transition-all duration-200 focus-visible:outline-none ${
+                  active
+                    ? 'bg-ink text-white shadow-[0_8px_20px_-10px_rgba(28,25,23,0.7)]'
+                    : 'text-ink-muted hover:bg-surface-raised hover:text-ink'
                 }`}
               >
                 {tab.label}

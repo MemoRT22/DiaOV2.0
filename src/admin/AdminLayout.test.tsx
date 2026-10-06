@@ -77,7 +77,7 @@ test('Operación groups the live center, check-in and the final raffle', () => {
   expect(within(tabs).getByRole('link', { name: 'Check-in' })).toHaveAttribute('aria-current', 'page');
   expect(screen.getByText('Check-in abierto')).toBeInTheDocument();
   expect(screen.getByRole('navigation', { name: 'Navegación de Coordinación' })
-    .querySelector('a[href="/coordinacion/operacion-en-vivo"]')).toHaveClass('bg-primary-500/10');
+    .querySelector('a[href="/coordinacion/operacion-en-vivo"]')).toHaveAttribute('data-active', 'true');
 });
 
 test('Configuración home lists every section and sections keep a tab bar', () => {

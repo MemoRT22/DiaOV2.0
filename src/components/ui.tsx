@@ -12,7 +12,7 @@ const VARIANTS: Record<ButtonVariant, string> = {
 };
 
 export function buttonClasses(variant: ButtonVariant = 'primary', className = '') {
-  return `inline-flex min-h-12 items-center justify-center gap-2 rounded-full px-6 text-sm font-semibold transition-all duration-200 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 ${VARIANTS[variant]} ${className}`;
+  return `btn btn-${variant} inline-flex min-h-12 items-center justify-center gap-2 rounded-full px-6 text-sm font-semibold transition-all duration-200 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 ${VARIANTS[variant]} ${className}`;
 }
 
 // The virtual keyboard opens after focus; wait for the viewport to shrink before centering the field.
@@ -57,7 +57,7 @@ export function Field({
           keepAboveKeyboard(e.currentTarget);
           onFocus?.(e);
         }}
-        className="h-12 w-full rounded-theme border border-line bg-surface-raised px-4 text-base text-ink placeholder:text-ink-muted/70 transition-colors focus:border-secondary-400 focus:outline-none focus:ring-2 focus:ring-secondary-500/30 disabled:opacity-60"
+        className="field-input h-12 w-full rounded-theme border border-line bg-surface-raised px-4 text-base text-ink placeholder:text-ink-muted/70 transition-colors focus:border-secondary-400 focus:outline-none focus:ring-2 focus:ring-secondary-500/30 disabled:opacity-60"
       />
       {hint && <span className="mt-1 block text-xs text-ink-muted">{hint}</span>}
     </label>
@@ -76,7 +76,7 @@ export function SelectField({
       <span className="mb-2 block text-sm font-semibold text-ink">{label}</span>
       <select
         {...rest}
-        className="h-12 w-full rounded-theme border border-line bg-surface-raised px-4 text-base text-ink transition-colors focus:border-secondary-400 focus:outline-none focus:ring-2 focus:ring-secondary-500/30 disabled:opacity-60"
+        className="field-input h-12 w-full rounded-theme border border-line bg-surface-raised px-4 text-base text-ink transition-colors focus:border-secondary-400 focus:outline-none focus:ring-2 focus:ring-secondary-500/30 disabled:opacity-60"
       >
         {children}
       </select>
@@ -95,7 +95,7 @@ const TONES: Record<Tone, string> = {
 
 export function Alert({ tone = 'info', children, className = '' }: { tone?: Tone; children: ReactNode; className?: string }) {
   return (
-    <div role={tone === 'error' ? 'alert' : 'status'} className={`rounded-theme border px-4 py-3 text-sm ${TONES[tone]} ${className}`}>
+    <div role={tone === 'error' ? 'alert' : 'status'} className={`alert alert-${tone} rounded-theme border px-4 py-3 text-sm ${TONES[tone]} ${className}`}>
       {children}
     </div>
   );
@@ -109,7 +109,7 @@ export function Badge({ tone = 'info', children }: { tone?: Tone | 'neutral'; ch
     error: 'bg-error-500/15 text-fg-error',
     neutral: 'bg-neutral-500/15 text-ink-muted',
   };
-  return <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${styles[tone]}`}>{children}</span>;
+  return <span className={`badge badge-${tone} inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${styles[tone]}`}>{children}</span>;
 }
 
 export function Spinner({ label = 'Cargando' }: { label?: string }) {
@@ -152,12 +152,12 @@ export function Modal({ title, onClose, children }: { title: string; onClose: ()
   }, [onClose]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-4 backdrop-blur-sm sm:items-center" onClick={onClose}>
+    <div className="modal-backdrop fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-4 backdrop-blur-sm sm:items-center" onClick={onClose}>
       <div
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className="card max-h-[90dvh] w-full max-w-lg animate-fade-up overflow-y-auto bg-surface-raised p-6"
+        className="card modal-panel max-h-[90dvh] w-full max-w-lg animate-fade-up overflow-y-auto bg-surface-raised p-6"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-start justify-between gap-4">

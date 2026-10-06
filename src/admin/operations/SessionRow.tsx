@@ -1,3 +1,4 @@
+import { ArrowUpRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { formatTime } from '../../lib/catalog';
 import {
@@ -5,7 +6,7 @@ import {
 } from '../../lib/operationsHelpers';
 
 export const GRID =
-  'lg:grid lg:grid-cols-[5.75rem_minmax(10rem,1fr)_7.5rem_7.5rem_3rem_10.5rem_6.5rem] lg:items-center lg:gap-x-3';
+  'lg:grid lg:grid-cols-[5.75rem_minmax(10rem,1fr)_7.5rem_7.5rem_3rem_10.5rem_8.25rem] lg:items-center lg:gap-x-3';
 
 export function TableHeader() {
   return (
@@ -22,12 +23,16 @@ export function TableHeader() {
 }
 
 const STATE_TONE: Record<Row['status'], string> = {
-  proxima: 'text-fg-info',
-  en_curso: 'text-fg-success',
-  terminada: 'text-ink-muted',
-  cancelada: 'text-fg-error',
-  oculta: 'text-ink-muted',
+  proxima: 'bg-secondary-500/10 text-fg-info',
+  en_curso: 'bg-emerald-500/10 text-fg-success',
+  terminada: 'bg-neutral-500/10 text-ink-muted',
+  cancelada: 'bg-error-500/10 text-fg-error',
+  oculta: 'bg-neutral-500/10 text-ink-muted',
 };
+
+/** Bar colour follows demand: calm while there is room, warmer as the session fills. */
+const barTone = (pct: number) =>
+  pct >= 100 ? 'from-secondary-400 to-secondary-600' : pct >= 85 ? 'from-amber-400 to-amber-500' : 'from-primary-300 to-primary-500';
 
 /** One session = one compact row. No per-session metric boxes, no stacked badges. */
 export default function SessionRow({ row, now }: { row: Row; now: number }) {
@@ -43,9 +48,10 @@ export default function SessionRow({ row, now }: { row: Row; now: number }) {
   return (
     <div
       data-status={status}
-      className={`flex flex-col gap-1 border-b border-line px-4 py-3 last:border-b-0 hover:bg-surface-raised lg:py-2.5 ${GRID}`}
+      data-attention={attention.length > 0}
+      className={`admin-session-row flex flex-col gap-1 border-b border-line/70 px-5 py-3.5 last:border-b-0 lg:py-3 ${GRID}`}
     >
-      <span className="text-sm font-semibold tabular-nums">
+      <span className="text-[0.95rem] font-bold tabular-nums tracking-tight">
         {formatTime(session.starts_at)}–{formatTime(session.ends_at)}
       </span>
 
@@ -63,8 +69,8 @@ export default function SessionRow({ row, now }: { row: Row; now: number }) {
         <span className="ml-1.5 text-xs text-ink-muted">
           {demand === 'lleno' ? <span className="font-semibold text-fg-info">Lleno</span> : demand === 'pocos' ? `Quedan ${session.remaining}` : `${pct}%`}
         </span>
-        <div className="mt-1 hidden h-1 overflow-hidden rounded-full bg-surface-sunken lg:block" aria-hidden>
-          <div className="h-full rounded-full bg-secondary-500" style={{ width: `${pct}%` }} />
+        <div className="mt-1.5 hidden h-1.5 overflow-hidden rounded-full bg-neutral-500/15 lg:block" aria-hidden>
+          <div className={`h-full rounded-full bg-gradient-to-r ${barTone(pct)}`} style={{ width: `${pct}%` }} />
         </div>
       </div>
 
@@ -74,7 +80,7 @@ export default function SessionRow({ row, now }: { row: Row; now: number }) {
       </span>
 
       <div className="text-sm">
-        <p className={`text-xs font-bold uppercase tracking-wide ${STATE_TONE[status]}`}>
+        <p className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[0.7rem] font-bold uppercase tracking-wide ${STATE_TONE[status]}`}>
           {TEMPORAL_LABELS[status]}
           <span className="font-semibold normal-case tracking-normal text-ink-muted">{countdown}</span>
         </p>
@@ -88,9 +94,10 @@ export default function SessionRow({ row, now }: { row: Row; now: number }) {
           <Link
             to={checkinHref(session.session_id)}
             aria-label={`Abrir check-in de ${session.title}`}
-            className="inline-flex min-h-8 items-center whitespace-nowrap rounded-full border border-line bg-surface px-3 text-xs font-semibold text-ink hover:border-secondary-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-secondary-500"
+            className="group inline-flex min-h-9 items-center gap-1 whitespace-nowrap rounded-full border border-line bg-surface px-3.5 text-xs font-semibold text-ink shadow-sm transition-all hover:border-primary-400 hover:bg-primary-500/5 hover:text-primary-700 focus-visible:outline-none"
           >
             Abrir check-in
+            <ArrowUpRight className="h-3.5 w-3.5 opacity-60 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" aria-hidden />
           </Link>
         )}
       </div>
