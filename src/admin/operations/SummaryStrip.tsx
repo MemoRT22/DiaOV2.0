@@ -1,7 +1,7 @@
 import type { EventPhase } from '../../lib/operationsHelpers';
 import type { OperationsSummary } from '../../lib/operationsApi';
 
-const GLOWS = ['rgb(47 95 227 / 0.16)', 'rgb(255 89 0 / 0.16)', 'rgb(245 158 11 / 0.18)', 'rgb(124 58 237 / 0.14)', 'rgb(16 185 129 / 0.16)'];
+const GLOWS = ['rgb(120 113 108 / 0.16)', 'rgb(242 92 5 / 0.14)', 'rgb(217 119 6 / 0.16)', 'rgb(91 107 134 / 0.16)', 'rgb(77 124 104 / 0.16)'];
 
 type Item = { label: string; value: string | number; hint?: string; tone?: 'warning' };
 

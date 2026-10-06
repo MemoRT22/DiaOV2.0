@@ -11,7 +11,7 @@ import { COORD_NAV, isNavActive, SORTEO_NAV, STAFF_NAV, type AdminNavItem } from
 
 const navClass = (active: boolean) =>
   `admin-nav-link group flex min-h-12 items-center gap-3 rounded-xl px-2.5 py-2 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400/70 ${
-    active ? 'text-white' : 'text-white/65'
+    active ? 'text-ink' : 'text-ink-muted'
   }`;
 
 const initials = (name: string) =>
@@ -49,32 +49,32 @@ export default function AdminLayout() {
   return (
     <div className="min-h-dvh lg:flex">
       <aside
-        className={`admin-sidebar fixed inset-y-0 left-0 z-40 flex w-72 flex-col overflow-y-auto border-r border-white/5 p-5 shadow-2xl transition-transform duration-300 lg:sticky lg:top-0 lg:h-dvh lg:translate-x-0 lg:shadow-none ${
+        className={`admin-sidebar fixed inset-y-0 left-0 z-40 flex w-72 flex-col overflow-y-auto border-r border-line p-5 shadow-2xl transition-transform duration-300 lg:sticky lg:top-0 lg:h-dvh lg:translate-x-0 lg:shadow-none ${
           open ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
         <div className="mb-6 flex items-start justify-between">
           <div className="flex items-center gap-3">
-            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white p-1.5 shadow-[0_8px_24px_-8px_rgba(255,89,0,0.8)] ring-1 ring-white/30">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white p-1.5 shadow-[0_8px_20px_-10px_rgba(28,25,23,0.35)] ring-1 ring-line">
               <img src={ADMIN_LOGO} alt="" className="h-full w-full object-contain" />
             </span>
             <div className="min-w-0">
-              <p className="truncate font-display text-[0.95rem] font-extrabold leading-tight text-white">{edition?.name ?? ADMIN_PRODUCT_NAME}</p>
-              <p className="text-xs text-white/55">Panel del personal</p>
+              <p className="truncate font-display text-[0.95rem] font-extrabold leading-tight text-ink">{edition?.name ?? ADMIN_PRODUCT_NAME}</p>
+              <p className="text-xs text-ink-muted">Panel del personal</p>
             </div>
           </div>
-          <button className="rounded-full p-1 text-white/60 hover:text-white lg:hidden" onClick={close} aria-label="Cerrar menú">
+          <button className="rounded-full p-1 text-ink-muted hover:text-ink lg:hidden" onClick={close} aria-label="Cerrar menú">
             <X className="h-5 w-5" />
           </button>
         </div>
         <div className="mb-7">
-          <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.06] px-3 py-1.5 text-xs font-semibold text-white/90 backdrop-blur">
-            <span aria-hidden className={`admin-pulse h-2 w-2 rounded-full ${real ? 'bg-emerald-400 text-emerald-400' : 'bg-amber-400 text-amber-400'}`} />
+          <span className="inline-flex items-center gap-2 rounded-full border border-line bg-surface-raised px-3 py-1.5 text-xs font-semibold text-ink">
+            <span aria-hidden className={`admin-pulse h-2 w-2 rounded-full ${real ? 'bg-emerald-500 text-emerald-500' : 'bg-amber-500 text-amber-500'}`} />
             <span>{real ? 'Operación real' : 'Preparación'}</span>
           </span>
         </div>
 
-        <p aria-hidden className="mb-2 px-2.5 text-[0.65rem] font-bold uppercase tracking-[0.2em] text-white/35">Menú</p>
+        <p aria-hidden className="mb-2 px-2.5 text-[0.65rem] font-bold uppercase tracking-[0.2em] text-ink-muted/70">Menú</p>
         <nav aria-label={navLabel} className="flex-1 space-y-1.5">
           {items.map((item) => {
             const { to, label, icon: Icon, end } = item;
@@ -84,8 +84,8 @@ export default function AdminLayout() {
                 <span
                   className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors ${
                     active
-                      ? 'bg-gradient-to-br from-primary-400 to-primary-600 text-white shadow-[0_6px_16px_-6px_rgba(255,89,0,0.9)]'
-                      : 'bg-white/[0.06] text-white/70 group-hover:bg-white/10 group-hover:text-white'
+                      ? 'bg-gradient-to-br from-primary-400 to-primary-600 text-white shadow-[0_6px_14px_-6px_rgba(242,92,5,0.75)]'
+                      : 'bg-neutral-500/10 text-ink-muted group-hover:bg-neutral-500/15 group-hover:text-ink'
                   }`}
                 >
                   <Icon className="h-[1.15rem] w-[1.15rem]" aria-hidden />
@@ -96,7 +96,7 @@ export default function AdminLayout() {
           })}
         </nav>
 
-        <div className="mt-6 space-y-1.5 border-t border-white/10 pt-4">
+        <div className="mt-6 space-y-1.5 border-t border-line pt-4">
           <NavLink
             to="/coordinacion/cuenta"
             onClick={close}
@@ -104,24 +104,24 @@ export default function AdminLayout() {
             className={({ isActive }) => navClass(isActive)}
             aria-label={`Mi cuenta · ${staff.full_name}`}
           >
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-secondary-400 to-accent-500 text-xs font-extrabold text-white shadow-lg ring-2 ring-white/15">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-neutral-600 to-neutral-900 text-xs font-extrabold text-white shadow-md ring-2 ring-white">
               {initials(staff.full_name)}
             </span>
             <span className="min-w-0">
-              <span className="block truncate text-white">{staff.full_name}</span>
-              <span className="block truncate text-xs font-normal text-white/50">{roleLabel}</span>
+              <span className="block truncate text-ink">{staff.full_name}</span>
+              <span className="block truncate text-xs font-normal text-ink-muted">{roleLabel}</span>
             </span>
           </NavLink>
           <button
             onClick={signOut}
-            className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-white/55 transition-colors hover:bg-white/[0.06] hover:text-white"
+            className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-ink-muted transition-colors hover:bg-neutral-500/10 hover:text-ink"
           >
             <LogOut className="h-4 w-4" aria-hidden />
             Cerrar sesión
           </button>
         </div>
       </aside>
-      {open && <div className="fixed inset-0 z-30 bg-slate-950/60 backdrop-blur-sm lg:hidden" onClick={close} />}
+      {open && <div className="fixed inset-0 z-30 bg-stone-950/40 backdrop-blur-sm lg:hidden" onClick={close} />}
 
       <div className="min-w-0 flex-1">
         <header className="sticky top-0 z-20 flex h-14 items-center gap-3 border-b border-line/70 bg-surface/80 px-4 backdrop-blur-xl lg:hidden">

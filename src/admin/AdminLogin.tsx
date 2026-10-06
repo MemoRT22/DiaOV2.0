@@ -31,24 +31,24 @@ export default function AdminLogin() {
     <div className="grid min-h-dvh lg:grid-cols-[1.1fr_1fr]">
       <aside className="admin-hero hidden flex-col justify-between p-12 lg:flex" aria-hidden>
         <div className="relative z-10 flex items-center gap-3">
-          <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white p-2 shadow-[0_10px_30px_-8px_rgba(255,89,0,0.85)]">
+          <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white p-2 shadow-[0_10px_26px_-10px_rgba(28,25,23,0.4)] ring-1 ring-line">
             <img src={ADMIN_LOGO} alt="" className="h-full w-full object-contain" />
           </span>
-          <span className="font-display text-lg font-extrabold tracking-tight">{ADMIN_PRODUCT_NAME}</span>
+          <span className="font-display text-lg font-extrabold tracking-tight text-ink">{ADMIN_PRODUCT_NAME}</span>
         </div>
         <div className="relative z-10 max-w-lg">
-          <p className="mb-4 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-semibold text-white/85 backdrop-blur">
-            <span className="admin-pulse h-2 w-2 rounded-full bg-emerald-400 text-emerald-400" />
+          <p className="mb-4 inline-flex items-center gap-2 rounded-full border border-line bg-white/80 px-3 py-1 text-xs font-semibold text-ink-muted shadow-sm backdrop-blur">
+            <span className="admin-pulse h-2 w-2 rounded-full bg-emerald-500 text-emerald-500" />
             Universidad Anáhuac Cancún
           </p>
-          <h2 className="font-display text-5xl font-extrabold leading-[1.05] tracking-tight">
+          <h2 className="font-display text-5xl font-extrabold leading-[1.05] tracking-tight text-ink">
             Orienta, opera y <span className="gradient-text">celebra</span> cada decisión vocacional.
           </h2>
-          <p className="mt-5 text-base text-white/70">
+          <p className="mt-5 text-base text-ink-muted">
             Todo el Día de Orientación Vocacional en un solo lugar: participantes, talleres, check-in y sorteo.
           </p>
         </div>
-        <p className="relative z-10 text-xs text-white/45">Panel del personal</p>
+        <p className="relative z-10 text-xs text-ink-muted">Panel del personal</p>
       </aside>
 
       <div className="flex items-center justify-center px-5 py-10">

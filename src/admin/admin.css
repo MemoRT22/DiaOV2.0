@@ -4,10 +4,10 @@
    Pure presentation: no markup contract or behaviour depends on it.
    ========================================================================================================== */
 html[data-surface='admin'] {
-  --admin-shadow-xs: 0 1px 2px rgb(15 23 42 / 0.05);
-  --admin-shadow-sm: 0 1px 2px rgb(15 23 42 / 0.05), 0 6px 18px -10px rgb(15 23 42 / 0.16);
-  --admin-shadow-md: 0 2px 4px rgb(15 23 42 / 0.04), 0 18px 38px -18px rgb(15 23 42 / 0.28);
-  --admin-shadow-lg: 0 30px 70px -24px rgb(15 23 42 / 0.45);
+  --admin-shadow-xs: 0 1px 2px rgb(28 25 23 / 0.05);
+  --admin-shadow-sm: 0 1px 2px rgb(28 25 23 / 0.05), 0 6px 18px -10px rgb(28 25 23 / 0.16);
+  --admin-shadow-md: 0 2px 4px rgb(28 25 23 / 0.04), 0 18px 38px -18px rgb(28 25 23 / 0.28);
+  --admin-shadow-lg: 0 30px 70px -24px rgb(28 25 23 / 0.45);
   --admin-ring: 0 0 0 4px rgb(var(--c-primary-500) / 0.16);
   --admin-ease: cubic-bezier(0.22, 1, 0.36, 1);
   scroll-behavior: smooth;
@@ -16,9 +16,8 @@ html[data-surface='admin'] {
 html[data-surface='admin'] body {
   background-color: rgb(var(--surface-sunken));
   background-image:
-    radial-gradient(1100px 620px at 108% -12%, rgb(var(--c-primary-500) / 0.1), transparent 62%),
-    radial-gradient(900px 560px at -12% 112%, rgb(var(--c-secondary-500) / 0.09), transparent 62%),
-    radial-gradient(700px 420px at 48% -18%, rgb(var(--c-accent-500) / 0.05), transparent 60%);
+    radial-gradient(1000px 560px at 108% -14%, rgb(var(--c-primary-500) / 0.06), transparent 62%),
+    radial-gradient(800px 520px at -10% 112%, rgb(var(--c-neutral-500) / 0.06), transparent 62%);
   background-attachment: fixed;
 }
 html[data-surface='admin'] ::selection {
@@ -146,7 +145,7 @@ html[data-surface='admin'] .field-input:focus {
 html[data-surface='admin'] select.field-input {
   appearance: none;
   padding-right: 2.5rem;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2352607A' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%235C564F' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 0.9rem center;
 }
@@ -178,7 +177,7 @@ html[data-surface='admin'] .alert-error { border-left-color: rgb(var(--c-error-5
 
 /* Dialogs */
 html[data-surface='admin'] .modal-backdrop {
-  background: rgb(8 12 28 / 0.55);
+  background: rgb(28 25 23 / 0.45);
   -webkit-backdrop-filter: blur(10px) saturate(1.2);
   backdrop-filter: blur(10px) saturate(1.2);
 }
@@ -205,37 +204,34 @@ html[data-surface='admin'] ::-webkit-scrollbar-thumb:hover {
   background-clip: content-box;
 }
 
-/* Sidebar: deep navy with a warm glow */
+/* Sidebar: warm paper white, one orange accent */
 .admin-sidebar {
   background:
-    radial-gradient(420px 260px at -10% -6%, rgb(var(--c-primary-500) / 0.28), transparent 70%),
-    radial-gradient(360px 300px at 120% 105%, rgb(var(--c-secondary-500) / 0.22), transparent 70%),
-    linear-gradient(180deg, #0b1124 0%, #0d1530 55%, #0a0f22 100%);
-  color: #e8ecf8;
+    radial-gradient(360px 220px at -10% -8%, rgb(var(--c-primary-500) / 0.07), transparent 70%),
+    linear-gradient(180deg, #ffffff 0%, #fbfaf8 100%);
+  color: rgb(var(--ink));
 }
 .admin-nav-link {
   position: relative;
   transition: background-color 0.2s, color 0.2s, transform 0.25s var(--admin-ease, ease);
 }
 .admin-nav-link[data-active='true'] {
-  background: linear-gradient(90deg, rgb(var(--c-primary-500) / 0.28), rgb(var(--c-primary-500) / 0.06));
-  color: #ffffff;
-  box-shadow: inset 0 0 0 1px rgb(var(--c-primary-400) / 0.28);
+  background: linear-gradient(90deg, rgb(var(--c-primary-500) / 0.13), rgb(var(--c-primary-500) / 0.03));
+  box-shadow: inset 0 0 0 1px rgb(var(--c-primary-500) / 0.22);
 }
 .admin-nav-link[data-active='true']::before {
   content: '';
   position: absolute;
-  left: -1rem;
+  left: -1.25rem;
   top: 22%;
   bottom: 22%;
   width: 4px;
   border-radius: 0 4px 4px 0;
   background: linear-gradient(180deg, rgb(var(--c-primary-300)), rgb(var(--c-primary-500)));
-  box-shadow: 0 0 14px rgb(var(--c-primary-500) / 0.9);
 }
 .admin-nav-link:not([data-active='true']):hover {
-  background: rgb(255 255 255 / 0.06);
-  color: #ffffff;
+  background: rgb(var(--c-neutral-500) / 0.08);
+  color: rgb(var(--ink));
   transform: translateX(2px);
 }
 
@@ -260,22 +256,27 @@ html[data-surface='admin'] ::-webkit-scrollbar-thumb:hover {
 .admin-hero {
   position: relative;
   overflow: hidden;
+  border: 1px solid rgb(var(--line));
   background:
-    radial-gradient(520px 300px at 92% -20%, rgb(var(--c-primary-500) / 0.55), transparent 70%),
-    radial-gradient(460px 320px at 8% 130%, rgb(var(--c-secondary-500) / 0.5), transparent 70%),
-    radial-gradient(300px 200px at 55% 120%, rgb(var(--c-accent-500) / 0.35), transparent 70%),
-    linear-gradient(135deg, #0b1124, #131c3f);
-  color: #fff;
+    radial-gradient(520px 260px at 96% 0%, rgb(var(--c-primary-500) / 0.14), transparent 70%),
+    linear-gradient(120deg, #ffffff 0%, #fcf8f3 55%, #f8efe5 100%);
+  box-shadow: inset 0 1px 0 #fff, 0 1px 2px rgb(28 25 23 / 0.04), 0 24px 48px -30px rgb(120 80 40 / 0.35);
+  color: rgb(var(--ink));
 }
+/* Concentric hairline rings, like an architect's plan: quiet decoration, no theme motifs */
 .admin-hero::after {
   content: '';
   position: absolute;
-  inset: 0;
+  right: -7rem;
+  top: 50%;
+  width: 26rem;
+  height: 26rem;
+  transform: translateY(-50%);
+  border-radius: 999px;
   pointer-events: none;
-  background-image: radial-gradient(rgb(255 255 255 / 0.12) 1px, transparent 1.2px);
-  background-size: 22px 22px;
-  mask-image: linear-gradient(120deg, transparent 20%, #000 90%);
-  -webkit-mask-image: linear-gradient(120deg, transparent 20%, #000 90%);
+  background: repeating-radial-gradient(circle at center, transparent 0 1.6rem, rgb(var(--c-primary-500) / 0.16) calc(1.6rem + 1px) calc(1.6rem + 2px));
+  mask-image: radial-gradient(circle, #000 25%, transparent 72%);
+  -webkit-mask-image: radial-gradient(circle, #000 25%, transparent 72%);
 }
 .admin-stat {
   position: relative;
@@ -293,7 +294,7 @@ html[data-surface='admin'] ::-webkit-scrollbar-thumb:hover {
   pointer-events: none;
 }
 .gradient-text {
-  background: linear-gradient(100deg, rgb(var(--c-primary-400)), rgb(var(--c-primary-300)) 45%, #8fb0ff);
+  background: linear-gradient(100deg, rgb(var(--c-primary-600)), rgb(var(--c-primary-400)) 60%, #f0a24b);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;

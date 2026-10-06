@@ -30,7 +30,7 @@ export default function AreaLayout({ label, tabs, hideAt }: Props) {
                 aria-current={active ? 'page' : undefined}
                 className={`whitespace-nowrap rounded-xl px-4 py-2 text-sm font-semibold transition-all duration-200 focus-visible:outline-none ${
                   active
-                    ? 'bg-ink text-white shadow-[0_8px_20px_-10px_rgba(15,23,42,0.8)]'
+                    ? 'bg-ink text-white shadow-[0_8px_20px_-10px_rgba(28,25,23,0.7)]'
                     : 'text-ink-muted hover:bg-surface-raised hover:text-ink'
                 }`}
               >

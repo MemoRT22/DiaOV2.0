@@ -56,26 +56,26 @@ export default function Overview() {
   ];
   const quickActions = [
     { to: '/coordinacion/participantes', title: 'Gestionar participantes', description: 'Busca participantes, corrige datos y restablece contraseñas.', icon: Users,
-      tint: 'from-primary-400 to-primary-600 shadow-[0_10px_24px_-10px_rgba(255,89,0,0.9)]' },
+      tint: 'from-primary-400 to-primary-600 shadow-[0_10px_22px_-10px_rgba(242,92,5,0.8)]' },
     { to: '/coordinacion/talleres', title: 'Gestionar talleres', description: 'Revisa propuestas y publica actividades.', icon: ClipboardList,
-      tint: 'from-secondary-400 to-secondary-600 shadow-[0_10px_24px_-10px_rgba(47,95,227,0.9)]' },
+      tint: 'from-neutral-600 to-neutral-800 shadow-[0_10px_22px_-10px_rgba(28,25,23,0.6)]' },
     { to: '/coordinacion/operacion-en-vivo', title: 'Abrir operación del evento',
       description: 'Consulta sesiones, aforo y asistencias.', icon: MonitorDot,
-      tint: 'from-accent-400 to-accent-600 shadow-[0_10px_24px_-10px_rgba(13,148,136,0.9)]' },
+      tint: 'from-accent-400 to-accent-600 shadow-[0_10px_22px_-10px_rgba(77,124,104,0.7)]' },
   ];
   const indicators = [
-    { label: 'Participantes', value: summary.participants_total, icon: Users, chip: 'bg-secondary-500/10 text-secondary-600', glow: 'rgb(47 95 227 / 0.16)' },
-    { label: 'Talleres', value: summary.activities, icon: ClipboardList, chip: 'bg-primary-500/10 text-primary-700', glow: 'rgb(255 89 0 / 0.16)' },
-    { label: 'Sesiones', value: summary.sessions, icon: CalendarClock, chip: 'bg-violet-500/10 text-violet-600', glow: 'rgb(124 58 237 / 0.14)' },
-    { label: 'Asistencias', value: summary.attendances, icon: ClipboardCheck, chip: 'bg-emerald-500/10 text-emerald-600', glow: 'rgb(16 185 129 / 0.16)' },
+    { label: 'Participantes', value: summary.participants_total, icon: Users, chip: 'bg-neutral-500/10 text-neutral-700', glow: 'rgb(120 113 108 / 0.16)' },
+    { label: 'Talleres', value: summary.activities, icon: ClipboardList, chip: 'bg-primary-500/10 text-primary-700', glow: 'rgb(242 92 5 / 0.15)' },
+    { label: 'Sesiones', value: summary.sessions, icon: CalendarClock, chip: 'bg-secondary-500/10 text-secondary-600', glow: 'rgb(91 107 134 / 0.16)' },
+    { label: 'Asistencias', value: summary.attendances, icon: ClipboardCheck, chip: 'bg-accent-500/10 text-accent-700', glow: 'rgb(77 124 104 / 0.16)' },
   ];
 
   return <div className="space-y-10">
-    <header className="admin-hero rounded-[1.75rem] px-6 py-8 shadow-[0_30px_60px_-30px_rgba(11,17,36,0.8)] sm:px-10 sm:py-11">
+    <header className="admin-hero rounded-[1.75rem] px-6 py-8 sm:px-10 sm:py-11">
       <div className="relative z-10 max-w-2xl">
-        <p className="text-xs font-bold uppercase tracking-[0.18em] text-primary-300">Panel de Coordinación</p>
+        <p className="text-xs font-bold uppercase tracking-[0.18em] text-fg-brand">Panel de Coordinación</p>
         <h1 className="mt-3 font-display text-4xl font-extrabold sm:text-5xl">Inicio</h1>
-        <p className="mt-3 text-base text-white/70">Lo que necesita atención para preparar y operar el Día OV.</p>
+        <p className="mt-3 text-base text-ink-muted">Lo que necesita atención para preparar y operar el Día OV.</p>
       </div>
     </header>
 
@@ -138,7 +138,7 @@ export default function Overview() {
     </section>
 
     <section aria-label="Estado del evento" className="card overflow-hidden p-0">
-      <div className="h-1.5 bg-gradient-to-r from-primary-500 via-primary-300 to-secondary-500" aria-hidden />
+      <div className="h-1.5 bg-gradient-to-r from-primary-500 via-primary-300 to-neutral-300" aria-hidden />
       <div className="p-5 sm:p-7">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div><p className="text-xs font-semibold uppercase tracking-wider text-ink-muted">Edición actual</p>
