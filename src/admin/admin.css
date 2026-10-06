@@ -1,0 +1,310 @@
+/* ==========================================================================================================
+   Back office visual system. Everything is scoped to `data-surface="admin"` (set by paintAdminSurface) or to
+   `.admin-*` classes only used in the back office, so the configurable public theme is never affected.
+   Pure presentation: no markup contract or behaviour depends on it.
+   ========================================================================================================== */
+html[data-surface='admin'] {
+  --admin-shadow-xs: 0 1px 2px rgb(15 23 42 / 0.05);
+  --admin-shadow-sm: 0 1px 2px rgb(15 23 42 / 0.05), 0 6px 18px -10px rgb(15 23 42 / 0.16);
+  --admin-shadow-md: 0 2px 4px rgb(15 23 42 / 0.04), 0 18px 38px -18px rgb(15 23 42 / 0.28);
+  --admin-shadow-lg: 0 30px 70px -24px rgb(15 23 42 / 0.45);
+  --admin-ring: 0 0 0 4px rgb(var(--c-primary-500) / 0.16);
+  --admin-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  scroll-behavior: smooth;
+}
+
+html[data-surface='admin'] body {
+  background-color: rgb(var(--surface-sunken));
+  background-image:
+    radial-gradient(1100px 620px at 108% -12%, rgb(var(--c-primary-500) / 0.1), transparent 62%),
+    radial-gradient(900px 560px at -12% 112%, rgb(var(--c-secondary-500) / 0.09), transparent 62%),
+    radial-gradient(700px 420px at 48% -18%, rgb(var(--c-accent-500) / 0.05), transparent 60%);
+  background-attachment: fixed;
+}
+html[data-surface='admin'] ::selection {
+  background: rgb(var(--c-primary-500) / 0.22);
+}
+html[data-surface='admin'] :focus-visible {
+  outline: none;
+  box-shadow: var(--admin-ring);
+  border-radius: 10px;
+}
+
+/* Typography */
+html[data-surface='admin'] h1 {
+  letter-spacing: -0.025em;
+  font-weight: 800;
+}
+html[data-surface='admin'] main :not(.admin-hero) > h1 {
+  font-size: clamp(1.75rem, 1.2rem + 1.6vw, 2.35rem);
+  line-height: 1.1;
+}
+html[data-surface='admin'] h2,
+html[data-surface='admin'] h3 {
+  letter-spacing: -0.015em;
+}
+html[data-surface='admin'] p.text-xs.font-bold.uppercase.text-fg-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+html[data-surface='admin'] p.text-xs.font-bold.uppercase.text-fg-brand::before {
+  content: '';
+  width: 1.4rem;
+  height: 3px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgb(var(--c-primary-500)), rgb(var(--c-primary-300)));
+}
+
+/* Surfaces */
+html[data-surface='admin'] .card {
+  border-radius: calc(var(--radius) + 6px);
+  border-color: rgb(var(--line) / 0.9);
+  background: rgb(var(--surface));
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.9), var(--admin-shadow-sm);
+  transition: transform 0.35s var(--admin-ease), box-shadow 0.35s var(--admin-ease), border-color 0.2s, background-color 0.2s;
+}
+html[data-surface='admin'] a.card:hover,
+html[data-surface='admin'] button.card:hover {
+  transform: translateY(-3px);
+  border-color: rgb(var(--c-primary-500) / 0.35);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.9), var(--admin-shadow-md);
+}
+
+/* Tables */
+html[data-surface='admin'] table thead th {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  color: rgb(var(--ink-muted));
+  background: linear-gradient(180deg, rgb(var(--surface-raised)), rgb(var(--surface)));
+  border-bottom: 1px solid rgb(var(--line));
+}
+html[data-surface='admin'] table tbody tr {
+  transition: background-color 0.15s;
+}
+html[data-surface='admin'] table tbody tr:hover {
+  background-color: rgb(var(--c-primary-500) / 0.035);
+}
+
+/* Buttons */
+html[data-surface='admin'] .btn {
+  min-height: 2.75rem;
+  border-radius: 12px;
+  padding-inline: 1.2rem;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  transition: transform 0.2s var(--admin-ease), box-shadow 0.25s var(--admin-ease), background-color 0.2s, border-color 0.2s, color 0.2s;
+}
+html[data-surface='admin'] .btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+html[data-surface='admin'] .btn:active:not(:disabled) {
+  transform: translateY(0) scale(0.985);
+}
+html[data-surface='admin'] .btn-primary {
+  background-image: linear-gradient(180deg, rgb(var(--c-primary-400)), rgb(var(--c-primary-500)) 55%, rgb(var(--c-primary-600)));
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.35), 0 8px 20px -8px rgb(var(--c-primary-600) / 0.75);
+}
+html[data-surface='admin'] .btn-primary:hover:not(:disabled) {
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.4), 0 14px 28px -10px rgb(var(--c-primary-600) / 0.85);
+  filter: saturate(1.08);
+}
+html[data-surface='admin'] .btn-secondary {
+  background: rgb(var(--surface));
+  border: 1px solid rgb(var(--line));
+  box-shadow: var(--admin-shadow-xs);
+}
+html[data-surface='admin'] .btn-secondary:hover:not(:disabled) {
+  border-color: rgb(var(--c-primary-500) / 0.45);
+  box-shadow: var(--admin-shadow-sm);
+}
+html[data-surface='admin'] .btn-ghost:hover:not(:disabled) {
+  background: rgb(var(--c-neutral-500) / 0.1);
+}
+html[data-surface='admin'] .btn-danger {
+  background-image: linear-gradient(180deg, rgb(var(--c-error-500)), rgb(var(--c-error-600)));
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.25), 0 8px 18px -8px rgb(var(--c-error-600) / 0.7);
+}
+
+/* Fields */
+html[data-surface='admin'] .field-input {
+  height: 2.9rem;
+  border-radius: 12px;
+  background: rgb(var(--surface));
+  border-color: rgb(var(--line));
+  box-shadow: var(--admin-shadow-xs);
+  transition: border-color 0.2s, box-shadow 0.25s var(--admin-ease), background-color 0.2s;
+}
+html[data-surface='admin'] .field-input:hover:not(:disabled) {
+  border-color: rgb(var(--c-neutral-400));
+}
+html[data-surface='admin'] .field-input:focus {
+  border-color: rgb(var(--c-primary-500));
+  box-shadow: var(--admin-ring);
+}
+html[data-surface='admin'] select.field-input {
+  appearance: none;
+  padding-right: 2.5rem;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2352607A' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.9rem center;
+}
+
+/* Badges and alerts */
+html[data-surface='admin'] .badge {
+  gap: 0.4rem;
+  padding: 0.25rem 0.7rem;
+  letter-spacing: 0.01em;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor 18%, transparent);
+}
+html[data-surface='admin'] .badge::before {
+  content: '';
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 999px;
+  background: currentColor;
+  flex: none;
+}
+html[data-surface='admin'] .alert {
+  border-radius: calc(var(--radius) + 2px);
+  border-left-width: 4px;
+  box-shadow: var(--admin-shadow-xs);
+}
+html[data-surface='admin'] .alert-info { border-left-color: rgb(var(--c-secondary-500)); }
+html[data-surface='admin'] .alert-success { border-left-color: rgb(var(--c-success-500)); }
+html[data-surface='admin'] .alert-warning { border-left-color: rgb(var(--c-warning-500)); }
+html[data-surface='admin'] .alert-error { border-left-color: rgb(var(--c-error-500)); }
+
+/* Dialogs */
+html[data-surface='admin'] .modal-backdrop {
+  background: rgb(8 12 28 / 0.55);
+  -webkit-backdrop-filter: blur(10px) saturate(1.2);
+  backdrop-filter: blur(10px) saturate(1.2);
+}
+html[data-surface='admin'] .modal-panel {
+  border-radius: 22px;
+  background: rgb(var(--surface));
+  box-shadow: var(--admin-shadow-lg);
+  border-color: rgb(var(--line) / 0.6);
+}
+
+/* Scrollbars */
+html[data-surface='admin'] ::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+html[data-surface='admin'] ::-webkit-scrollbar-thumb {
+  background: rgb(var(--c-neutral-400) / 0.45);
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+html[data-surface='admin'] ::-webkit-scrollbar-thumb:hover {
+  background: rgb(var(--c-neutral-500) / 0.7);
+  background-clip: content-box;
+}
+
+/* Sidebar: deep navy with a warm glow */
+.admin-sidebar {
+  background:
+    radial-gradient(420px 260px at -10% -6%, rgb(var(--c-primary-500) / 0.28), transparent 70%),
+    radial-gradient(360px 300px at 120% 105%, rgb(var(--c-secondary-500) / 0.22), transparent 70%),
+    linear-gradient(180deg, #0b1124 0%, #0d1530 55%, #0a0f22 100%);
+  color: #e8ecf8;
+}
+.admin-nav-link {
+  position: relative;
+  transition: background-color 0.2s, color 0.2s, transform 0.25s var(--admin-ease, ease);
+}
+.admin-nav-link[data-active='true'] {
+  background: linear-gradient(90deg, rgb(var(--c-primary-500) / 0.28), rgb(var(--c-primary-500) / 0.06));
+  color: #ffffff;
+  box-shadow: inset 0 0 0 1px rgb(var(--c-primary-400) / 0.28);
+}
+.admin-nav-link[data-active='true']::before {
+  content: '';
+  position: absolute;
+  left: -1rem;
+  top: 22%;
+  bottom: 22%;
+  width: 4px;
+  border-radius: 0 4px 4px 0;
+  background: linear-gradient(180deg, rgb(var(--c-primary-300)), rgb(var(--c-primary-500)));
+  box-shadow: 0 0 14px rgb(var(--c-primary-500) / 0.9);
+}
+.admin-nav-link:not([data-active='true']):hover {
+  background: rgb(255 255 255 / 0.06);
+  color: #ffffff;
+  transform: translateX(2px);
+}
+
+/* Live pulse for the edition mode pill */
+@keyframes admin-pulse {
+  0% { box-shadow: 0 0 0 0 currentColor; }
+  70% { box-shadow: 0 0 0 7px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+.admin-pulse {
+  animation: admin-pulse 2.2s ease-out infinite;
+}
+
+/* Entrance and hero ornaments */
+@keyframes admin-rise {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.admin-rise {
+  animation: admin-rise 0.6s var(--admin-ease, ease) both;
+}
+.admin-hero {
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(520px 300px at 92% -20%, rgb(var(--c-primary-500) / 0.55), transparent 70%),
+    radial-gradient(460px 320px at 8% 130%, rgb(var(--c-secondary-500) / 0.5), transparent 70%),
+    radial-gradient(300px 200px at 55% 120%, rgb(var(--c-accent-500) / 0.35), transparent 70%),
+    linear-gradient(135deg, #0b1124, #131c3f);
+  color: #fff;
+}
+.admin-hero::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: radial-gradient(rgb(255 255 255 / 0.12) 1px, transparent 1.2px);
+  background-size: 22px 22px;
+  mask-image: linear-gradient(120deg, transparent 20%, #000 90%);
+  -webkit-mask-image: linear-gradient(120deg, transparent 20%, #000 90%);
+}
+.admin-stat {
+  position: relative;
+  overflow: hidden;
+}
+.admin-stat::after {
+  content: '';
+  position: absolute;
+  right: -2rem;
+  top: -2rem;
+  width: 6.5rem;
+  height: 6.5rem;
+  border-radius: 999px;
+  background: radial-gradient(circle, var(--stat-glow, rgb(var(--c-primary-500) / 0.16)), transparent 70%);
+  pointer-events: none;
+}
+.gradient-text {
+  background: linear-gradient(100deg, rgb(var(--c-primary-400)), rgb(var(--c-primary-300)) 45%, #8fb0ff);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .admin-pulse,
+  .admin-rise {
+    animation: none !important;
+  }
+  html[data-surface='admin'] {
+    scroll-behavior: auto;
+  }
+}

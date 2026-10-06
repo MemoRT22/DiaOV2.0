@@ -64,7 +64,7 @@ export default function SessionRow({ row, now }: { row: Row; now: number }) {
           {demand === 'lleno' ? <span className="font-semibold text-fg-info">Lleno</span> : demand === 'pocos' ? `Quedan ${session.remaining}` : `${pct}%`}
         </span>
         <div className="mt-1 hidden h-1 overflow-hidden rounded-full bg-surface-sunken lg:block" aria-hidden>
-          <div className="h-full rounded-full bg-secondary-500" style={{ width: `${pct}%` }} />
+          <div className="h-full rounded-full bg-gradient-to-r from-secondary-400 to-secondary-600" style={{ width: `${pct}%` }} />
         </div>
       </div>
 

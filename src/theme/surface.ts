@@ -6,7 +6,7 @@ import type { ThemeConfig } from './types';
 export const THEME_CACHE_KEY = 'diaov.theme.v1';
 const BASE_TITLE = 'Día OV · Universidad Anáhuac Cancún';
 
-type SurfaceMeta = { background: string; title: string; dataBackground?: string };
+type SurfaceMeta = { background: string; title: string; dataBackground?: string; surface?: 'admin' };
 
 /**
  * The document hosts exactly one visual surface at a time: the public (student) theme or the fixed admin system.
@@ -22,6 +22,9 @@ function paint(vars: Record<string, string>, meta: SurfaceMeta) {
   root.style.colorScheme = contrastRatio(meta.background, '#000000') < 4 ? 'dark' : 'light';
   if (meta.dataBackground) root.dataset.background = meta.dataBackground;
   else delete root.dataset.background;
+  // `data-surface="admin"` activates the back-office look (index.css); the public theme never sets it.
+  if (meta.surface) root.dataset.surface = meta.surface;
+  else delete root.dataset.surface;
   document.querySelector('meta[name="theme-color"]')?.setAttribute('content', meta.background);
   document.title = meta.title;
 }
@@ -35,7 +38,7 @@ export function paintPublicTheme(theme: ThemeConfig) {
 }
 
 export function paintAdminSurface() {
-  paint(adminCssVars(), { background: ADMIN_COLORS.background, title: 'Día OV · Coordinación' });
+  paint(adminCssVars(), { background: ADMIN_COLORS.background, title: 'Día OV · Coordinación', surface: 'admin' });
 }
 
 export function readCachedTheme(): unknown {

@@ -1,6 +1,8 @@
 import type { EventPhase } from '../../lib/operationsHelpers';
 import type { OperationsSummary } from '../../lib/operationsApi';
 
+const GLOWS = ['rgb(47 95 227 / 0.16)', 'rgb(255 89 0 / 0.16)', 'rgb(245 158 11 / 0.18)', 'rgb(124 58 237 / 0.14)', 'rgb(16 185 129 / 0.16)'];
+
 type Item = { label: string; value: string | number; hint?: string; tone?: 'warning' };
 
 /**
@@ -33,9 +35,9 @@ export function summaryItems(
 
 export default function SummaryStrip({ items }: { items: Item[] }) {
   return (
-    <dl aria-label="Indicadores" className="grid grid-cols-2 gap-px overflow-hidden rounded-theme border border-line bg-line sm:grid-cols-5">
-      {items.map((item) => (
-        <div key={item.label} className="bg-surface px-4 py-3">
+    <dl aria-label="Indicadores" className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+      {items.map((item, index) => (
+        <div key={item.label} className="card admin-stat px-4 py-3.5" style={{ ['--stat-glow' as string]: GLOWS[index % GLOWS.length] }}>
           <dt className="text-xs text-ink-muted">{item.label}</dt>
           <dd className={`font-display text-2xl font-extrabold tabular-nums ${item.tone === 'warning' ? 'text-fg-warning' : ''}`}>
             {item.value}

@@ -1,8 +1,8 @@
-import { LogOut, Menu, UserRound, X } from 'lucide-react';
+import { LogOut, Menu, X } from 'lucide-react';
 import { Suspense, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useEdition } from '../edition/EditionProvider';
-import { Badge, Button, Spinner } from '../components/ui';
+import { Button, Spinner } from '../components/ui';
 import { ROLE_LABELS } from '../lib/adminApi';
 import { hasRole, useAuth } from '../lib/auth';
 import AdminLogin from './AdminLogin';
@@ -10,9 +10,12 @@ import { ADMIN_LOGO, ADMIN_PRODUCT_NAME } from './adminTheme';
 import { COORD_NAV, isNavActive, SORTEO_NAV, STAFF_NAV, type AdminNavItem } from './navigation';
 
 const navClass = (active: boolean) =>
-  `flex min-h-11 items-center gap-3 rounded-theme px-3 py-2.5 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-secondary-500 ${
-    active ? 'bg-primary-500/10 text-fg-brand' : 'text-ink-muted hover:bg-surface-raised hover:text-ink'
+  `admin-nav-link group flex min-h-12 items-center gap-3 rounded-xl px-2.5 py-2 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400/70 ${
+    active ? 'text-white' : 'text-white/65'
   }`;
+
+const initials = (name: string) =>
+  name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join('') || '·';
 
 export default function AdminLayout() {
   const { ready, staff, profile, signOut } = useAuth();
@@ -46,67 +49,88 @@ export default function AdminLayout() {
   return (
     <div className="min-h-dvh lg:flex">
       <aside
-        className={`fixed inset-y-0 left-0 z-40 flex w-72 flex-col overflow-y-auto border-r border-line bg-surface p-4 transition-transform lg:sticky lg:top-0 lg:h-dvh lg:translate-x-0 ${
+        className={`admin-sidebar fixed inset-y-0 left-0 z-40 flex w-72 flex-col overflow-y-auto border-r border-white/5 p-5 shadow-2xl transition-transform duration-300 lg:sticky lg:top-0 lg:h-dvh lg:translate-x-0 lg:shadow-none ${
           open ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
-        <div className="mb-5 flex items-start justify-between">
-          <div className="flex items-center gap-2">
-            <img src={ADMIN_LOGO} alt="" className="h-8 w-8 object-contain" />
-            <div>
-              <p className="font-display text-sm font-extrabold">{edition?.name ?? ADMIN_PRODUCT_NAME}</p>
-              <p className="text-xs text-ink-muted">Panel del personal</p>
+        <div className="mb-6 flex items-start justify-between">
+          <div className="flex items-center gap-3">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white p-1.5 shadow-[0_8px_24px_-8px_rgba(255,89,0,0.8)] ring-1 ring-white/30">
+              <img src={ADMIN_LOGO} alt="" className="h-full w-full object-contain" />
+            </span>
+            <div className="min-w-0">
+              <p className="truncate font-display text-[0.95rem] font-extrabold leading-tight text-white">{edition?.name ?? ADMIN_PRODUCT_NAME}</p>
+              <p className="text-xs text-white/55">Panel del personal</p>
             </div>
           </div>
-          <button className="rounded-full p-1 text-ink-muted lg:hidden" onClick={close} aria-label="Cerrar menú">
+          <button className="rounded-full p-1 text-white/60 hover:text-white lg:hidden" onClick={close} aria-label="Cerrar menú">
             <X className="h-5 w-5" />
           </button>
         </div>
-        <div className="mb-5">
-          <Badge tone={real ? 'success' : 'warning'}>{real ? 'Operación real' : 'Preparación'}</Badge>
+        <div className="mb-7">
+          <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.06] px-3 py-1.5 text-xs font-semibold text-white/90 backdrop-blur">
+            <span aria-hidden className={`admin-pulse h-2 w-2 rounded-full ${real ? 'bg-emerald-400 text-emerald-400' : 'bg-amber-400 text-amber-400'}`} />
+            <span>{real ? 'Operación real' : 'Preparación'}</span>
+          </span>
         </div>
 
-        <nav aria-label={navLabel} className="flex-1 space-y-1">
+        <p aria-hidden className="mb-2 px-2.5 text-[0.65rem] font-bold uppercase tracking-[0.2em] text-white/35">Menú</p>
+        <nav aria-label={navLabel} className="flex-1 space-y-1.5">
           {items.map((item) => {
             const { to, label, icon: Icon, end } = item;
+            const active = isNavActive(item, pathname);
             return (
-              <NavLink key={to} to={to} end={end} onClick={close} className={() => navClass(isNavActive(item, pathname))}>
-                <Icon className="h-5 w-5" aria-hidden />
+              <NavLink key={to} to={to} end={end} onClick={close} data-active={active} className={() => navClass(active)}>
+                <span
+                  className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors ${
+                    active
+                      ? 'bg-gradient-to-br from-primary-400 to-primary-600 text-white shadow-[0_6px_16px_-6px_rgba(255,89,0,0.9)]'
+                      : 'bg-white/[0.06] text-white/70 group-hover:bg-white/10 group-hover:text-white'
+                  }`}
+                >
+                  <Icon className="h-[1.15rem] w-[1.15rem]" aria-hidden />
+                </span>
                 {label}
               </NavLink>
             );
           })}
         </nav>
 
-        <div className="mt-6 space-y-1 border-t border-line pt-4">
-          <NavLink to="/coordinacion/cuenta" onClick={close} className={({ isActive }) => navClass(isActive)} aria-label={`Mi cuenta · ${staff.full_name}`}>
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-neutral-500/15 text-ink-muted">
-              <UserRound className="h-4 w-4" aria-hidden />
+        <div className="mt-6 space-y-1.5 border-t border-white/10 pt-4">
+          <NavLink
+            to="/coordinacion/cuenta"
+            onClick={close}
+            data-active={pathname.startsWith('/coordinacion/cuenta')}
+            className={({ isActive }) => navClass(isActive)}
+            aria-label={`Mi cuenta · ${staff.full_name}`}
+          >
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-secondary-400 to-accent-500 text-xs font-extrabold text-white shadow-lg ring-2 ring-white/15">
+              {initials(staff.full_name)}
             </span>
             <span className="min-w-0">
-              <span className="block truncate text-ink">{staff.full_name}</span>
-              <span className="block truncate text-xs font-normal text-ink-muted">{roleLabel}</span>
+              <span className="block truncate text-white">{staff.full_name}</span>
+              <span className="block truncate text-xs font-normal text-white/50">{roleLabel}</span>
             </span>
           </NavLink>
           <button
             onClick={signOut}
-            className="flex w-full items-center gap-3 rounded-theme px-3 py-2.5 text-sm font-semibold text-ink-muted hover:bg-surface-raised hover:text-ink"
+            className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-white/55 transition-colors hover:bg-white/[0.06] hover:text-white"
           >
             <LogOut className="h-4 w-4" aria-hidden />
             Cerrar sesión
           </button>
         </div>
       </aside>
-      {open && <div className="fixed inset-0 z-30 bg-black/50 lg:hidden" onClick={close} />}
+      {open && <div className="fixed inset-0 z-30 bg-slate-950/60 backdrop-blur-sm lg:hidden" onClick={close} />}
 
       <div className="min-w-0 flex-1">
-        <header className="sticky top-0 z-20 flex h-14 items-center gap-3 border-b border-line bg-surface-sunken/90 px-4 backdrop-blur lg:hidden">
-          <button onClick={() => setOpen(true)} className="rounded-full p-2 text-ink" aria-label="Abrir menú">
+        <header className="sticky top-0 z-20 flex h-14 items-center gap-3 border-b border-line/70 bg-surface/80 px-4 backdrop-blur-xl lg:hidden">
+          <button onClick={() => setOpen(true)} className="rounded-xl p-2 text-ink hover:bg-surface-raised" aria-label="Abrir menú">
             <Menu className="h-5 w-5" />
           </button>
           <span className="text-sm font-semibold">{roleLabel}</span>
         </header>
-        <main className={`mx-auto p-4 sm:p-8 ${pathname.startsWith('/coordinacion/operacion-en-vivo') ? 'max-w-7xl' : 'max-w-5xl'}`}>
+        <main className={`admin-rise mx-auto p-4 sm:p-8 lg:p-10 ${pathname.startsWith('/coordinacion/operacion-en-vivo') ? 'max-w-7xl' : 'max-w-6xl'}`}>
           <Suspense fallback={<Spinner />}>
             <Outlet />
           </Suspense>

@@ -138,7 +138,7 @@ export default function OperationsCenter() {
         )}
       </div>
 
-      <div role="tablist" aria-label="Vistas del Centro de Operación" className="flex gap-1 overflow-x-auto border-b border-line">
+      <div role="tablist" aria-label="Vistas del Centro de Operación" className="flex max-w-full gap-1 self-start overflow-x-auto rounded-xl bg-neutral-500/10 p-1 [width:fit-content]">
         {VIEWS.map(({ key, label }) => {
           const selected = active === key;
           return (
@@ -147,8 +147,8 @@ export default function OperationsCenter() {
               role="tab"
               aria-selected={selected}
               onClick={() => setView(key)}
-              className={`-mb-px flex items-center gap-2 whitespace-nowrap border-b-2 px-4 py-3 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-secondary-500 ${
-                selected ? 'border-primary-500 text-ink' : 'border-transparent text-ink-muted hover:text-ink'
+              className={`flex items-center gap-2 whitespace-nowrap rounded-lg px-4 py-2 text-sm font-semibold transition-all duration-200 focus-visible:outline-none ${
+                selected ? 'bg-surface text-ink shadow-sm ring-1 ring-line' : 'text-ink-muted hover:text-ink'
               }`}
             >
               {label}
