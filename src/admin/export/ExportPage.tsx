@@ -1,14 +1,15 @@
-import { FileSpreadsheet, ListChecks, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, FileSpreadsheet, ListChecks, ShieldCheck } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
+import { Link } from 'react-router-dom';
 import { Alert, Button, Field } from '../../components/ui';
 import { rpc } from '../../lib/adminApi';
 import { friendlyError } from '../../lib/errors';
-import { useTheme } from '../../theme/ThemeProvider';
+import { useEdition } from '../../edition/EditionProvider';
 import { buildVocationalWorkbook, type VocationalExportPayload } from './buildVocationalWorkbook';
 import { buildWorkbook, type ExportPayload } from './buildWorkbook';
 
 export default function ExportPage() {
-  const { edition } = useTheme();
+  const { edition } = useEdition();
   const [reason, setReason] = useState('Entrega a Atención Preuniversitaria');
   const [includeDemo, setIncludeDemo] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -69,6 +70,10 @@ export default function ExportPage() {
 
   return (
     <div className="max-w-2xl space-y-6">
+      <Link to=".." relative="path" className="inline-flex items-center gap-2 text-sm font-semibold text-ink-muted hover:text-ink">
+        <ArrowLeft className="h-4 w-4" aria-hidden />
+        Participantes
+      </Link>
       <header>
         <h1 className="text-2xl font-extrabold">Exportación para Atención Preuniversitaria</h1>
         <p className="mt-1 text-sm text-ink-muted">
@@ -77,7 +82,7 @@ export default function ExportPage() {
       </header>
 
       <div className="card flex gap-3 p-5 text-sm text-ink-muted">
-        <ShieldCheck className="h-5 w-5 shrink-0 text-secondary-300" aria-hidden />
+        <ShieldCheck className="h-5 w-5 shrink-0 text-fg-info" aria-hidden />
         <p>
           El archivo se genera en este momento y no se guarda en ningún servidor. Queda registrado en la auditoría quién lo generó y el motivo.
           Contiene datos personales: compártelo solo por los canales autorizados.
@@ -118,7 +123,7 @@ export default function ExportPage() {
       <div className="card space-y-5 p-6">
         <div>
           <h2 className="flex items-center gap-2 text-lg font-extrabold">
-            <ListChecks className="h-5 w-5 text-primary-400" aria-hidden />
+            <ListChecks className="h-5 w-5 text-fg-brand" aria-hidden />
             Intereses y asistencias
           </h2>
           <p className="mt-1 text-sm text-ink-muted">

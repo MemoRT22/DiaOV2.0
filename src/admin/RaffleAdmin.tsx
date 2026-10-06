@@ -77,7 +77,7 @@ export default function RaffleAdmin() {
                   <p className="font-semibold">{c.name} {catBadge(c)}</p>
                   <p className="text-sm text-ink-muted">{c.required_academic} académicos + {c.required_leadership} liderazgo{(c as RaffleCategory & { pool_count?: number }).pool_count !== undefined && (<> · {(c as RaffleCategory & { pool_count?: number }).pool_count} candidatos</>)}</p>
                 </div>
-                <button onClick={() => setEditingCat(c)} className="text-sm font-semibold text-secondary-300 hover:text-ink">Editar</button>
+                <button onClick={() => setEditingCat(c)} className="text-sm font-semibold text-fg-info hover:text-ink">Editar</button>
               </div>
             ))}
             {categories.length === 0 && <p className="p-4 text-sm text-ink-muted">Sin categorías configuradas.</p>}
@@ -99,7 +99,7 @@ export default function RaffleAdmin() {
                     <p className="text-sm text-ink-muted">{p.delivered} de {p.quantity} entregados · {p.available} disponibles</p>
                     {p.description && <p className="mt-1 text-xs text-ink-muted">{p.description}</p>}
                   </div>
-                  <button onClick={() => setEditingPrize(p)} className="text-sm font-semibold text-secondary-300 hover:text-ink">Editar</button>
+                  <button onClick={() => setEditingPrize(p)} className="text-sm font-semibold text-fg-info hover:text-ink">Editar</button>
                 </div>
               ))}
               {prizes.length === 0 && <p className="p-4 text-sm text-ink-muted">Sin premios en esta categoría.</p>}
@@ -119,7 +119,7 @@ export default function RaffleAdmin() {
                     <p className="text-xs text-ink-muted">{new Date(w.drawn_at).toLocaleString('es-MX')}{w.confirmed_at && ' · confirmado'}{w.invalidation_reason && ` · invalidado: ${w.invalidation_reason}`}</p>
                   </div>
                   <Badge tone={w.status === 'confirmado' ? 'success' : w.status === 'invalidado' ? 'error' : w.status === 'no_presentado' ? 'neutral' : 'warning'}>{w.status}</Badge>
-                  {w.status === 'confirmado' && <button onClick={() => { setInvalidating(w); setActionError(''); }} className="text-sm font-semibold text-error-300 hover:text-error-200">Invalidar</button>}
+                  {w.status === 'confirmado' && <button onClick={() => { setInvalidating(w); setActionError(''); }} className="text-sm font-semibold text-fg-error hover:text-fg-error">Invalidar</button>}
                 </div>
               ))}
               {winners.length === 0 && <p className="p-4 text-sm text-ink-muted">Sin ganadores registrados.</p>}

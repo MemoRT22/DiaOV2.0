@@ -2,12 +2,12 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { beforeEach, expect, test, vi } from 'vitest';
 import { preparationApi, type PreparationPreview } from '../lib/preparationApi';
 import { supabase } from '../lib/supabase';
-import { useTheme } from '../theme/ThemeProvider';
+import { useEdition } from '../edition/EditionProvider';
 import Operation from './Operation';
 
 vi.mock('../lib/preparationApi', () => ({ preparationApi: { preview: vi.fn(), reset: vi.fn(), retryAuthCleanup: vi.fn() } }));
 vi.mock('../lib/supabase', () => ({ supabase: { rpc: vi.fn() } }));
-vi.mock('../theme/ThemeProvider', () => ({ useTheme: vi.fn() }));
+vi.mock('../edition/EditionProvider', () => ({ useEdition: vi.fn() }));
 
 const counts = { participants: 2, proposals: 1, activities: 1, sessions: 2, reservations: 3,
   attendances: 1, interests: 2, imports: 1, raffle_results: 1, temporary_catalog: 1,
@@ -18,7 +18,7 @@ const show = () => render(<Operation />);
 
 beforeEach(() => {
   vi.clearAllMocks();
-  vi.mocked(useTheme).mockReturnValue({ edition: { mode: 'preparacion' }, reloadEdition: vi.fn() } as unknown as ReturnType<typeof useTheme>);
+  vi.mocked(useEdition).mockReturnValue({ edition: { mode: 'preparacion' }, reloadEdition: vi.fn() } as unknown as ReturnType<typeof useEdition>);
   vi.mocked(preparationApi.preview).mockResolvedValue(preview);
   vi.mocked(preparationApi.reset).mockResolvedValue({ reset: { reset_at: '2026-10-06T15:00:00Z', counts },
     auth_cleanup: { deleted: 1, failed: 0, pending: 0 } });
@@ -86,8 +86,8 @@ test('activation is distinct, needs a published theme and enters read-only mode'
 
 test('real operation hides preparation controls on refresh', async () => {
   vi.mocked(preparationApi.preview).mockResolvedValue({ ...preview, mode: 'operacion_real' });
-  vi.mocked(useTheme).mockReturnValue({ edition: { mode: 'operacion_real', real_operation_at: '2026-10-06T15:00:00Z' },
-    reloadEdition: vi.fn() } as unknown as ReturnType<typeof useTheme>);
+  vi.mocked(useEdition).mockReturnValue({ edition: { mode: 'operacion_real', real_operation_at: '2026-10-06T15:00:00Z' },
+    reloadEdition: vi.fn() } as unknown as ReturnType<typeof useEdition>);
   show();
   expect(await screen.findByText(/El ambiente ya no se puede reiniciar/)).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: /Revisar y reiniciar/ })).not.toBeInTheDocument();

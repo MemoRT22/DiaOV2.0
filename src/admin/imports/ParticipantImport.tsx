@@ -1,8 +1,11 @@
-import { Lock } from 'lucide-react';
+import { ArrowLeft, Lock } from 'lucide-react';
+import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { rpc } from '../../lib/adminApi';
 import { toBool, toIsoDate, toIsoTimestamp, type CsvColumn } from '../../lib/csv';
-import { useTheme } from '../../theme/ThemeProvider';
+import { useEdition } from '../../edition/EditionProvider';
 import CareerMappingPanel from './CareerMappingPanel';
+import ConflictReview from './ConflictReview';
 import CsvImport, { type ImportOptions, type ImportResult } from './CsvImport';
 import RosterStatus from './RosterStatus';
 
@@ -31,13 +34,18 @@ const careerMap = (options: ImportOptions) => (options.careerMap as Record<strin
 const careerMap2 = (options: ImportOptions) => (options.careerMap2 as Record<string, string> | undefined) ?? {};
 
 export default function ParticipantImport() {
-  const { edition } = useTheme();
+  const { edition } = useEdition();
   const official = edition?.roster_status === 'oficial';
+  const [reviewKey, setReviewKey] = useState(0);
 
   return (
     <div className="space-y-6">
+      <Link to=".." relative="path" className="inline-flex items-center gap-2 text-sm font-semibold text-ink-muted hover:text-ink">
+        <ArrowLeft className="h-4 w-4" aria-hidden />
+        Participantes
+      </Link>
       <header>
-        <h1 className="text-2xl font-extrabold">Padrón oficial</h1>
+        <h1 className="text-2xl font-extrabold">Importar padrón</h1>
         <p className="mt-1 text-sm text-ink-muted">
           Carga el CSV oficial de Forms al cierre del prerregistro. Puedes repetir la carga mientras validas el padrón.
         </p>
@@ -65,7 +73,7 @@ export default function ParticipantImport() {
             <li>Las fechas pueden ir como 15/03/2008 o 2008-03-15. La carrera puede ir por nombre o por código.</li>
             <li>Si una carrera no coincide con el catálogo oficial, deberás relacionarla antes de cargar el archivo.</li>
             <li>Un dato vacío en el archivo nunca borra un dato existente.</li>
-            <li>Si staff corrigió un dato a mano, no se reemplaza: queda como conflicto para que lo decidas.</li>
+            <li>Si alguien corrigió un dato a mano, no se reemplaza: queda como registro por revisar y lo resuelves aquí mismo al terminar.</li>
             <li>Si un correo fue corregido, el aspirante se reconoce aunque el archivo traiga el correo anterior. El correo vigente no cambia.</li>
             <li>Las demás preguntas del Forms se conservan como información adicional, visible solo para Coordinación y en la exportación.</li>
           </ul>
@@ -103,8 +111,10 @@ export default function ParticipantImport() {
           return pending ? `Relaciona ${pending === 1 ? 'la carrera no reconocida' : `las ${pending} carreras no reconocidas`} antes de cargar el padrón.` : null;
         }}
         confirmLabel="Cargar padrón"
+        onImported={() => setReviewKey((k) => k + 1)}
       />
       )}
+      <ConflictReview key={reviewKey} hideWhenEmpty />
     </div>
   );
 }

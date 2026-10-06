@@ -7,11 +7,11 @@ import { friendlyError } from '../../lib/errors';
 import { fetchActivityCareers } from '../../lib/recommendationsApi';
 import { fetchSessionCounts } from '../../lib/reservations';
 import { useLoad } from '../../lib/useLoad';
-import { useTheme } from '../../theme/ThemeProvider';
+import { useEdition } from '../../edition/EditionProvider';
 import { ActivityModal, CareersModal, LocationModal, SessionModal } from './WorkshopModals';
 
 export default function WorkshopsTab() {
-  const { edition } = useTheme();
+  const { edition } = useEdition();
   const editionId = edition?.id ?? '';
   const { data, error, loading, reload } = useLoad(
     () => Promise.all([fetchDivisions(), fetchActivities(editionId), fetchSessionCounts(), fetchCareers()]),
@@ -107,7 +107,7 @@ export default function WorkshopsTab() {
                   </button>
                   <button
                     onClick={() => remove('activity', a.id, `el taller "${a.title}" y sus horarios`)}
-                    className="rounded-full p-2 text-ink-muted hover:bg-error-500/10 hover:text-error-300"
+                    className="rounded-full p-2 text-ink-muted hover:bg-error-500/10 hover:text-fg-error"
                     aria-label={`Eliminar ${a.title}`}
                   >
                     <Trash2 className="h-4 w-4" />
@@ -120,7 +120,7 @@ export default function WorkshopsTab() {
                     <span key={s.id} className="inline-flex items-center gap-1 rounded-full border border-line bg-surface-raised py-1 pl-3 pr-1 text-xs">
                       <Clock className="h-3.5 w-3.5 text-ink-muted" aria-hidden />
                       {formatTime(s.starts_at)}–{formatTime(s.ends_at)} ·{' '}
-                      <span className={reserved >= s.capacity ? 'font-semibold text-error-300' : ''}>
+                      <span className={reserved >= s.capacity ? 'font-semibold text-fg-error' : ''}>
                         {reserved}/{s.capacity} reservados · quedan {Math.max(s.capacity - reserved, 0)}
                       </span>
                       {s.credits > 1 && <span className="text-ink-muted">· {s.credits} sellos</span>}
@@ -136,7 +136,7 @@ export default function WorkshopsTab() {
                       )}
                       <button
                         onClick={() => remove('session', s.id, `el horario de las ${formatTime(s.starts_at)}`)}
-                        className="rounded-full p-1 text-ink-muted hover:text-error-300"
+                        className="rounded-full p-1 text-ink-muted hover:text-fg-error"
                         aria-label="Eliminar horario"
                       >
                         <Trash2 className="h-3 w-3" />

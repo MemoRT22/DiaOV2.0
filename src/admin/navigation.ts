@@ -1,73 +1,84 @@
 import {
-  BookOpen, CalendarClock, ClipboardList, FileSpreadsheet, GitMerge, History,
-  KeyRound, LayoutDashboard, LifeBuoy, Medal, MonitorDot, Palette, Power,
-  QrCode, Ticket, Upload, Users, UsersRound, type LucideIcon,
+  CalendarClock, ClipboardList, GraduationCap, History, LayoutDashboard, MonitorDot, Palette, Power,
+  Settings2, Ticket, Users, UsersRound, type LucideIcon,
 } from 'lucide-react';
 
+/**
+ * The administrative product is five areas. Everything else is either a section inside one of them or a
+ * system rule: no module exists just because an RPC or a table exists.
+ */
 export type AdminNavItem = {
   to: string;
   label: string;
   icon: LucideIcon;
-  description?: string;
   end?: boolean;
+  /** Extra path prefixes that keep the item highlighted (areas that span several routes). */
+  match?: string[];
 };
 
-export const COORD_PRIMARY: AdminNavItem[] = [
+export const COORD_NAV: AdminNavItem[] = [
   { to: '/coordinacion', label: 'Inicio', icon: LayoutDashboard, end: true },
   { to: '/coordinacion/participantes', label: 'Participantes', icon: Users },
   { to: '/coordinacion/talleres', label: 'Talleres', icon: ClipboardList },
-  { to: '/coordinacion/operacion-en-vivo', label: 'Operación del evento', icon: MonitorDot },
-];
-
-export const COORD_MORE: { title: string; description: string; items: AdminNavItem[] }[] = [
   {
-    title: 'Participantes y datos',
-    description: 'Acceso, padrón e información de aspirantes.',
-    items: [
-      { to: '/coordinacion/acceso', label: 'Ayuda de acceso', icon: LifeBuoy, description: 'Ayuda a un participante a entrar.' },
-      { to: '/coordinacion/importar', label: 'Padrón oficial', icon: Upload, description: 'Carga y valida los registros de Forms.' },
-      { to: '/coordinacion/conflictos', label: 'Conflictos de importación', icon: GitMerge, description: 'Decide qué dato conservar.' },
-      { to: '/coordinacion/exportacion', label: 'Exportación', icon: FileSpreadsheet, description: 'Descarga los datos del evento.' },
-    ],
+    to: '/coordinacion/operacion-en-vivo', label: 'Operación', icon: MonitorDot,
+    match: ['/coordinacion/checkin', '/coordinacion/sorteo-admin'],
   },
-  {
-    title: 'Talleres y evento',
-    description: 'Configuración y herramientas para el Día OV.',
-    items: [
-      { to: '/coordinacion/catalogo', label: 'Catálogo', icon: BookOpen, description: 'Administra talleres, carreras y horarios.' },
-      { to: '/coordinacion/checkin', label: 'Check-in', icon: QrCode, description: 'Registra asistencias en las sesiones.' },
-      { to: '/coordinacion/reservaciones', label: 'Reservaciones', icon: CalendarClock, description: 'Define límites y horarios de reserva.' },
-      { to: '/coordinacion/sorteo-admin', label: 'Sorteo final', icon: Ticket, description: 'Configura premios y realiza el sorteo.' },
-    ],
-  },
-  {
-    title: 'Configuración y control',
-    description: 'Opciones de administración menos frecuentes.',
-    items: [
-      { to: '/coordinacion/personal', label: 'Personal', icon: UsersRound, description: 'Gestiona cuentas y roles del equipo.' },
-      { to: '/coordinacion/tematica', label: 'Edición y temática', icon: Palette, description: 'Ajusta la presentación de la edición.' },
-      { to: '/coordinacion/rangos', label: 'Reglas de rangos', icon: Medal, description: 'Configura el progreso de participantes.' },
-      { to: '/coordinacion/operacion', label: 'Preparación y puesta en marcha', icon: Power, description: 'Prepara el ambiente y realiza el paso final a operación real.' },
-      { to: '/coordinacion/auditoria', label: 'Auditoría', icon: History, description: 'Consulta acciones registradas.' },
-      { to: '/coordinacion/cuenta', label: 'Mi cuenta', icon: KeyRound, description: 'Actualiza tu acceso personal.' },
-    ],
-  },
+  { to: '/coordinacion/configuracion', label: 'Configuración', icon: Settings2 },
 ];
 
 export const STAFF_NAV: AdminNavItem[] = [
   { to: '/coordinacion/participantes', label: 'Participantes', icon: Users },
-  { to: '/coordinacion/acceso', label: 'Ayuda de acceso', icon: LifeBuoy },
-  { to: '/coordinacion/checkin', label: 'Check-in', icon: QrCode },
-  { to: '/coordinacion/operacion-en-vivo', label: 'Centro de Operación', icon: MonitorDot },
-  { to: '/coordinacion/cuenta', label: 'Mi cuenta', icon: KeyRound },
+  { to: '/coordinacion/operacion-en-vivo', label: 'Operación', icon: MonitorDot, match: ['/coordinacion/checkin'] },
 ];
 
 export const SORTEO_NAV: AdminNavItem[] = [
   { to: '/coordinacion/sorteo', label: 'Sorteo final', icon: Ticket, end: true },
-  { to: '/coordinacion/cuenta', label: 'Mi cuenta', icon: KeyRound },
 ];
 
-export function isMorePath(pathname: string) {
-  return pathname === '/coordinacion/mas' || COORD_MORE.some(({ items }) =>
-    items.some(({ to }) => pathname === to || pathname.startsWith(`${to}/`)));
+const within = (pathname: string, base: string) => pathname === base || pathname.startsWith(`${base}/`);
+
+export function isNavActive(item: AdminNavItem, pathname: string) {
+  if (item.end) return pathname === item.to;
+  return [item.to, ...(item.match ?? [])].some((base) => within(pathname, base));
 }
+
+export type AreaTab = { to: string; label: string; coordOnly?: boolean; isActive: (pathname: string) => boolean };
+
+export const OPERATION_TABS: AreaTab[] = [
+  { to: '/coordinacion/operacion-en-vivo', label: 'Centro de Operación', isActive: (p) => within(p, '/coordinacion/operacion-en-vivo') },
+  { to: '/coordinacion/checkin', label: 'Check-in', isActive: (p) => within(p, '/coordinacion/checkin') },
+  { to: '/coordinacion/sorteo-admin', label: 'Sorteo final', coordOnly: true, isActive: (p) => within(p, '/coordinacion/sorteo-admin') },
+];
+
+export const WORKSHOP_TABS: AreaTab[] = [
+  {
+    to: '/coordinacion/talleres', label: 'Propuestas',
+    isActive: (p) => within(p, '/coordinacion/talleres') && !within(p, '/coordinacion/talleres/programa'),
+  },
+  { to: '/coordinacion/talleres/programa', label: 'Programa', isActive: (p) => within(p, '/coordinacion/talleres/programa') },
+];
+
+export type SettingsSection = { to: string; label: string; description: string; icon: LucideIcon; group: string };
+
+export const SETTINGS_BASE = '/coordinacion/configuracion';
+
+export const SETTINGS_SECTIONS: SettingsSection[] = [
+  { to: `${SETTINGS_BASE}/personal`, label: 'Personal', icon: UsersRound, group: 'Equipo',
+    description: 'Cuentas y roles de Coordinación, staff y sorteo.' },
+  { to: `${SETTINGS_BASE}/experiencia-publica`, label: 'Experiencia pública', icon: Palette, group: 'Experiencia del alumno',
+    description: 'Temática y branding que ven los aspirantes. No cambia la apariencia de este panel.' },
+  { to: `${SETTINGS_BASE}/reservaciones`, label: 'Reservaciones', icon: CalendarClock, group: 'Experiencia del alumno',
+    description: 'Cuándo abren y cierran las reservaciones.' },
+  { to: `${SETTINGS_BASE}/preparacion`, label: 'Preparación y puesta en marcha', icon: Power, group: 'Evento',
+    description: 'Reinicia el ambiente de ensayo y activa la operación real.' },
+  { to: `${SETTINGS_BASE}/catalogo`, label: 'Carreras y divisiones', icon: GraduationCap, group: 'Evento',
+    description: 'Catálogo académico oficial. Cambia pocas veces.' },
+  { to: `${SETTINGS_BASE}/auditoria`, label: 'Auditoría', icon: History, group: 'Avanzado',
+    description: 'Consulta las acciones registradas por el sistema.' },
+];
+
+export const SETTINGS_TABS: AreaTab[] = SETTINGS_SECTIONS.map(({ to, label }) => ({
+  to, label, isActive: (p) => within(p, to),
+}));
+

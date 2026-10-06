@@ -1,10 +1,10 @@
 import { Check, Lock } from 'lucide-react';
 import { Backdrop, ProgressRing, Tagline, ThemedTitle } from '../../components/themed';
-import { ThemeScope, useTheme } from '../../theme/ThemeProvider';
+import { PublicThemeScope, usePublicTheme } from '../../theme/PublicThemeProvider';
 import type { ThemeConfig } from '../../theme/types';
 
 function PreviewBody() {
-  const { theme, term, text, rankName } = useTheme();
+  const { theme, term, text, rankName } = usePublicTheme();
   const divisionColors = Object.values(theme.divisions).slice(0, 6);
   return (
     <div className="relative space-y-4 p-5 font-body text-ink">
@@ -70,9 +70,9 @@ function PreviewBody() {
 
 export default function ThemePreview({ config }: { config: ThemeConfig }) {
   return (
-    <ThemeScope theme={config} className="relative overflow-hidden rounded-[28px] border border-line bg-surface-sunken shadow-2xl">
+    <PublicThemeScope theme={config} className="relative overflow-hidden rounded-[28px] border border-line bg-surface-sunken shadow-2xl">
       <Backdrop />
       <PreviewBody />
-    </ThemeScope>
+    </PublicThemeScope>
   );
 }

@@ -1,19 +1,19 @@
 import { useId, type ReactNode } from 'react';
-import { useTheme } from '../theme/ThemeProvider';
+import { usePublicTheme } from '../theme/PublicThemeProvider';
 
 export function Backdrop() {
-  const { theme } = useTheme();
+  const { theme } = usePublicTheme();
   if (theme.style.background !== 'starfield') return null;
   return <div className="starfield" aria-hidden />;
 }
 
 export function ThemedTitle({ children, className = '' }: { children: ReactNode; className?: string }) {
-  const { theme } = useTheme();
+  const { theme } = usePublicTheme();
   return <span className={`${theme.style.metallicTitles ? 'metallic-text' : 'text-ink'} ${className}`}>{children}</span>;
 }
 
 export function Tagline({ className = '' }: { className?: string }) {
-  const { theme } = useTheme();
+  const { theme } = usePublicTheme();
   const { tagline, taglineHighlight } = theme.meta;
   const idx = taglineHighlight ? tagline.indexOf(taglineHighlight) : -1;
   if (idx < 0) return <p className={`font-display italic font-extrabold ${className}`}>{tagline}</p>;
@@ -37,7 +37,7 @@ export function ProgressRing({
   stroke?: number;
   children?: ReactNode;
 }) {
-  const { theme } = useTheme();
+  const { theme } = usePublicTheme();
   const id = useId().replace(/:/g, '');
   const r = (size - stroke * 2) / 2;
   const circ = 2 * Math.PI * r;
@@ -80,7 +80,7 @@ export function ProgressRing({
 }
 
 export function BrandFooter() {
-  const { theme } = useTheme();
+  const { theme } = usePublicTheme();
   return (
     <div className="flex items-center justify-center gap-4 opacity-90">
       {theme.assets.logoMark && <img src={theme.assets.logoMark} alt="" className="h-8 w-8 object-contain" />}

@@ -4,9 +4,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ACTIVITY_TYPES, EXPERIENCE_CATEGORIES, LIMITS } from '../../supabase/functions/workshop-intake/validation.ts';
 import WorkshopRegistration from './WorkshopRegistration';
 
-vi.mock('../theme/ThemeProvider', async () => {
+vi.mock('../theme/PublicThemeProvider', async () => {
   const { neutralTheme } = await import('../theme/neutralTheme');
-  return { useTheme: () => ({ theme: neutralTheme }) };
+  return { usePublicTheme: () => ({ theme: neutralTheme }) };
 });
 
 const D1 = '11111111-1111-4111-8111-111111111111';

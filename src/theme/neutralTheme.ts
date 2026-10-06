@@ -46,7 +46,7 @@ export const neutralTheme: ThemeConfig = {
   ranks: [
     { name: 'Nivel 1', description: 'Comenzaste tu recorrido.', promotion: 'Comenzaste tu recorrido.' },
     { name: 'Nivel 2', description: 'Ya participaste en tu primer taller.', promotion: 'Subiste al nivel 2.' },
-    { name: 'Nivel 3', description: 'Exploras distintas divisiones.', promotion: 'Subiste al nivel 3.' },
+    { name: 'Nivel 3', description: 'Ya llevas dos talleres completados.', promotion: 'Subiste al nivel 3.' },
     { name: 'Nivel 4', description: 'Tu recorrido va muy avanzado.', promotion: 'Subiste al nivel 4.' },
     { name: 'Nivel 5', description: 'Completaste el recorrido.', promotion: 'Alcanzaste el nivel máximo.' },
   ],
@@ -60,7 +60,7 @@ export const neutralTheme: ThemeConfig = {
     welcomeTitle: 'Hola, {name}',
     welcomeBody: 'Antes de empezar, revisa y acepta el Aviso de Privacidad.',
     passportIntro: 'Aquí verás tu avance durante el evento.',
-    progressNext: 'Te faltan {activities} {activityTerm} y {divisions} {divisionTerm} para llegar a {rank}.',
+    progressNext: 'Te faltan {activities} {activityTerm} para llegar a {rank}.',
     progressMax: 'Llegaste al nivel máximo.',
     activitiesIntro: 'Consulta los talleres y sus horarios.',
     activitiesEmpty: 'Aún no hay talleres publicados.',

@@ -3,12 +3,12 @@ import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { supabase } from '../lib/supabase';
 import { workshopAdminApi, type WorkshopList } from '../lib/workshopAdminApi';
-import { useTheme } from '../theme/ThemeProvider';
+import { useEdition } from '../edition/EditionProvider';
 import Overview from './Overview';
 
 vi.mock('../lib/supabase', () => ({ supabase: { rpc: vi.fn() } }));
 vi.mock('../lib/workshopAdminApi', () => ({ workshopAdminApi: { list: vi.fn() } }));
-vi.mock('../theme/ThemeProvider', () => ({ useTheme: vi.fn() }));
+vi.mock('../edition/EditionProvider', () => ({ useEdition: vi.fn() }));
 
 const summary = { participants_total: 120, activities: 8, sessions: 22, attendances: 45,
   missing_birth_date: 0, pending_conflicts: 0 };
@@ -17,9 +17,9 @@ const show = () => render(<MemoryRouter><Overview /></MemoryRouter>);
 
 beforeEach(() => {
   vi.clearAllMocks();
-  vi.mocked(useTheme).mockReturnValue({ edition: {
+  vi.mocked(useEdition).mockReturnValue({ edition: {
     name: 'Día OV 2026', event_date: '2026-10-20', start_time: '09:00', venue: 'Campus Cancún', mode: 'preparacion',
-  } } as ReturnType<typeof useTheme>);
+  } } as ReturnType<typeof useEdition>);
   vi.mocked(supabase.rpc).mockResolvedValue({ data: summary, error: null } as never);
   vi.mocked(workshopAdminApi.list).mockResolvedValue(list({}));
 });
@@ -30,7 +30,8 @@ test('shows reliable pending work with links to its resolution area', async () =
   show();
   const section = await screen.findByRole('region', { name: 'Pendientes' });
   expect(within(section).getAllByRole('link')).toHaveLength(4);
-  expect(within(section).getByText('3 conflictos de importación').closest('a')).toHaveAttribute('href', '/coordinacion/conflictos');
+  expect(within(section).getByText('3 datos de importación por revisar').closest('a'))
+    .toHaveAttribute('href', '/coordinacion/participantes/importar');
   expect(within(section).getByText('2 participantes sin fecha de nacimiento').closest('a')).toHaveAttribute('href', '/coordinacion/participantes');
   expect(within(section).getByText('3 propuestas por revisar').closest('a')).toHaveAttribute('href', '/coordinacion/talleres');
   expect(within(section).getByText('4 propuestas listas para publicar').closest('a')).toHaveAttribute('href', '/coordinacion/talleres');
@@ -46,7 +47,7 @@ test('shows a calm empty state, event context and useful indicators', async () =
   expect(screen.getByText('Campus Cancún')).toBeInTheDocument();
   expect(screen.getByText('Preparación')).toBeInTheDocument();
   expect(screen.getByRole('link', { name: 'realiza la puesta en marcha y activa la operación real' }))
-    .toHaveAttribute('href', '/coordinacion/operacion');
+    .toHaveAttribute('href', '/coordinacion/configuracion/preparacion');
   expect(screen.queryByText(/retira los datos de prueba/)).not.toBeInTheDocument();
   expect(screen.getByText('120')).toBeInTheDocument();
   expect(screen.getByText('22')).toBeInTheDocument();

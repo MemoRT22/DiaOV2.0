@@ -5,10 +5,12 @@ import { Alert, Button } from '../components/ui';
 import { useAuth } from '../lib/auth';
 import { friendlyError } from '../lib/errors';
 import { supabase } from '../lib/supabase';
-import { useTheme } from '../theme/ThemeProvider';
+import { useEdition } from '../edition/EditionProvider';
+import { usePublicTheme } from '../theme/PublicThemeProvider';
 
 export default function Welcome() {
-  const { theme, edition, text } = useTheme();
+  const { theme, text } = usePublicTheme();
+  const { edition } = useEdition();
   const { profile, refreshIdentity } = useAuth();
   const navigate = useNavigate();
   const [accepted, setAccepted] = useState(false);

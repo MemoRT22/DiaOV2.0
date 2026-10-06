@@ -57,7 +57,7 @@ export function Field({
           keepAboveKeyboard(e.currentTarget);
           onFocus?.(e);
         }}
-        className="h-12 w-full rounded-theme border border-line bg-surface-raised px-4 text-base text-ink placeholder:text-ink-muted/70 transition-colors focus:border-secondary-400 focus:outline-none focus:ring-2 focus:ring-secondary-500/30 disabled:opacity-60 [color-scheme:dark]"
+        className="h-12 w-full rounded-theme border border-line bg-surface-raised px-4 text-base text-ink placeholder:text-ink-muted/70 transition-colors focus:border-secondary-400 focus:outline-none focus:ring-2 focus:ring-secondary-500/30 disabled:opacity-60"
       />
       {hint && <span className="mt-1 block text-xs text-ink-muted">{hint}</span>}
     </label>
@@ -76,7 +76,7 @@ export function SelectField({
       <span className="mb-2 block text-sm font-semibold text-ink">{label}</span>
       <select
         {...rest}
-        className="h-12 w-full rounded-theme border border-line bg-surface-raised px-4 text-base text-ink transition-colors focus:border-secondary-400 focus:outline-none focus:ring-2 focus:ring-secondary-500/30 disabled:opacity-60 [color-scheme:dark]"
+        className="h-12 w-full rounded-theme border border-line bg-surface-raised px-4 text-base text-ink transition-colors focus:border-secondary-400 focus:outline-none focus:ring-2 focus:ring-secondary-500/30 disabled:opacity-60"
       >
         {children}
       </select>
@@ -103,10 +103,10 @@ export function Alert({ tone = 'info', children, className = '' }: { tone?: Tone
 
 export function Badge({ tone = 'info', children }: { tone?: Tone | 'neutral'; children: ReactNode }) {
   const styles: Record<string, string> = {
-    info: 'bg-secondary-500/15 text-secondary-200',
-    success: 'bg-success-500/15 text-success-200',
-    warning: 'bg-warning-500/15 text-warning-200',
-    error: 'bg-error-500/15 text-error-200',
+    info: 'bg-secondary-500/15 text-fg-info',
+    success: 'bg-success-500/15 text-fg-success',
+    warning: 'bg-warning-500/15 text-fg-warning',
+    error: 'bg-error-500/15 text-fg-error',
     neutral: 'bg-neutral-500/15 text-ink-muted',
   };
   return <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${styles[tone]}`}>{children}</span>;

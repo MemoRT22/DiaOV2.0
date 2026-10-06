@@ -8,7 +8,8 @@ import { fetchCareers, formatDateTime, formatEventDate } from '../../lib/catalog
 import { fold } from '../../lib/csv';
 import { friendlyError } from '../../lib/errors';
 import { useLoad } from '../../lib/useLoad';
-import AccessStatus, { type AccessState } from './AccessStatus';
+import ConflictReview from '../imports/ConflictReview';
+import AccessDiagnosis, { type AccessState } from './AccessDiagnosis';
 import ParticipantForm from './ParticipantForm';
 import { EmailHistory, FormsExtra, type EmailHistoryEntry, type FormsExtraEntry } from './ParticipantExtraSections';
 
@@ -62,7 +63,7 @@ export default function ParticipantDetail() {
     return (
       <div className="space-y-4">
         <Alert tone="error">{friendlyError(error)}</Alert>
-        <Link to=".." relative="path" className="text-sm font-semibold text-secondary-300">
+        <Link to=".." relative="path" className="text-sm font-semibold text-fg-info">
           Volver a la búsqueda
         </Link>
       </div>
@@ -113,20 +114,29 @@ export default function ParticipantDetail() {
       </header>
 
       {saved && <Alert tone="success">Cambios guardados.</Alert>}
-      {p.pending_conflicts > 0 && (
-        <Alert tone="warning">
-          Este registro tiene {p.pending_conflicts} conflicto(s) de importación pendientes.{' '}
-          {hasRole(staff, 'coordinacion') ? (
-            <Link to="/coordinacion/conflictos" className="font-semibold underline">
-              Resolver
-            </Link>
-          ) : (
-            'Coordinación debe resolverlos.'
-          )}
-        </Alert>
-      )}
+      <AccessDiagnosis
+        participantId={p.id}
+        hasBirthDate={!!p.birth_date}
+        hasLoggedIn={p.has_logged_in}
+        platformConsentAt={p.platform_consent_at}
+        access={p.access}
+        onChanged={reload}
+        onCorrect={() => setEditing(true)}
+      />
 
-      <AccessStatus participantId={p.id} hasBirthDate={!!p.birth_date} access={p.access} onChanged={reload} />
+      {p.pending_conflicts > 0 &&
+        (hasRole(staff, 'coordinacion') ? (
+          <ConflictReview
+            participantId={p.id}
+            heading="Datos pendientes de revisión de este participante"
+            description="Una importación trajo datos distintos a los que ya se habían corregido a mano. Elige cuál se queda."
+            onChange={reload}
+          />
+        ) : (
+          <Alert tone="warning">
+            Este registro tiene {p.pending_conflicts} dato(s) de importación por revisar. Coordinación debe resolverlos.
+          </Alert>
+        ))}
 
       <section className="card divide-y divide-line">
         <h2 className="px-5 py-4 text-sm font-semibold uppercase tracking-wide text-ink-muted">Datos del registro</h2>

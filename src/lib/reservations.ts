@@ -73,13 +73,10 @@ export async function fetchSessionCounts(): Promise<Map<string, number>> {
   return new Map((rows ?? []).map((r) => [r.session_id, r.reserved]));
 }
 
+/** Coordinación only decides when reservations open and close; every other rule is defined by the system. */
 export type ReservationSettings = {
   reservations_open_at: string | null;
   reservations_close_at: string | null;
-  max_reservations: number;
-  travel_buffer_minutes: number;
-  checkin_open_before_minutes: number;
-  checkin_close_after_minutes: number;
 };
 
 export const updateReservationSettings = (p: ReservationSettings) => rpc('update_reservation_settings', { p });

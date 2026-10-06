@@ -9,7 +9,7 @@ import {
   type SubmissionReceipt,
 } from '../lib/workshopIntakeApi';
 import type { FormState } from '../lib/workshopForm';
-import { useTheme } from '../theme/ThemeProvider';
+import { usePublicTheme } from '../theme/PublicThemeProvider';
 import WorkshopWizard from './workshop/WorkshopWizard';
 
 type View =
@@ -21,7 +21,7 @@ type View =
 
 /** Página pública `/registro-taller`: sin login, solo consume la Edge Function `workshop-intake`. */
 export default function WorkshopRegistration() {
-  const { theme } = useTheme();
+  const { theme } = usePublicTheme();
   const [view, setView] = useState<View>({ kind: 'loading' });
   const [attempt, setAttempt] = useState(0);
 

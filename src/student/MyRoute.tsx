@@ -6,7 +6,8 @@ import { fetchDivisions, formatTime } from '../lib/catalog';
 import { canModify, durationMinutes } from '../lib/reservations';
 import { useLoad } from '../lib/useLoad';
 import { useReservationBoard } from '../lib/useReservationBoard';
-import { useTheme } from '../theme/ThemeProvider';
+import { useEdition } from '../edition/EditionProvider';
+import { usePublicTheme } from '../theme/PublicThemeProvider';
 import ConfirmSheet, { type ConfirmRequest } from './reservations/ConfirmSheet';
 import WindowNotice from './reservations/WindowNotice';
 
@@ -20,7 +21,8 @@ const DERIVED_BADGE: Record<string, { label: string; tone: 'info' | 'success' | 
 };
 
 export default function MyRoute() {
-  const { theme, edition, term } = useTheme();
+  const { theme, term } = usePublicTheme();
+  const { edition } = useEdition();
   const { board, error, loading, reload, cancel } = useReservationBoard(edition?.id);
   const divisions = useLoad(fetchDivisions, []);
   const [confirm, setConfirm] = useState<ConfirmRequest | null>(null);

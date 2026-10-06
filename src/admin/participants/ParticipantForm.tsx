@@ -3,7 +3,7 @@ import { Alert, Button, Field, Modal, SelectField } from '../../components/ui';
 import { rpc } from '../../lib/adminApi';
 import type { Career } from '../../lib/catalog';
 import { friendlyError } from '../../lib/errors';
-import { useTheme } from '../../theme/ThemeProvider';
+import { useEdition } from '../../edition/EditionProvider';
 
 export type ParticipantValues = {
   email: string;
@@ -26,7 +26,7 @@ type Props = {
 };
 
 export default function ParticipantForm({ participantId, initial, careers, onClose, onSaved }: Props) {
-  const { edition } = useTheme();
+  const { edition } = useEdition();
   const editing = !!participantId;
   const [values, setValues] = useState(initial);
   const [consent, setConsent] = useState(false);

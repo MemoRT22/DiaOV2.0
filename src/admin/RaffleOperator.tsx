@@ -132,7 +132,7 @@ export default function RaffleOperator() {
       {phase === 'result' && drawResult && (
         <div className="card space-y-4 p-6 text-center">
           <p className="text-sm font-semibold uppercase tracking-wide text-ink-muted">Ganador seleccionado</p>
-          <p className="text-3xl font-extrabold text-primary-400">{drawResult.display_name}</p>
+          <p className="text-3xl font-extrabold text-fg-brand">{drawResult.display_name}</p>
           <p className="text-sm text-ink-muted">{drawResult.prize_name} · {drawResult.category_name}</p>
           <p className="text-xs text-ink-muted">Pool de {drawResult.pool_size} candidatos</p>
           <div className="flex flex-wrap justify-center gap-3">
@@ -144,7 +144,7 @@ export default function RaffleOperator() {
       )}
       {phase === 'confirmed' && (
         <div className="card space-y-4 p-6 text-center">
-          <p className="text-2xl font-extrabold text-success-400">¡Premio confirmado!</p>
+          <p className="text-2xl font-extrabold text-fg-success">¡Premio confirmado!</p>
           <p className="text-sm text-ink-muted">{drawResult?.display_name} · {drawResult?.prize_name}</p>
           <Button onClick={prepareNext}>Preparar siguiente premio</Button>
         </div>
