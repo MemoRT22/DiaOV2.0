@@ -1,82 +1,28 @@
 import {
-  BookOpen,
-  ClipboardList,
-  CalendarClock,
-  FileSpreadsheet,
-  GitMerge,
-  History,
-  KeyRound,
-  LayoutDashboard,
-  LifeBuoy,
   LogOut,
-  Medal,
   Menu,
-  MonitorDot,
-  Palette,
-  Power,
-  QrCode,
-  Ticket,
-  Upload,
-  Users,
-  UsersRound,
+  Settings2,
   X,
-  type LucideIcon,
 } from 'lucide-react';
 import { Suspense, useState } from 'react';
-import { NavLink, Outlet } from 'react-router-dom';
+import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { Badge, Button, Spinner } from '../components/ui';
 import { ROLE_LABELS } from '../lib/adminApi';
 import { hasRole, useAuth } from '../lib/auth';
 import { useTheme } from '../theme/ThemeProvider';
 import AdminLogin from './AdminLogin';
+import { COORD_PRIMARY, isMorePath, SORTEO_NAV, STAFF_NAV } from './navigation';
 
-type NavItem = { to: string; label: string; icon: LucideIcon; end?: boolean; coordOnly?: boolean };
-
-const NAV: { title: string; items: NavItem[] }[] = [
-  {
-    title: 'Atención',
-    items: [
-      { to: '/coordinacion', label: 'Resumen', icon: LayoutDashboard, end: true, coordOnly: true },
-      { to: '/coordinacion/participantes', label: 'Participantes', icon: Users },
-      { to: '/coordinacion/acceso', label: 'Ayuda de acceso', icon: LifeBuoy },
-      { to: '/coordinacion/checkin', label: 'Check-in', icon: QrCode },
-      { to: '/coordinacion/operacion-en-vivo', label: 'Centro de Operación', icon: MonitorDot },
-    ],
-  },
-  {
-    title: 'Datos',
-    items: [
-      { to: '/coordinacion/importar', label: 'Padrón oficial', icon: Upload, coordOnly: true },
-      { to: '/coordinacion/conflictos', label: 'Conflictos de importación', icon: GitMerge, coordOnly: true },
-      { to: '/coordinacion/catalogo', label: 'Catálogo', icon: BookOpen, coordOnly: true },
-      { to: '/coordinacion/talleres', label: 'Propuestas de talleres', icon: ClipboardList, coordOnly: true },
-      { to: '/coordinacion/exportacion', label: 'Exportación', icon: FileSpreadsheet, coordOnly: true },
-    ],
-  },
-  {
-    title: 'Configuración',
-    items: [
-      { to: '/coordinacion/personal', label: 'Personal', icon: UsersRound, coordOnly: true },
-      { to: '/coordinacion/tematica', label: 'Edición y temática', icon: Palette, coordOnly: true },
-      { to: '/coordinacion/rangos', label: 'Reglas de rangos', icon: Medal, coordOnly: true },
-      { to: '/coordinacion/reservaciones', label: 'Reservaciones', icon: CalendarClock, coordOnly: true },
-      { to: '/coordinacion/sorteo-admin', label: 'Sorteo final', icon: Ticket, coordOnly: true },
-      { to: '/coordinacion/operacion', label: 'Operación y datos de prueba', icon: Power, coordOnly: true },
-      { to: '/coordinacion/auditoria', label: 'Auditoría', icon: History, coordOnly: true },
-      { to: '/coordinacion/cuenta', label: 'Mi cuenta', icon: KeyRound },
-    ],
-  },
-];
-
-const SORTEO_NAV: NavItem[] = [
-  { to: '/coordinacion/sorteo', label: 'Sorteo final', icon: Ticket, end: true },
-  { to: '/coordinacion/cuenta', label: 'Mi cuenta', icon: KeyRound },
-];
+const navClass = (active: boolean) =>
+  `flex min-h-11 items-center gap-3 rounded-theme px-3 py-2.5 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-secondary-500 ${
+    active ? 'bg-primary-500/10 text-primary-500' : 'text-ink-muted hover:bg-surface-raised hover:text-ink'
+  }`;
 
 export default function AdminLayout() {
   const { ready, staff, profile, signOut } = useAuth();
   const { theme, edition, loading } = useTheme();
   const [open, setOpen] = useState(false);
+  const location = useLocation();
 
   if (!ready || loading) return <Spinner />;
   if (!staff || profile) return <AdminLogin />;
@@ -135,31 +81,27 @@ export default function AdminLayout() {
     );
   }
 
-  const sections = NAV.map((s) => ({ ...s, items: s.items.filter((i) => coord || !i.coordOnly) })).filter((s) => s.items.length);
-
-  const nav = (
-    <nav className="space-y-5">
-      {sections.map((section) => (
-        <div key={section.title} className="space-y-1">
-          <p className="px-3 text-[11px] font-semibold uppercase tracking-wider text-ink-muted/70">{section.title}</p>
-          {section.items.map(({ to, label, icon: Icon, end }) => (
-        <NavLink
-          key={to}
-          to={to}
-          end={end}
-          onClick={() => setOpen(false)}
-          className={({ isActive }) =>
-            `flex items-center gap-3 rounded-theme px-3 py-2.5 text-sm font-semibold transition-colors ${
-              isActive ? 'bg-primary-500/15 text-primary-300' : 'text-ink-muted hover:bg-surface-raised hover:text-ink'
-            }`
-          }
-        >
-          <Icon className="h-4 w-4" aria-hidden />
-          {label}
+  const nav = coord ? (
+    <nav aria-label="Navegación de Coordinación" className="space-y-1">
+      {COORD_PRIMARY.map(({ to, label, icon: Icon, end }) => <NavLink key={to} to={to} end={end}
+        onClick={() => setOpen(false)} className={({ isActive }) => navClass(isActive)}>
+        <Icon className="h-5 w-5" aria-hidden />{label}
+      </NavLink>)}
+      <div className="mt-5 border-t border-line pt-4">
+        <NavLink to="/coordinacion/mas" onClick={() => setOpen(false)}
+          className={({ isActive }) => navClass(isActive || isMorePath(location.pathname))}>
+          <Settings2 className="h-5 w-5" aria-hidden />Más herramientas
         </NavLink>
-          ))}
-        </div>
-      ))}
+      </div>
+    </nav>
+  ) : (
+    <nav aria-label="Navegación de staff" className="space-y-1">
+      {STAFF_NAV.map(({ to, label, icon: Icon, end }, index) => <div key={to}
+        className={index === STAFF_NAV.length - 1 ? 'mt-5 border-t border-line pt-4' : ''}>
+        <NavLink to={to} end={end} onClick={() => setOpen(false)} className={({ isActive }) => navClass(isActive)}>
+          <Icon className="h-5 w-5" aria-hidden />{label}
+        </NavLink>
+      </div>)}
     </nav>
   );
 

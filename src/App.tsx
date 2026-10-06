@@ -15,6 +15,7 @@ const WorkshopRegistration = lazy(() => import('./public/WorkshopRegistration'))
 const AdminLayout = lazy(() => import('./admin/AdminLayout'));
 const CoordinationOnly = lazy(() => import('./admin/CoordinationOnly'));
 const Overview = lazy(() => import('./admin/Overview'));
+const MoreTools = lazy(() => import('./admin/MoreTools'));
 const Participants = lazy(() => import('./admin/participants/Participants'));
 const ParticipantDetail = lazy(() => import('./admin/participants/ParticipantDetail'));
 const AccessHelp = lazy(() => import('./admin/participants/AccessHelp'));
@@ -71,6 +72,7 @@ export default function App() {
           <Route path="operacion-en-vivo" element={<OperationsCenter />} />
           <Route path="sorteo" element={<RaffleOperator />} />
           <Route element={<CoordinationOnly />}>
+            <Route path="mas" element={<MoreTools />} />
             <Route path="importar" element={<ParticipantImport />} />
             <Route path="conflictos" element={<Conflicts />} />
             <Route path="catalogo" element={<Catalog />} />
