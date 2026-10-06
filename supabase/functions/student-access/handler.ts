@@ -5,11 +5,13 @@
 export type RpcResult = { data: unknown; error: { code?: string; message: string } | null };
 export type ParticipantRow = { id: string; auth_user_id: string | null; password_configured_at: string | null };
 export type AuthUserInfo = { id: string; email: string | null; kind: string | null };
+export type HighSchoolRow = { id: string; name: string };
 export type CareerRow = { id: string; name: string; division: string | null };
 export type Deps = {
   rpc: (name: string, args: Record<string, unknown>) => Promise<RpcResult>;
   participantByEmail: (email: string) => Promise<ParticipantRow | null>;
   careers: () => Promise<CareerRow[]>;
+  highSchools: () => Promise<HighSchoolRow[]>;
   getUser: (id: string) => Promise<AuthUserInfo | null>;
   createUser: (email: string, password: string) => Promise<{ id?: string; code?: 'EMAIL_TAKEN' | 'AUTH_ERROR' }>;
   updateUser: (id: string, email: string, password?: string) => Promise<{ ok: boolean; code?: 'EMAIL_TAKEN' | 'AUTH_ERROR' }>;
@@ -28,7 +30,7 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const SYNTHETIC = /^p\.[0-9a-f-]{36}@participantes\.diaov\.invalid$/i;
 const KNOWN_ERRORS = ['INVALID_EMAIL', 'INVALID_NAME', 'INVALID_PHONE', 'PHONE_REQUIRED', 'HIGH_SCHOOL_REQUIRED', 'INVALID_GRADE',
-  'INVALID_PERIOD', 'INVALID_CAREER', 'CONSENT_REQUIRED', 'EMAIL_EXISTS', 'NO_ACTIVE_EDITION', 'NOT_FOUND'];
+  'INVALID_PERIOD', 'INVALID_CAREER', 'INVALID_HIGH_SCHOOL', 'CONSENT_REQUIRED', 'EMAIL_EXISTS', 'NO_ACTIVE_EDITION', 'NOT_FOUND'];
 
 export const PASSWORD_MIN = 8;
 export const PASSWORD_MAX = 72;
@@ -116,7 +118,7 @@ async function register(deps: Deps, body: Record<string, unknown>) {
   if (!email) return fail('INVALID_EMAIL');
   if (!validPassword(body.password)) return fail('INVALID_PASSWORD');
   const fields = {
-    email, first_name: body.first_name, last_name: body.last_name, phone: body.phone, high_school: body.high_school,
+    email, first_name: body.first_name, last_name: body.last_name, phone: body.phone, high_school_id: body.high_school_id,
     high_school_grade: body.high_school_grade, entry_period: body.entry_period, initial_career_id: body.initial_career_id,
     consent_accepted: body.consent_accepted === true,
   };
@@ -138,7 +140,8 @@ async function register(deps: Deps, body: Record<string, unknown>) {
 }
 
 async function catalog(deps: Deps) {
-  return json({ careers: await deps.careers() });
+  const [careers, high_schools] = await Promise.all([deps.careers(), deps.highSchools()]);
+  return json({ careers, high_schools });
 }
 
 export async function handleRequest(req: Request, deps: Deps): Promise<Response> {

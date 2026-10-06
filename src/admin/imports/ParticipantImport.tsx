@@ -10,6 +10,7 @@ import { PARTICIPANT_COLUMNS, PARTICIPANT_TEMPLATE, buildParticipantRow, isDisca
 import RosterStatus from './RosterStatus';
 
 const careerMap = (options: ImportOptions) => (options.careerMap as Record<string, string> | undefined) ?? {};
+const highSchoolMap = (options: ImportOptions) => (options.highSchoolMap as Record<string, string> | undefined) ?? {};
 const careerMap2 = (options: ImportOptions) => (options.careerMap2 as Record<string, string> | undefined) ?? {};
 
 export default function ParticipantImport() {
@@ -52,7 +53,7 @@ export default function ParticipantImport() {
             <li>El Aviso de Privacidad y la marca temporal son opcionales. Una columna de aviso con respuesta negativa rechaza esa fila.</li>
             <li>Si el archivo trae una columna de fecha de nacimiento, se ignora: ya no se usa ni se guarda.</li>
             <li>Grado: 1.º, 2.º, 3.º año o Egresado. Periodo: Enero o Agosto de 2027 o 2028. La licenciatura puede ir por nombre o por código.</li>
-            <li>Si una carrera no coincide con el catálogo oficial, deberás relacionarla antes de cargar el archivo.</li>
+            <li>Si una carrera o preparatoria no coincide con el catálogo oficial, deberás relacionarla antes de cargar el archivo.</li>
             <li>Un dato vacío en el archivo nunca borra un dato existente.</li>
             <li>Si alguien corrigió un dato a mano, no se reemplaza: queda como registro por revisar y lo resuelves aquí mismo al terminar.</li>
             <li>Si un correo fue corregido, el aspirante se reconoce aunque el archivo traiga el correo anterior. El correo vigente no cambia.</li>
@@ -63,7 +64,7 @@ export default function ParticipantImport() {
         buildRow={buildParticipantRow}
         discardHeader={isDiscardedHeader}
         preview={(rows, isDemo, options) =>
-          rpc<ImportResult>('preview_participant_import', { p_rows: rows, p_is_demo: isDemo, p_career_map: careerMap(options), p_career_map_2: careerMap2(options) })
+          rpc<ImportResult>('preview_participant_import', { p_rows: rows, p_is_demo: isDemo, p_career_map: careerMap(options), p_career_map_2: careerMap2(options), p_high_school_map: highSchoolMap(options) })
         }
         commit={(rows, fileName, isDemo, options) =>
           rpc<ImportResult>('commit_participant_import', {
@@ -72,12 +73,15 @@ export default function ParticipantImport() {
             p_is_demo: isDemo,
             p_career_map: careerMap(options),
             p_career_map_2: careerMap2(options),
+            p_high_school_map: highSchoolMap(options),
           })
         }
         reviewPanel={(ctx) => <CareerMappingPanel {...ctx} />}
         commitBlockedReason={(result) => {
           const pending = (result.unmatched_careers ?? []).filter((u) => !u.target).length
             + (result.unmatched_careers_2 ?? []).filter((u) => !u.target).length;
+          const schools = (result.unmatched_high_schools ?? []).filter((u) => !u.target).length;
+          if (schools) return `Relaciona ${schools === 1 ? 'la preparatoria no reconocida' : `las ${schools} preparatorias no reconocidas`} antes de cargar el padrón.`;
           return pending ? `Relaciona ${pending === 1 ? 'la carrera no reconocida' : `las ${pending} carreras no reconocidas`} antes de cargar el padrón.` : null;
         }}
         confirmLabel="Cargar padrón"

@@ -37,6 +37,11 @@ const deps: Deps = {
       division: (Array.isArray(row.divisions) ? row.divisions[0]?.name : row.divisions?.name) ?? null,
     }));
   },
+  highSchools: async () => {
+    const { data, error } = await need().from('high_schools').select('id, name').eq('is_active', true).order('name');
+    if (error) throw error;
+    return data ?? [];
+  },
   getUser: async (id) => {
     const { data, error } = await need().auth.admin.getUserById(id);
     if (error || !data.user) return null;

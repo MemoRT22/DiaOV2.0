@@ -4,7 +4,7 @@ import { Link, useParams } from 'react-router-dom';
 import { Alert, Badge, Button, Spinner } from '../../components/ui';
 import { hasRole, useAuth } from '../../lib/auth';
 import { FIELD_LABELS, ORIGIN_LABELS, rpc } from '../../lib/adminApi';
-import { fetchCareers, formatDateTime } from '../../lib/catalog';
+import { fetchCareers, fetchHighSchools, formatDateTime } from '../../lib/catalog';
 import { fold } from '../../lib/csv';
 import { friendlyError } from '../../lib/errors';
 import { gradeLabel, periodLabel } from '../../lib/participantFields';
@@ -28,6 +28,7 @@ type Detail = {
   email: string;
   phone: string | null;
   high_school: string | null;
+  high_school_id: string | null;
   high_school_grade: string | null;
   entry_period: string | null;
   initial_career_id: string | null;
@@ -56,9 +57,9 @@ export default function ParticipantDetail() {
   const [editing, setEditing] = useState(false);
   const [saved, setSaved] = useState(false);
   const { data, error, loading, reload } = useLoad(async () => {
-    const [detail, careers] = await Promise.all([rpc<Detail>('get_participant', { p_id: id }), fetchCareers(true)]);
+    const [detail, careers, highSchools] = await Promise.all([rpc<Detail>('get_participant', { p_id: id }), fetchCareers(true), fetchHighSchools(true)]);
     if (!detail || typeof detail.id !== 'string') throw new Error('NOT_FOUND');
-    return { detail, careers };
+    return { detail, careers, highSchools };
   }, [id]);
 
   if (loading && !data) return <Spinner />;
@@ -73,7 +74,7 @@ export default function ParticipantDetail() {
     );
   }
 
-  const { detail: p, careers } = data;
+  const { detail: p, careers, highSchools } = data;
   const career = careers.find((c) => c.id === p.initial_career_id);
   const raw = p.initial_career_raw?.trim() ?? '';
   const rawDiffers =
@@ -195,11 +196,14 @@ export default function ParticipantDetail() {
         <ParticipantForm
           participantId={p.id}
           careers={careers}
+          highSchools={highSchools}
+          canEditHighSchool={hasRole(staff, 'coordinacion')}
           initial={{
             email: p.email,
             full_name: p.full_name,
             phone: p.phone ?? '',
             high_school: p.high_school ?? '',
+            high_school_id: p.high_school_id ?? '',
             high_school_grade: p.high_school_grade ?? '',
             entry_period: p.entry_period ?? '',
             initial_career_id: p.initial_career_id ?? '',

@@ -84,7 +84,7 @@ test('Configuración home lists every section and sections keep a tab bar', () =
   role(['coordinacion']);
   const { unmount } = show('/coordinacion/configuracion');
   expect(screen.getByRole('heading', { name: 'Configuración' })).toBeInTheDocument();
-  for (const label of ['Personal', 'Experiencia pública', 'Reservaciones', 'Preparación y puesta en marcha', 'Carreras y divisiones', 'Auditoría']) {
+  for (const label of ['Personal', 'Experiencia pública', 'Reservaciones', 'Preparación y puesta en marcha', 'Catálogos académicos', 'Auditoría']) {
     expect(screen.getByRole('link', { name: new RegExp(label) })).toBeInTheDocument();
   }
   expect(screen.queryByRole('navigation', { name: 'Configuración' })).not.toBeInTheDocument();

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Alert, Badge, Button } from '../../components/ui';
-import { fetchCareers, type Career } from '../../lib/catalog';
+import HighSchoolPicker from '../../components/HighSchoolPicker';
+import { fetchCareers, fetchHighSchools, type Career, type HighSchool } from '../../lib/catalog';
 import { friendlyError } from '../../lib/errors';
 import type { ReviewPanelContext } from './CsvImport';
 
@@ -66,31 +67,44 @@ function MappingSection({
 export default function CareerMappingPanel({ result, options, busy, apply, isDemo }: ReviewPanelContext) {
   const unmatched1 = result.unmatched_careers ?? [];
   const unmatched2 = result.unmatched_careers_2 ?? [];
+  const unmatchedSchools = result.unmatched_high_schools ?? [];
   const [careers, setCareers] = useState<Career[] | null>(null);
+  const [highSchools, setHighSchools] = useState<HighSchool[] | null>(null);
   const [loadError, setLoadError] = useState('');
   const [draft1, setDraft1] = useState<Record<string, string>>(() => ({ ...((options.careerMap as Record<string, string>) ?? {}) }));
   const [draft2, setDraft2] = useState<Record<string, string>>(() => ({ ...((options.careerMap2 as Record<string, string>) ?? {}) }));
+  const [draftSchools, setDraftSchools] = useState<Record<string, string>>(() => ({ ...((options.highSchoolMap as Record<string, string>) ?? {}) }));
 
   useEffect(() => {
-    fetchCareers()
-      .then(setCareers)
-      .catch((cause) => setLoadError(friendlyError(cause)));
+    fetchCareers().then(setCareers).catch((cause) => setLoadError(friendlyError(cause)));
+    fetchHighSchools().then(setHighSchools).catch((cause) => setLoadError(friendlyError(cause)));
   }, []);
 
-  if (!unmatched1.length && !unmatched2.length) return null;
+  if (!unmatched1.length && !unmatched2.length && !unmatchedSchools.length) return null;
   const choices = (careers ?? []).filter((c) => c.is_active && (isDemo || !c.is_demo));
   const dirty1 = unmatched1.some((u) => (draft1[u.key] ?? '') !== (u.target ?? ''));
   const dirty2 = unmatched2.some((u) => (draft2[u.key] ?? '') !== (u.target ?? ''));
-  const dirty = dirty1 || dirty2;
+  const dirtySchools = unmatchedSchools.some((u) => (draftSchools[u.key] ?? '') !== (u.target ?? ''));
+  const dirty = dirty1 || dirty2 || dirtySchools;
 
   return (
     <section className="card space-y-4 p-6">
-      <h3 className="text-base font-semibold">Carreras no reconocidas</h3>
+      <h3 className="text-base font-semibold">Valores no reconocidos</h3>
       <p className="text-sm text-ink-muted">
-        Estos valores del archivo no coinciden con el catálogo oficial. Relaciona cada uno con una carrera oficial, o márcalo como "Sin carrera". La
-        decisión se aplica a todas las filas con ese valor y el texto original se conserva.
+        Relaciona cada valor con el catálogo oficial. Las carreras también pueden quedar sin carrera inicial. La decisión se aplica a todas las filas con ese valor.
       </p>
       {loadError && <Alert tone="error">{loadError}</Alert>}
+      {!!unmatchedSchools.length && <div className="space-y-3">
+        <h4 className="text-sm font-semibold">Preparatoria no reconocida</h4>
+        <p className="text-sm text-ink-muted">Si falta una institución oficial, agrégala en <a href="/coordinacion/configuracion/catalogo?tab=high_schools" target="_blank" rel="noopener noreferrer" className="font-semibold underline">Catálogos académicos → Preparatorias</a> y vuelve a analizar esta vista previa.</p>
+        <ul className="divide-y divide-line rounded-theme border border-line">
+          {unmatchedSchools.map((item) => <li key={item.key} className="grid gap-3 p-4 sm:grid-cols-[1fr_minmax(0,18rem)] sm:items-center">
+            <div><p className="font-semibold">"{item.value}"</p><p className="text-xs text-ink-muted">{item.count} {item.count === 1 ? 'fila' : 'filas'}</p></div>
+            <HighSchoolPicker label={`Preparatoria oficial para ${item.value}`} options={highSchools ?? []} value={draftSchools[item.key] ?? ''}
+              onChange={(id) => setDraftSchools({ ...draftSchools, [item.key]: id })} disabled={busy} />
+          </li>)}
+        </ul>
+      </div>}
       <MappingSection
         unmatched={unmatched1}
         draft={draft1}
@@ -110,12 +124,13 @@ export default function CareerMappingPanel({ result, options, busy, apply, isDem
       <Button
         variant="secondary"
         loading={busy}
-        disabled={!dirty}
+        disabled={busy || (!dirty && !unmatchedSchools.length)}
         onClick={() =>
           apply({
             ...options,
             careerMap: Object.fromEntries(Object.entries(draft1).filter(([, v]) => v)),
             careerMap2: Object.fromEntries(Object.entries(draft2).filter(([, v]) => v)),
+            highSchoolMap: Object.fromEntries(Object.entries(draftSchools).filter(([, v]) => v)),
           })
         }
       >

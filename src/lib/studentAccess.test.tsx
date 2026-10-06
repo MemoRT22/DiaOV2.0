@@ -40,16 +40,17 @@ test('an unexpected state, an error code and a network failure are all surfaced 
   await expect(studentAccess.identify('a@b.co')).rejects.toThrow('SERVER_ERROR');
   reply({ error: 'EMAIL_EXISTS' }, false);
   await expect(studentAccess.register({
-    email: 'a@b.co', password: 'clave-segura-1', first_name: 'A', last_name: 'B', phone: '9981234567', high_school: 'X',
+    email: 'a@b.co', password: 'clave-segura-1', first_name: 'A', last_name: 'B', phone: '9981234567', high_school_id: 'h-1',
     high_school_grade: '1', entry_period: '2027-01', initial_career_id: 'c', consent_accepted: true,
   })).rejects.toThrow('EMAIL_EXISTS');
   fetchMock.mockRejectedValue(new Error('offline'));
   await expect(studentAccess.setupPassword('a@b.co', 'clave-segura-1')).rejects.toThrow('NETWORK');
 });
 
-test('catalog returns the careers list, never personal data', async () => {
-  reply({ careers: [{ id: 'c-1', name: 'Derecho', division: null }] });
-  await expect(studentAccess.careers()).resolves.toEqual([{ id: 'c-1', name: 'Derecho', division: null }]);
+test('catalog returns careers and active schools in one request', async () => {
+  reply({ careers: [{ id: 'c-1', name: 'Derecho', division: null }], high_schools: [{ id: 'h-1', name: 'Otra escuela' }] });
+  await expect(studentAccess.catalog()).resolves.toEqual({ careers: [{ id: 'c-1', name: 'Derecho', division: null }], high_schools: [{ id: 'h-1', name: 'Otra escuela' }] });
+  expect(fetchMock).toHaveBeenCalledTimes(1);
 });
 
 const wrapper = ({ children }: { children: ReactNode }) => <AuthProvider>{children}</AuthProvider>;

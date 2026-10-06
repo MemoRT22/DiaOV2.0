@@ -72,8 +72,8 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
     description: 'Cuándo abren y cierran las reservaciones.' },
   { to: `${SETTINGS_BASE}/preparacion`, label: 'Preparación y puesta en marcha', icon: Power, group: 'Evento',
     description: 'Reinicia el ambiente de ensayo y activa la operación real.' },
-  { to: `${SETTINGS_BASE}/catalogo`, label: 'Carreras y divisiones', icon: GraduationCap, group: 'Evento',
-    description: 'Catálogo académico oficial. Cambia pocas veces.' },
+  { to: `${SETTINGS_BASE}/catalogo`, label: 'Catálogos académicos', icon: GraduationCap, group: 'Evento',
+    description: 'Divisiones, carreras y preparatorias oficiales.' },
   { to: `${SETTINGS_BASE}/auditoria`, label: 'Auditoría', icon: History, group: 'Avanzado',
     description: 'Consulta las acciones registradas por el sistema.' },
 ];
