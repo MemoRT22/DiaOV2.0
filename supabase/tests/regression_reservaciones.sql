@@ -131,12 +131,21 @@ BEGIN
 
   -- Limits (A has 4 of 4)
   ('límite: superar el máximo', 'A', $q$select reserve_session({SH})$q$, 'ERR:MAX_RESERVATIONS'),
-  ('límite: máximo configurable a 5', 'C', $q$select update_reservation_settings(jsonb_build_object('reservations_open_at', now() - interval '1 hour', 'max_reservations', 5, 'travel_buffer_minutes', 10))$q$, 'OK'),
+  ('límite: el motor respeta el máximo de la edición (5)', 'P', $q$update editions set max_reservations = 5 where id = active_edition_id()$q$, 'OK'),
   ('límite: con máximo 5 sí entra', 'A', $q$select reserve_session({SH})$q$, 'OK'),
-  ('límite: volver a 4', 'C', $q$select update_reservation_settings(jsonb_build_object('reservations_open_at', now() - interval '1 hour', 'max_reservations', 4, 'travel_buffer_minutes', 10))$q$, 'OK'),
+  ('límite: volver a 4', 'P', $q$update editions set max_reservations = 4 where id = active_edition_id()$q$, 'OK'),
   ('límite: con 5 vigentes y máximo 4 no entra otra', 'A', $q$select reserve_session({SC})$q$, 'ERR:MAX_RESERVATIONS'),
-  ('límite: regla inválida', 'C', $q$select update_reservation_settings('{"max_reservations":0,"travel_buffer_minutes":10}')$q$, 'ERR:INVALID_MAX_RESERVATIONS'),
-  ('límite: cierre antes de apertura', 'C', $q$select update_reservation_settings(jsonb_build_object('reservations_open_at', now(), 'reservations_close_at', now() - interval '1 hour', 'max_reservations', 4, 'travel_buffer_minutes', 10))$q$, 'ERR:INVALID_WINDOW'),
+  ('reglas del sistema: Coordinación no cambia el máximo', 'C', $q$select update_reservation_settings('{"max_reservations":9}')$q$, 'ERR:SYSTEM_MANAGED_SETTING'),
+  ('reglas del sistema: ni el traslado', 'C', $q$select update_reservation_settings('{"travel_buffer_minutes":0}')$q$, 'ERR:SYSTEM_MANAGED_SETTING'),
+  ('reglas del sistema: ni la ventana de check-in', 'C', $q$select update_reservation_settings('{"checkin_close_after_minutes":120,"reservations_open_at":"2026-01-01T00:00:00Z"}')$q$, 'ERR:SYSTEM_MANAGED_SETTING'),
+  ('reglas del sistema: las reglas técnicas no se tocaron', 'C', $q$select max_reservations = 4 and travel_buffer_minutes = 10 and checkin_open_before_minutes = 5 and checkin_close_after_minutes = 20 from editions where id = active_edition_id()$q$, 'TRUE'),
+  ('apertura/cierre: cierre antes de apertura', 'C', $q$select update_reservation_settings(jsonb_build_object('reservations_open_at', now(), 'reservations_close_at', now() - interval '1 hour'))$q$, 'ERR:INVALID_WINDOW'),
+  ('apertura/cierre: cierre sin apertura', 'C', $q$select update_reservation_settings(jsonb_build_object('reservations_close_at', now() + interval '1 hour'))$q$, 'ERR:INVALID_WINDOW'),
+  ('apertura/cierre: Coordinación abre y cierra', 'C', $q$select update_reservation_settings(jsonb_build_object('reservations_open_at', now() - interval '1 hour', 'reservations_close_at', now() + interval '30 days'))$q$, 'OK'),
+  ('apertura/cierre: la ventana quedó guardada y sin reglas técnicas alteradas', 'C', $q$select reservations_close_at > now() and reservations_open_at < now() and max_reservations = 4 and travel_buffer_minutes = 10 from editions where id = active_edition_id()$q$, 'TRUE'),
+  ('apertura/cierre: el cambio quedó auditado sin reglas técnicas', 'P', $q$select exists (select 1 from audit_log where action = 'reservations.settings_updated' and detail ? 'reservations_close_at' and not (detail ? 'max_reservations'))$q$, 'TRUE'),
+  ('apertura/cierre: staff no abre ni cierra', 'S', $q$select update_reservation_settings(jsonb_build_object('reservations_open_at', now()))$q$, 'ERR:NOT_AUTHORIZED'),
+  ('apertura/cierre: aspirante no abre ni cierra', 'A', $q$select update_reservation_settings(jsonb_build_object('reservations_open_at', now()))$q$, 'ERR:NOT_AUTHORIZED'),
 
   -- Time: started session
   ('tiempo: reservar sesión ya iniciada', 'A', $q$select reserve_session({SP})$q$, 'ERR:SESSION_STARTED'),

@@ -147,6 +147,7 @@ BEGIN
   ('resolv: Ana check-in QR crepas', 'A', 'select (check_in(' || quote_literal(v_token1) || ')->>''already_registered'') = ''false''', 'TRUE'),
   ('resolv: Ana en sesión 1b', 'P', 'select count(*) = 1 from attendances where participant_id = ' || quote_literal(v_pid) || '::uuid and session_id = ' || quote_literal(v_s1b) || '::uuid', 'TRUE'),
   ('resolv: Ana créditos', 'P', 'select credits_granted = 1 from attendances where participant_id = ' || quote_literal(v_pid) || '::uuid and session_id = ' || quote_literal(v_s1b) || '::uuid', 'TRUE'),
+  ('resolv: nivel devuelto por check-in coincide con el progreso', 'A', 'select (check_in(' || quote_literal(v_token1) || ')->>''level'')::int = (my_progress()->>''level'')::int', 'TRUE'),
   -- ===== Idempotencia =====
   ('idem: Ana otra vez already', 'A', 'select (check_in(' || quote_literal(v_token1) || ')->>''already_registered'') = ''true''', 'TRUE'),
   ('idem: 1 asistencia', 'P', 'select count(*) = 1 from attendances where participant_id = ' || quote_literal(v_pid) || '::uuid', 'TRUE'),
