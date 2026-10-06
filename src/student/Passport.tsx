@@ -9,6 +9,7 @@ import { fetchDivisions, fetchProgress } from '../lib/catalog';
 import { fetchMyRaffleStatus } from '../lib/raffleApi';
 import { useLoad } from '../lib/useLoad';
 import ScanButton from './ScanButton';
+import { progressNextMessage } from './progressText';
 import { usePublicTheme } from '../theme/PublicThemeProvider';
 
 const DISMISS_KEY = 'diaov.interestsPromptDismissed';
@@ -117,13 +118,7 @@ export default function Passport() {
         <p className="mt-1 text-sm text-ink-muted">{rank.description}</p>
         <p className="mx-auto mt-4 max-w-sm rounded-theme border border-line bg-surface/70 px-4 py-3 text-sm">
           {progress.next
-            ? text('progressNext', {
-                activities: remainingStamps,
-                activityTerm: term('stamp', remainingStamps !== 1).toLowerCase(),
-                divisions: progress.next.required_divisions,
-                divisionTerm: term('division', progress.next.required_divisions !== 1).toLowerCase(),
-                rank: rankName(progress.next.level),
-              })
+            ? progressNextMessage(theme, progress.next, remainingStamps, term, rankName)
             : text('progressMax')}
           {progress.next && remainingDivisions > 0 && remainingStamps === 0 && (
             <span className="mt-1 block text-xs text-ink-muted">

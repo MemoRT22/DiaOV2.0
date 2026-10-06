@@ -56,9 +56,8 @@ BEGIN
   -- ----- 1. rank rules are product-owned defaults, sown per edition ---------------------------------------
   INSERT INTO editions (code, name, event_date, is_active, mode) VALUES ('UX3_NEW', 'UX3 new edition', '2026-10-30', false, 'preparacion') RETURNING id INTO new_ed;
   IF (SELECT count(*) FROM rank_levels WHERE edition_id = new_ed) <> 5 THEN RAISE EXCEPTION 'NEW_EDITION_RANK_COUNT'; END IF;
-  IF NOT EXISTS (SELECT 1 FROM rank_levels WHERE edition_id = new_ed AND level = 5 AND required_attendances = 4 AND required_divisions = 3)
-     OR NOT EXISTS (SELECT 1 FROM rank_levels WHERE edition_id = new_ed AND level = 2 AND required_attendances = 1 AND required_divisions = 1)
-     OR NOT EXISTS (SELECT 1 FROM rank_levels WHERE edition_id = new_ed AND level = 1 AND required_attendances = 0 AND required_divisions = 0) THEN
+  -- the level depends only on accumulated stamps: 0, 1, 2, 3, 4 and never on distinct divisions
+  IF EXISTS (SELECT 1 FROM rank_levels WHERE edition_id = new_ed AND (required_attendances <> level - 1 OR required_divisions <> 0)) THEN
     RAISE EXCEPTION 'DEFAULT_THRESHOLDS_WRONG'; END IF;
   v_n := v_n + 3;
   -- seeding never overwrites what an edition already has
@@ -68,7 +67,9 @@ BEGIN
      OR (SELECT count(*) FROM rank_levels WHERE edition_id = new_ed) <> 5 THEN RAISE EXCEPTION 'SEED_NOT_IDEMPOTENT'; END IF;
   v_n := v_n + 1;
   -- the active edition (existing deployment) has all five levels, ready for the student's progress
-  IF (SELECT count(*) FROM rank_levels WHERE edition_id = ed) <> 5 THEN RAISE EXCEPTION 'ACTIVE_EDITION_NOT_BACKFILLED'; END IF;
+  IF (SELECT count(*) FROM rank_levels WHERE edition_id = ed) <> 5
+     OR EXISTS (SELECT 1 FROM rank_levels WHERE edition_id = ed AND (required_attendances <> level - 1 OR required_divisions <> 0)) THEN
+    RAISE EXCEPTION 'ACTIVE_EDITION_RANKS_NOT_BY_STAMPS'; END IF;
   v_n := v_n + 1;
   -- the client can read the rules but never write them
   IF NOT has_table_privilege('authenticated', 'public.rank_levels', 'SELECT') OR NOT has_table_privilege('anon', 'public.rank_levels', 'SELECT') THEN RAISE EXCEPTION 'RANKS_NOT_READABLE'; END IF;
@@ -91,23 +92,24 @@ BEGIN
     RAISE EXCEPTION 'RANK_CONFIGURATOR_STILL_EXISTS'; END IF;
   v_n := v_n + 1;
 
-  -- ----- 2. progress: stamps and distinct divisions (multi-division and division-less activities) -----------
-  IF participant_rank_level(pa) <> 1 THEN RAISE EXCEPTION 'LEVEL_0_ATTENDANCES'; END IF;
+  -- ----- 2. progress: one level per completed workshop (stamps), never blocked by divisions -----------------
+  IF participant_rank_level(pa) <> 1 THEN RAISE EXCEPTION 'LEVEL_1_WITH_0_WORKSHOPS'; END IF;
   INSERT INTO attendances (participant_id, session_id, activity_id, credits_granted) VALUES (pa, s1, a1, 1);
-  IF participant_rank_level(pa) <> 2 THEN RAISE EXCEPTION 'LEVEL_1_STAMP_1_DIV'; END IF;
+  IF participant_rank_level(pa) <> 2 THEN RAISE EXCEPTION 'LEVEL_2_WITH_1_WORKSHOP'; END IF;
   INSERT INTO attendances (participant_id, session_id, activity_id, credits_granted) VALUES (pa, s2, a2, 1);
   IF cardinality(participant_visited_division_ids(pa)) <> 3 THEN RAISE EXCEPTION 'MULTI_DIVISION_NOT_COUNTED'; END IF;
-  IF participant_rank_level(pa) <> 3 THEN RAISE EXCEPTION 'LEVEL_2_STAMPS_3_DIVS'; END IF;
+  IF participant_rank_level(pa) <> 3 THEN RAISE EXCEPTION 'LEVEL_3_WITH_2_WORKSHOPS'; END IF;
   INSERT INTO attendances (participant_id, session_id, activity_id, credits_granted) VALUES (pa, s3, a3, 1);
   IF cardinality(participant_visited_division_ids(pa)) <> 3 THEN RAISE EXCEPTION 'DIVISIONLESS_ACTIVITY_ADDED_DIVISION'; END IF;
-  IF participant_rank_level(pa) <> 4 THEN RAISE EXCEPTION 'LEVEL_3_STAMPS'; END IF;
+  IF participant_rank_level(pa) <> 4 THEN RAISE EXCEPTION 'LEVEL_4_WITH_3_WORKSHOPS'; END IF;
   INSERT INTO attendances (participant_id, session_id, activity_id, credits_granted) VALUES (pa, s4, a4, 1);
-  IF participant_rank_level(pa) <> 5 THEN RAISE EXCEPTION 'LEVEL_MAX'; END IF;
+  IF participant_rank_level(pa) <> 5 THEN RAISE EXCEPTION 'LEVEL_5_WITH_4_WORKSHOPS'; END IF;
   v_n := v_n + 6;
-  -- stamps alone do not rank up without distinct divisions
-  INSERT INTO attendances (participant_id, session_id, activity_id, credits_granted) VALUES (pv, s3, a3, 1), (pv, s5, a5, 1);
-  IF participant_rank_level(pv) <> 1 OR cardinality(participant_visited_division_ids(pv)) <> 0 THEN RAISE EXCEPTION 'STAMPS_WITHOUT_DIVISIONS_RANKED_UP'; END IF;
-  v_n := v_n + 1;
+  -- visiting few (or no) distinct divisions never blocks progress: 3 workshops, only 1 division visited
+  INSERT INTO attendances (participant_id, session_id, activity_id, credits_granted) VALUES (pv, s3, a3, 1), (pv, s5, a5, 1), (pv, s1, a1, 1);
+  IF cardinality(participant_visited_division_ids(pv)) <> 1 THEN RAISE EXCEPTION 'SINGLE_DIVISION_COUNT'; END IF;
+  IF participant_rank_level(pv) <> 4 THEN RAISE EXCEPTION 'DIVISIONS_BLOCKED_PROGRESS[%]', participant_rank_level(pv); END IF;
+  v_n := v_n + 2;
 
   -- the participant's own progress agrees with the rank used by check-in, and works with no configurator
   PERFORM set_config('request.jwt.claims', json_build_object('sub', ua, 'role', 'authenticated')::text, true);
@@ -126,8 +128,9 @@ BEGIN
   PERFORM set_config('role', 'authenticated', true);
   v := my_progress();
   PERFORM set_config('role', 'postgres', true); PERFORM set_config('request.jwt.claims', '', true);
-  IF (v->>'level')::int <> 1 OR (v->'next'->>'level')::int <> 2 OR (v->'next'->>'required_attendances')::int <> 1
-     OR (v->'next'->>'required_divisions')::int <> 1 THEN RAISE EXCEPTION 'MY_PROGRESS_NEXT_REQUIREMENT[%]', v->'next'; END IF;
+  IF (v->>'level')::int <> 4 OR (v->>'level')::int <> participant_rank_level(pv) OR (v->'next'->>'level')::int <> 5
+     OR (v->'next'->>'required_attendances')::int <> 4 OR (v->'next'->>'required_divisions')::int <> 0
+     OR jsonb_array_length(v->'division_ids') <> 1 THEN RAISE EXCEPTION 'MY_PROGRESS_NEXT_REQUIREMENT[%]', v; END IF;
   v_n := v_n + 1;
   -- progress is only for participants
   v_err := NULL;
