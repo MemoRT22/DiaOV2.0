@@ -9,12 +9,12 @@ import { fetchDivisions, fetchProgress } from '../lib/catalog';
 import { fetchMyRaffleStatus } from '../lib/raffleApi';
 import { useLoad } from '../lib/useLoad';
 import ScanButton from './ScanButton';
-import { useTheme } from '../theme/ThemeProvider';
+import { usePublicTheme } from '../theme/PublicThemeProvider';
 
 const DISMISS_KEY = 'diaov.interestsPromptDismissed';
 
 export default function Passport() {
-  const { theme, term, text, rankName } = useTheme();
+  const { theme, term, text, rankName } = usePublicTheme();
   const { profile } = useAuth();
   const { data, error, loading, reload } = useLoad(
     () => Promise.all([fetchProgress(), fetchDivisions(), fetchMyRaffleStatus().catch(() => null)]),

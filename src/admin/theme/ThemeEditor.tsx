@@ -5,7 +5,8 @@ import { fetchDivisions, formatDateTime } from '../../lib/catalog';
 import { friendlyError } from '../../lib/errors';
 import { supabase } from '../../lib/supabase';
 import { useLoad } from '../../lib/useLoad';
-import { useTheme } from '../../theme/ThemeProvider';
+import { useEdition } from '../../edition/EditionProvider';
+import { usePublicTheme } from '../../theme/PublicThemeProvider';
 import { contrastIssues, normalizeTheme } from '../../theme/themeEngine';
 import type { ThemeConfig } from '../../theme/types';
 import PhraseConfirmModal from '../PhraseConfirmModal';
@@ -26,7 +27,7 @@ const SECTIONS: { id: Section; label: string }[] = [
   { id: 'identidad', label: 'Identidad' },
   { id: 'colores', label: 'Colores' },
   { id: 'vocabulario', label: 'Vocabulario' },
-  { id: 'rangos', label: 'Rangos' },
+  { id: 'rangos', label: 'Niveles' },
   { id: 'textos', label: 'Textos' },
   { id: 'recursos', label: 'Imágenes y estilo' },
 ];
@@ -34,7 +35,8 @@ const SECTIONS: { id: Section; label: string }[] = [
 const MAX_IMPORT_BYTES = 200_000;
 
 export default function ThemeEditor() {
-  const { edition, reloadEdition } = useTheme();
+  const { edition, reloadEdition } = useEdition();
+  const { reloadTheme } = usePublicTheme();
   const { data, error, loading, reload } = useLoad(async () => {
     if (!edition) throw new Error('NO_ACTIVE_EDITION');
     const [{ data: rows, error: e }, divisions] = await Promise.all([
@@ -129,7 +131,7 @@ export default function ThemeEditor() {
       await saveDraft();
       const { error: e } = await supabase.rpc('publish_theme_draft');
       if (e) throw e;
-      await reloadEdition();
+      await Promise.all([reloadEdition(), reloadTheme()]);
       reload();
       return 'Temática publicada. Los alumnos ya ven los cambios.';
     });
@@ -242,7 +244,7 @@ export default function ThemeEditor() {
                 aria-selected={section === s.id}
                 onClick={() => setSection(s.id)}
                 className={`shrink-0 rounded-full px-4 py-2 text-sm font-semibold transition-colors ${
-                  section === s.id ? 'bg-primary-500/15 text-primary-300' : 'text-ink-muted hover:text-ink'
+                  section === s.id ? 'bg-primary-500/15 text-fg-brand' : 'text-ink-muted hover:text-ink'
                 }`}
               >
                 {s.label}

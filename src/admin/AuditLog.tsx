@@ -115,7 +115,7 @@ export default function AuditLog() {
                   <p className="text-xs text-ink-muted">{e.actor}</p>
                   {extra && <p className="mt-1 text-xs text-ink-muted">{extra}</p>}
                   {typeof e.detail?.participant_id === 'string' && (
-                    <Link to={`/coordinacion/participantes/${e.detail.participant_id}`} className="mt-1 inline-block text-xs font-semibold text-secondary-300 hover:underline">
+                    <Link to={`/coordinacion/participantes/${e.detail.participant_id}`} className="mt-1 inline-block text-xs font-semibold text-fg-info hover:underline">
                       Ver participante
                     </Link>
                   )}

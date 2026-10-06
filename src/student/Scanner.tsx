@@ -6,7 +6,7 @@ import { Alert, Button } from '../components/ui';
 import { checkIn, type CheckInResult } from '../lib/checkin';
 import { friendlyError } from '../lib/errors';
 import { formatTime } from '../lib/catalog';
-import { useTheme } from '../theme/ThemeProvider';
+import { usePublicTheme } from '../theme/PublicThemeProvider';
 
 type Phase = 'idle' | 'scanning' | 'validating' | 'success' | 'error' | 'manual';
 
@@ -14,7 +14,7 @@ export default function Scanner() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const scannerRef = useRef<QRScanner | null>(null);
   const decodedRef = useRef(false);
-  const { term, rankName } = useTheme();
+  const { term, rankName } = usePublicTheme();
   const [phase, setPhase] = useState<Phase>('idle');
   const [result, setResult] = useState<CheckInResult | null>(null);
   const [errorMsg, setErrorMsg] = useState('');

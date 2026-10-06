@@ -172,6 +172,9 @@ export default function ThemeFields({ section, config: c, divisions, onChange }:
       set('ranks', c.ranks.map((r, j) => (j === i ? { ...r, [k]: v } : r)));
     return (
       <div className="space-y-6">
+        <p className="text-xs text-ink-muted">
+          Nombres y mensajes que ve el alumno en cada nivel. Los requisitos para subir de nivel (sellos y divisiones distintas) los define el sistema.
+        </p>
         {c.ranks.map((r, i) => (
           <fieldset key={i} className="space-y-3 rounded-theme border border-line p-4">
             <legend className="px-2 text-sm font-semibold">Nivel {i + 1}</legend>

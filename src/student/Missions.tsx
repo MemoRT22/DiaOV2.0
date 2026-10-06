@@ -7,13 +7,15 @@ import { fetchRecommendedActivities, type RecommendedActivity } from '../lib/rec
 import { sessionState, type BoardSession } from '../lib/reservations';
 import { useLoad } from '../lib/useLoad';
 import { useReservationBoard } from '../lib/useReservationBoard';
-import { useTheme } from '../theme/ThemeProvider';
+import { useEdition } from '../edition/EditionProvider';
+import { usePublicTheme } from '../theme/PublicThemeProvider';
 import ConfirmSheet, { type ConfirmRequest } from './reservations/ConfirmSheet';
 import SessionRow from './reservations/SessionRow';
 import WindowNotice from './reservations/WindowNotice';
 
 export default function Missions() {
-  const { theme, edition, term, text } = useTheme();
+  const { theme, term, text } = usePublicTheme();
+  const { edition } = useEdition();
   const { board, error, loading, reload, reserve, change } = useReservationBoard(edition?.id);
   const divisions = useLoad(fetchDivisions, []);
   const recs = useLoad(() => fetchRecommendedActivities().catch(() => null), []);
@@ -212,7 +214,7 @@ function RecommendedCard({
   onAsk,
 }: {
   rec: RecommendedActivity;
-  theme: ReturnType<typeof useTheme>['theme'];
+  theme: ReturnType<typeof usePublicTheme>['theme'];
   board: ReturnType<typeof useReservationBoard>['board'];
   replacing: ReturnType<typeof useReservationBoard>['board'] extends infer B ? (B extends null ? null : { id: string }) : null;
   onAsk: (s: BoardSession) => void;

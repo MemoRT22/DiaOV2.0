@@ -3,10 +3,9 @@ import { Link } from 'react-router-dom';
 import { Alert, Button, Field } from '../components/ui';
 import { useAuth } from '../lib/auth';
 import { friendlyError } from '../lib/errors';
-import { useTheme } from '../theme/ThemeProvider';
+import { ADMIN_LOGO, ADMIN_PRODUCT_NAME } from './adminTheme';
 
 export default function AdminLogin() {
-  const { theme } = useTheme();
   const { session, staff, profile, signInStaff, signOut } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -32,9 +31,9 @@ export default function AdminLogin() {
     <div className="flex min-h-dvh items-center justify-center px-4 py-10">
       <div className="w-full max-w-sm">
         <div className="mb-6 flex items-center gap-3">
-          {theme.assets.logoMark && <img src={theme.assets.logoMark} alt="" className="h-10 w-10 object-contain" />}
+          <img src={ADMIN_LOGO} alt="" className="h-10 w-10 object-contain" />
           <div>
-            <p className="font-display text-lg font-extrabold">{theme.meta.eventName}</p>
+            <p className="font-display text-lg font-extrabold">{ADMIN_PRODUCT_NAME}</p>
             <p className="text-sm text-ink-muted">Panel del personal</p>
           </div>
         </div>

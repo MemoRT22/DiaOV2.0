@@ -1,5 +1,5 @@
 import { neutralTheme } from './neutralTheme';
-import type { ThemeConfig } from './types';
+import type { ColorKey, ThemeConfig } from './types';
 
 const HEX = /^#[0-9a-fA-F]{6}$/;
 
@@ -51,16 +51,17 @@ export function readableOn(bg: string) {
 
 const rgbVar = (c: RGB) => c.join(' ');
 
-export function themeCssVars(theme: ThemeConfig): Record<string, string> {
+/** Palette → CSS variables. `fgShade` picks the ramp shade used for readable status text (`text-fg-*`). */
+export function paletteCssVars(colors: Record<ColorKey, string>, fgShade: 200 | 700): Record<string, string> {
   const vars: Record<string, string> = {};
   const ramps = ['primary', 'secondary', 'accent', 'success', 'warning', 'error', 'neutral'] as const;
   for (const name of ramps) {
-    const base = hexToRgb(theme.colors[name]);
+    const base = hexToRgb(colors[name]);
     for (const [shade, target, amount] of SHADES) {
       vars[`--c-${name}-${shade}`] = rgbVar(mix(base, target, amount));
     }
   }
-  const c = theme.colors;
+  const c = colors;
   vars['--surface'] = rgbVar(hexToRgb(c.surface));
   vars['--surface-raised'] = rgbVar(hexToRgb(c.surfaceRaised));
   vars['--surface-sunken'] = rgbVar(hexToRgb(c.background));
@@ -71,10 +72,21 @@ export function themeCssVars(theme: ThemeConfig): Record<string, string> {
   vars['--on-primary'] = rgbVar(hexToRgb(readableOn(c.primary)));
   vars['--on-secondary'] = rgbVar(hexToRgb(readableOn(c.secondary)));
   vars['--on-accent'] = rgbVar(hexToRgb(readableOn(c.accent)));
-  vars['--font-display'] = `'${theme.typography.display}', system-ui, sans-serif`;
-  vars['--font-body'] = `'${theme.typography.body}', system-ui, sans-serif`;
-  vars['--radius'] = `${theme.radius}px`;
+  const fg: Array<[string, (typeof ramps)[number]]> = [
+    ['brand', 'primary'], ['info', 'secondary'], ['accent', 'accent'], ['success', 'success'], ['warning', 'warning'], ['error', 'error'],
+  ];
+  for (const [token, ramp] of fg) vars[`--fg-${token}`] = vars[`--c-${ramp}-${fgShade}`];
   return vars;
+}
+
+/** Variables of the public (student-facing) theme. Never applied to the admin surface. */
+export function themeCssVars(theme: ThemeConfig): Record<string, string> {
+  return {
+    ...paletteCssVars(theme.colors, 200),
+    '--font-display': `'${theme.typography.display}', system-ui, sans-serif`,
+    '--font-body': `'${theme.typography.body}', system-ui, sans-serif`,
+    '--radius': `${theme.radius}px`,
+  };
 }
 
 export type ContrastIssue = { label: string; ratio: number; required: number };

@@ -146,7 +146,7 @@ export default function CheckinModule() {
                 <p className="font-display font-extrabold text-success">{a.total_attended}</p>
                 <p className="text-xs text-ink-muted">Asistencias</p>
               </div>
-              <QrCode className="h-5 w-5 text-primary-400" aria-hidden />
+              <QrCode className="h-5 w-5 text-fg-brand" aria-hidden />
             </div>
           </button>
         ))}

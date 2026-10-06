@@ -6,7 +6,7 @@ import { friendlyError } from '../lib/errors';
 import { preparationApi, type PreparationCounts } from '../lib/preparationApi';
 import { supabase } from '../lib/supabase';
 import { useLoad } from '../lib/useLoad';
-import { useTheme } from '../theme/ThemeProvider';
+import { useEdition } from '../edition/EditionProvider';
 import PhraseConfirmModal from './PhraseConfirmModal';
 
 const groups: { key: keyof PreparationCounts; label: string }[] = [
@@ -25,7 +25,7 @@ const groups: { key: keyof PreparationCounts; label: string }[] = [
 ];
 
 export default function Operation() {
-  const { edition, reloadEdition } = useTheme();
+  const { edition, reloadEdition } = useEdition();
   const { data, error, loading, reload } = useLoad(preparationApi.preview, [edition?.mode]);
   const [modal, setModal] = useState<'reset' | 'activate' | null>(null);
   const [notice, setNotice] = useState('');
@@ -42,7 +42,7 @@ export default function Operation() {
   return (
     <div className="mx-auto max-w-4xl space-y-6">
       <header className="space-y-2">
-        <p className="text-xs font-bold uppercase tracking-widest text-primary-500">Coordinación · Puesta en marcha</p>
+        <p className="text-xs font-bold uppercase tracking-widest text-fg-brand">Coordinación · Puesta en marcha</p>
         <h1 className="font-display text-3xl font-extrabold tracking-tight">Preparación y puesta en marcha</h1>
         <p className="max-w-2xl text-sm text-ink-muted">Prepara el ambiente, reinicia los ensayos cuando lo necesites y activa la operación real al llegar el momento.</p>
       </header>
@@ -51,7 +51,7 @@ export default function Operation() {
 
       <section className="card p-6 sm:p-8">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-3"><span className="rounded-theme bg-primary-500/10 p-2 text-primary-500"><ShieldCheck className="h-5 w-5" aria-hidden /></span><h2 className="text-lg font-bold">Estado del evento</h2></div>
+          <div className="flex items-center gap-3"><span className="rounded-theme bg-primary-500/10 p-2 text-fg-brand"><ShieldCheck className="h-5 w-5" aria-hidden /></span><h2 className="text-lg font-bold">Estado del evento</h2></div>
           <Badge tone={real ? 'success' : 'warning'}>{real ? 'Operación real' : 'Preparación'}</Badge>
         </div>
         <p className="mt-4 text-sm text-ink-muted">{real
@@ -63,7 +63,7 @@ export default function Operation() {
       {!real && <>
         <section className="card p-6 sm:p-8">
           <div className="flex items-start gap-3">
-            <span className="rounded-theme bg-warning-500/10 p-2 text-warning-300"><RotateCcw className="h-5 w-5" aria-hidden /></span>
+            <span className="rounded-theme bg-warning-500/10 p-2 text-fg-warning"><RotateCcw className="h-5 w-5" aria-hidden /></span>
             <div><p className="text-xs font-bold uppercase tracking-wider text-ink-muted">Paso 1</p><h2 className="text-lg font-bold">Reiniciar ambiente de preparación</h2></div>
           </div>
           <p className="mt-4 text-sm text-ink-muted">Se eliminará la actividad generada durante los ensayos. La configuración del evento, la temática, el catálogo oficial, las reglas y las cuentas reales del personal se conservarán.</p>
@@ -75,11 +75,11 @@ export default function Operation() {
         </section>
 
         <section className="card p-6 sm:p-8">
-          <div className="flex items-start gap-3"><span className="rounded-theme bg-success-500/10 p-2 text-success-300"><ArrowRight className="h-5 w-5" aria-hidden /></span><div><p className="text-xs font-bold uppercase tracking-wider text-ink-muted">Paso 2</p><h2 className="text-lg font-bold">Activar operación real</h2></div></div>
+          <div className="flex items-start gap-3"><span className="rounded-theme bg-success-500/10 p-2 text-fg-success"><ArrowRight className="h-5 w-5" aria-hidden /></span><div><p className="text-xs font-bold uppercase tracking-wider text-ink-muted">Paso 2</p><h2 className="text-lg font-bold">Activar operación real</h2></div></div>
           <p className="mt-4 text-sm text-ink-muted">Después del reinicio, carga la información definitiva. Cuando la temática esté publicada y todo esté listo, activa la operación real. Este paso es irreversible.</p>
-          {!data.theme_ready && <p className="mt-3 text-sm text-warning-300">Publica una temática antes de continuar.</p>}
-          {data.temporary_records_remaining > 0 && <p className="mt-3 text-sm text-warning-300">Antes de activar, retira los elementos temporales que aún quedan en el ambiente.</p>}
-          {data.auth_cleanup_pending > 0 && <p className="mt-3 text-sm text-warning-300">Completa la limpieza de accesos pendiente antes de activar.</p>}
+          {!data.theme_ready && <p className="mt-3 text-sm text-fg-warning">Publica una temática antes de continuar.</p>}
+          {data.temporary_records_remaining > 0 && <p className="mt-3 text-sm text-fg-warning">Antes de activar, retira los elementos temporales que aún quedan en el ambiente.</p>}
+          {data.auth_cleanup_pending > 0 && <p className="mt-3 text-sm text-fg-warning">Completa la limpieza de accesos pendiente antes de activar.</p>}
           <Button className="mt-5" onClick={() => setModal('activate')} disabled={!canActivate}>Activar operación real</Button>
         </section>
       </>}

@@ -6,10 +6,12 @@ import { Alert, Button, Field, Spinner } from '../components/ui';
 import { useAuth } from '../lib/auth';
 import { formatEventDate } from '../lib/catalog';
 import { friendlyError } from '../lib/errors';
-import { useTheme } from '../theme/ThemeProvider';
+import { useEdition } from '../edition/EditionProvider';
+import { usePublicTheme } from '../theme/PublicThemeProvider';
 
 export default function StudentLogin() {
-  const { theme, edition, text } = useTheme();
+  const { theme, text } = usePublicTheme();
+  const { edition } = useEdition();
   const { ready, profile, signInParticipant } = useAuth();
   const [email, setEmail] = useState('');
   const [birthDate, setBirthDate] = useState('');

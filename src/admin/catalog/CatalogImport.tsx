@@ -64,15 +64,17 @@ const CONFIG: Record<
   },
 };
 
-export default function CatalogImport() {
-  const [kind, setKind] = useState<Kind>('careers');
+type Props = { initialKind?: Kind; backLabel?: string };
+
+export default function CatalogImport({ initialKind = 'careers', backLabel = 'Carreras y divisiones' }: Props) {
+  const [kind, setKind] = useState<Kind>(initialKind);
   const config = CONFIG[kind];
 
   return (
     <div className="space-y-6">
       <Link to=".." relative="path" className="inline-flex items-center gap-2 text-sm font-semibold text-ink-muted hover:text-ink">
         <ArrowLeft className="h-4 w-4" aria-hidden />
-        Catálogo
+        {backLabel}
       </Link>
       <header>
         <h1 className="text-2xl font-extrabold">Importar catálogo</h1>
@@ -84,7 +86,7 @@ export default function CatalogImport() {
             key={k}
             onClick={() => setKind(k)}
             className={`min-h-10 rounded-full border px-4 text-sm font-semibold transition-colors ${
-              kind === k ? 'border-primary-500 bg-primary-500/15 text-primary-200' : 'border-line text-ink-muted hover:text-ink'
+              kind === k ? 'border-primary-500 bg-primary-500/15 text-fg-brand' : 'border-line text-ink-muted hover:text-ink'
             }`}
           >
             {CONFIG[k].label}

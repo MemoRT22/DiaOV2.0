@@ -5,7 +5,7 @@ import { fetchDivisions, fetchPostEventInterests } from '../lib/catalog';
 import { friendlyError } from '../lib/errors';
 import { supabase } from '../lib/supabase';
 import { useLoad } from '../lib/useLoad';
-import { useTheme } from '../theme/ThemeProvider';
+import { usePublicTheme } from '../theme/PublicThemeProvider';
 
 const MAX = 3;
 
@@ -16,7 +16,7 @@ const normalize = (s: string) =>
     .toLowerCase();
 
 export default function Interests() {
-  const { theme, text } = useTheme();
+  const { theme, text } = usePublicTheme();
   const { data, error, loading, reload } = useLoad(
     () => Promise.all([fetchDivisions(), fetchPostEventInterests()]),
     [],

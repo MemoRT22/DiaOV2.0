@@ -16,7 +16,7 @@ import {
   temporalStatus,
   type TemporalStatus,
 } from '../lib/operationsHelpers';
-import { useTheme } from '../theme/ThemeProvider';
+import { useEdition } from '../edition/EditionProvider';
 
 const REFRESH_MS = 20_000;
 
@@ -32,7 +32,7 @@ const FILTERS: { key: FilterKey; label: string }[] = [
 ];
 
 export default function OperationsCenter() {
-  const { edition } = useTheme();
+  const { edition } = useEdition();
   const navigate = useNavigate();
   const [data, setData] = useState<OperationsOverview | null>(null);
   const [error, setError] = useState<unknown>(null);
@@ -299,7 +299,7 @@ function SessionCard({
             <>
               <span className="font-semibold">{session.reserved}</span> reservados ·{' '}
               <span className="font-semibold">{session.attended}</span> asistencias ·{' '}
-              <span className="font-semibold text-success-300">Tasa de asistencia: {rate}%</span>
+              <span className="font-semibold text-fg-success">Tasa de asistencia: {rate}%</span>
             </>
           ) : (
             <span className="text-ink-muted">Sin reservaciones</span>
@@ -328,7 +328,7 @@ function SessionCard({
 }
 
 function Metric({ label, value, tone }: { label: string; value: number; tone?: 'error' | 'warning' }) {
-  const color = tone === 'error' ? 'text-error-300' : tone === 'warning' ? 'text-warning-300' : 'text-ink';
+  const color = tone === 'error' ? 'text-fg-error' : tone === 'warning' ? 'text-fg-warning' : 'text-ink';
   return (
     <div className="rounded-theme border border-line bg-surface-sunken px-3 py-2">
       <p className="text-xs text-ink-muted">{label}</p>

@@ -30,6 +30,10 @@ export default {
           inverse: 'rgb(var(--ink-inverse) / <alpha-value>)',
         },
         line: 'rgb(var(--line) / <alpha-value>)',
+        // Readable status/brand text: light tones on the public theme, dark tones on the admin system.
+        fg: Object.fromEntries(
+          ['brand', 'info', 'accent', 'success', 'warning', 'error'].map((t) => [t, `rgb(var(--fg-${t}) / <alpha-value>)`]),
+        ),
         'on-primary': 'rgb(var(--on-primary) / <alpha-value>)',
         'on-secondary': 'rgb(var(--on-secondary) / <alpha-value>)',
         'on-accent': 'rgb(var(--on-accent) / <alpha-value>)',

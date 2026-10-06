@@ -3,11 +3,11 @@ import { useState } from 'react';
 import { Alert, Badge, Button } from '../../components/ui';
 import { formatDateTime } from '../../lib/catalog';
 import { rpc } from '../../lib/adminApi';
-import { useTheme } from '../../theme/ThemeProvider';
+import { useEdition } from '../../edition/EditionProvider';
 import PhraseConfirmModal from '../PhraseConfirmModal';
 
 export default function RosterStatus() {
-  const { edition, reloadEdition } = useTheme();
+  const { edition, reloadEdition } = useEdition();
   const [modal, setModal] = useState<'declare' | 'reopen' | null>(null);
   const [notice, setNotice] = useState('');
   if (!edition) return null;
@@ -17,7 +17,7 @@ export default function RosterStatus() {
     <section className="card space-y-4 p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <ShieldCheck className="h-5 w-5 text-secondary-300" aria-hidden />
+          <ShieldCheck className="h-5 w-5 text-fg-info" aria-hidden />
           <h2 className="text-lg font-semibold">Estado del padrón</h2>
           <Badge tone={official ? 'success' : 'warning'}>{official ? 'Oficial' : 'En preparación'}</Badge>
         </div>

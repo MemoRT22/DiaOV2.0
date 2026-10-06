@@ -4,7 +4,7 @@ import { Alert, Badge, Button } from '../../components/ui';
 import { FIELD_LABELS } from '../../lib/adminApi';
 import { mapColumns, parseCsv, type CsvColumn, type CsvExtraCell } from '../../lib/csv';
 import { friendlyError } from '../../lib/errors';
-import { useTheme } from '../../theme/ThemeProvider';
+import { useEdition } from '../../edition/EditionProvider';
 
 export type ImportRowResult = {
   row: number;
@@ -47,13 +47,15 @@ type Props = {
   reviewPanel?: (ctx: ReviewPanelContext) => ReactNode;
   commitBlockedReason?: (result: ImportResult) => string | null;
   confirmLabel?: string;
+  /** Called once the import has been saved, so the page can show what needs review next. */
+  onImported?: (result: ImportResult) => void;
 };
 
 const STATUS: Record<string, { label: string; tone: 'info' | 'success' | 'warning' | 'error' | 'neutral' }> = {
   new: { label: 'Nuevos', tone: 'success' },
   update: { label: 'Se actualizan', tone: 'info' },
   unchanged: { label: 'Sin cambios', tone: 'neutral' },
-  conflict: { label: 'Con conflicto', tone: 'warning' },
+  conflict: { label: 'Requieren revisión', tone: 'warning' },
   duplicate: { label: 'Repetidos en el archivo', tone: 'neutral' },
   error: { label: 'Con error (se omiten)', tone: 'error' },
 };
@@ -75,8 +77,9 @@ export default function CsvImport({
   reviewPanel,
   commitBlockedReason,
   confirmLabel = 'Confirmar importación',
+  onImported,
 }: Props) {
-  const { edition } = useTheme();
+  const { edition } = useEdition();
   const canDemo = edition?.mode === 'preparacion';
   const [isDemo, setIsDemo] = useState(false);
   const [stage, setStage] = useState<Stage>({ kind: 'idle' });
@@ -141,6 +144,7 @@ export default function CsvImport({
       const result = await commit(stage.rows, stage.fileName, isDemo, stage.options);
       if (!result || !result.counts) throw new Error('SERVER_ERROR');
       setStage({ kind: 'done', result });
+      onImported?.(result);
     } catch (cause) {
       setError(friendlyError(cause));
     } finally {
@@ -216,7 +220,10 @@ export default function CsvImport({
 
       {stage.kind === 'done' && (
         <div className="space-y-4">
-          <Alert tone="success">Importación completada. Este es el resumen de lo que se guardó.</Alert>
+          <Alert tone="success">
+            <p className="font-semibold">Importación completada</p>
+            <p className="mt-1">{importSummary(stage.result.counts)}</p>
+          </Alert>
           <Counts counts={stage.result.counts} />
           <Button variant="secondary" onClick={reset}>
             <RotateCcw className="h-4 w-4" aria-hidden />
@@ -226,6 +233,21 @@ export default function CsvImport({
       )}
     </div>
   );
+}
+
+const SUMMARY_PARTS: Array<[string, string, string]> = [
+  ['update', 'actualizado', 'actualizados'],
+  ['new', 'nuevo', 'nuevos'],
+  ['conflict', 'requiere revisión', 'requieren revisión'],
+  ['error', 'con error', 'con error'],
+];
+
+/** "1,842 actualizados · 17 nuevos · 3 requieren revisión" */
+export function importSummary(counts: Record<string, number>) {
+  const parts = SUMMARY_PARTS.filter(([key]) => (counts[key] ?? 0) > 0).map(
+    ([key, one, many]) => `${counts[key].toLocaleString('es-MX')} ${counts[key] === 1 ? one : many}`,
+  );
+  return parts.length ? parts.join(' · ') : 'No hubo cambios que guardar.';
 }
 
 function Counts({ counts, active, onPick }: { counts: Record<string, number>; active?: string; onPick?: (k: string) => void }) {
@@ -315,13 +337,13 @@ function Review({
                     <Badge tone={STATUS[r.status]?.tone ?? 'neutral'}>{STATUS[r.status]?.label ?? r.status}</Badge>
                   </td>
                   <td className="space-y-1 px-4 py-3 text-xs">
-                    {r.alert && <p className="rounded-md border border-error-400/60 bg-error-500/15 px-2 py-1 font-semibold text-error-200">{r.alert}</p>}
-                    {r.note && <p className="font-semibold text-secondary-200">{r.note}</p>}
-                    {r.errors.map((e) => <p key={e} className="text-error-300">{e}</p>)}
-                    {r.warnings.map((w) => <p key={w} className="text-warning-200">{w}</p>)}
+                    {r.alert && <p className="rounded-md border border-error-400/60 bg-error-500/15 px-2 py-1 font-semibold text-fg-error">{r.alert}</p>}
+                    {r.note && <p className="font-semibold text-fg-info">{r.note}</p>}
+                    {r.errors.map((e) => <p key={e} className="text-fg-error">{e}</p>)}
+                    {r.warnings.map((w) => <p key={w} className="text-fg-warning">{w}</p>)}
                     {!!r.updated_fields?.length && <p className="text-ink-muted">Actualiza: {fields(r.updated_fields)}</p>}
                     {!!r.conflict_fields?.length && (
-                      <p className="text-warning-200">Corregido a mano, queda en conflicto: {fields(r.conflict_fields)}</p>
+                      <p className="text-fg-warning">Corregido a mano, queda para revisión: {fields(r.conflict_fields)}</p>
                     )}
                     {r.status === 'duplicate' && <p className="text-ink-muted">Se usa la última aparición de este correo.</p>}
                   </td>

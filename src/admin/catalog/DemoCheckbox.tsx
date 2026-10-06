@@ -1,7 +1,7 @@
-import { useTheme } from '../../theme/ThemeProvider';
+import { useEdition } from '../../edition/EditionProvider';
 
 export function DemoCheckbox({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
-  const { edition } = useTheme();
+  const { edition } = useEdition();
   if (edition?.mode !== 'preparacion') return null;
   return (
     <label className="flex items-start gap-3 text-sm">

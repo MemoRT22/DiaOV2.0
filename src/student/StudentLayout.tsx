@@ -3,11 +3,13 @@ import { Navigate, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { Backdrop } from '../components/themed';
 import { Spinner } from '../components/ui';
 import { useAuth } from '../lib/auth';
-import { useTheme } from '../theme/ThemeProvider';
+import { useEdition } from '../edition/EditionProvider';
+import { usePublicTheme } from '../theme/PublicThemeProvider';
 
 export default function StudentLayout() {
   const { ready, profile, signOut } = useAuth();
-  const { theme, edition, text, term, loading } = useTheme();
+  const { theme, text, term, loading } = usePublicTheme();
+  const { edition } = useEdition();
   const location = useLocation();
 
   if (!ready || loading) return <Spinner />;

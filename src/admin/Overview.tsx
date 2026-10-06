@@ -9,7 +9,7 @@ import { friendlyError } from '../lib/errors';
 import { supabase } from '../lib/supabase';
 import { useLoad } from '../lib/useLoad';
 import { workshopAdminApi, type WorkshopList } from '../lib/workshopAdminApi';
-import { useTheme } from '../theme/ThemeProvider';
+import { useEdition } from '../edition/EditionProvider';
 
 type Summary = {
   participants_total: number;
@@ -22,7 +22,7 @@ type Summary = {
 type Pending = { count: number; label: string; description: string; to: string; action: string; icon: LucideIcon };
 
 export default function Overview() {
-  const { edition } = useTheme();
+  const { edition } = useEdition();
   const { data, error, loading, reload } = useLoad(async () => {
     const [result, workshops] = await Promise.all([
       supabase.rpc('coordination_summary'),
@@ -44,9 +44,9 @@ export default function Overview() {
   const approvedCount = workshops?.counts.approved ?? 0;
   const pending: Pending[] = [
     ...(summary.pending_conflicts > 0 ? [{ count: summary.pending_conflicts,
-      label: summary.pending_conflicts === 1 ? 'conflicto de importación' : 'conflictos de importación',
-      description: 'Hay datos importados que necesitan una decisión.', to: '/coordinacion/conflictos',
-      action: 'Resolver conflictos', icon: GitMerge }] : []),
+      label: summary.pending_conflicts === 1 ? 'dato de importación por revisar' : 'datos de importación por revisar',
+      description: 'Una importación trajo datos distintos a correcciones hechas a mano.', to: '/coordinacion/participantes/importar',
+      action: 'Revisar', icon: GitMerge }] : []),
     ...(summary.missing_birth_date > 0 ? [{ count: summary.missing_birth_date,
       label: summary.missing_birth_date === 1 ? 'participante sin fecha de nacimiento' : 'participantes sin fecha de nacimiento',
       description: 'Corrige sus expedientes para que puedan entrar a la plataforma.', to: '/coordinacion/participantes',
@@ -74,30 +74,30 @@ export default function Overview() {
 
   return <div className="space-y-8">
     <header>
-      <p className="text-xs font-bold uppercase tracking-[0.18em] text-primary-500">Panel de Coordinación</p>
+      <p className="text-xs font-bold uppercase tracking-[0.18em] text-fg-brand">Panel de Coordinación</p>
       <h1 className="mt-2 font-display text-3xl font-extrabold">Inicio</h1>
       <p className="mt-2 text-sm text-ink-muted">Lo que necesita atención para preparar y operar el Día OV.</p>
     </header>
 
     <section aria-labelledby="pending-title" className="space-y-4">
-      <div><p className="text-xs font-bold uppercase tracking-wider text-primary-500">Prioridad</p>
+      <div><p className="text-xs font-bold uppercase tracking-wider text-fg-brand">Prioridad</p>
         <h2 id="pending-title" className="mt-1 text-xl font-extrabold">Pendientes</h2>
         <p className="mt-1 text-sm text-ink-muted">Situaciones conocidas que requieren una acción de Coordinación.</p></div>
       {pending.length > 0 ? <div className="space-y-3">
         {pending.map(({ count, label, description, to, action, icon: Icon }) => <Link key={label} to={to}
           className="card group flex items-center gap-4 p-4 transition-colors hover:border-secondary-400 hover:bg-surface-raised focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-secondary-500 sm:p-5">
-          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-theme bg-warning-500/10 text-warning-500">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-theme bg-warning-500/10 text-fg-warning">
             <Icon className="h-5 w-5" aria-hidden />
           </span>
           <span className="min-w-0 flex-1"><span className="block font-semibold">{count} {label}</span>
             <span className="mt-0.5 block text-sm text-ink-muted">{description}</span></span>
-          <span className="hidden shrink-0 items-center gap-1 text-sm font-semibold text-primary-500 sm:inline-flex">
+          <span className="hidden shrink-0 items-center gap-1 text-sm font-semibold text-fg-brand sm:inline-flex">
             {action}<ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" aria-hidden />
           </span>
-          <ArrowRight className="h-5 w-5 shrink-0 text-primary-500 sm:hidden" aria-hidden />
+          <ArrowRight className="h-5 w-5 shrink-0 text-fg-brand sm:hidden" aria-hidden />
         </Link>)}
       </div> : workshops && <div className="card flex items-center gap-3 p-5">
-        <CheckCircle2 className="h-6 w-6 shrink-0 text-success-500" aria-hidden />
+        <CheckCircle2 className="h-6 w-6 shrink-0 text-fg-success" aria-hidden />
         <div><p className="font-semibold">Sin pendientes conocidos</p>
           <p className="text-sm text-ink-muted">Los indicadores disponibles no muestran tareas por resolver.</p></div>
       </div>}
@@ -112,10 +112,10 @@ export default function Overview() {
       <div className="grid gap-3 md:grid-cols-3">
         {quickActions.map(({ to, title, description, icon: Icon }) => <Link key={to} to={to}
           className="card group flex flex-col gap-4 p-5 transition-colors hover:border-secondary-400 hover:bg-surface-raised focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-secondary-500">
-          <Icon className="h-6 w-6 text-primary-500" aria-hidden />
+          <Icon className="h-6 w-6 text-fg-brand" aria-hidden />
           <span className="flex-1"><span className="block font-bold">{title}</span>
             <span className="mt-1 block text-sm text-ink-muted">{description}</span></span>
-          <span className="inline-flex items-center gap-1 text-sm font-semibold text-primary-500">Abrir
+          <span className="inline-flex items-center gap-1 text-sm font-semibold text-fg-brand">Abrir
             <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" aria-hidden /></span>
         </Link>)}
       </div>
@@ -139,7 +139,7 @@ export default function Overview() {
         {edition?.mode === 'operacion_real'
           ? `Operación real activa desde ${edition.real_operation_at ? formatDateTime(edition.real_operation_at) : '—'}.`
           : <>El sistema está en preparación. Antes del evento,{' '}
-            <Link to="/coordinacion/operacion" className="font-semibold text-ink underline">realiza la puesta en marcha y activa la operación real</Link>.</>}
+            <Link to="/coordinacion/configuracion/preparacion" className="font-semibold text-ink underline">realiza la puesta en marcha y activa la operación real</Link>.</>}
       </p>
     </section>
 
