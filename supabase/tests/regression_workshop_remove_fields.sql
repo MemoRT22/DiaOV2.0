@@ -1,4 +1,4 @@
--- Verificación de la migración 20261006034500 (retiro de why_join / student_experience).
+-- Verificación de la migración 20261006042658 (retiro de why_join / student_experience).
 -- Ejecutar DESPUÉS de aplicar las migraciones del PR en un entorno de prueba, o dentro de una transacción que se revierta.
 -- Termina siempre con RAISE EXCEPTION 'REMOVE_FIELDS_OK ...' para no dejar filas de prueba.
 DO $test$
