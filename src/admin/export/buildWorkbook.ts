@@ -1,10 +1,13 @@
+import { gradeLabel, periodLabel } from '../../lib/participantFields';
+
 export type ExportRow = {
   full_name: string;
   email: string;
   previous_emails: string | null;
   phone: string | null;
-  birth_date: string | null;
   high_school: string | null;
+  high_school_grade: string | null;
+  entry_period: string | null;
   initial_career_code: string | null;
   initial_career: string | null;
   initial_division: string | null;
@@ -20,7 +23,9 @@ export type ExportRow = {
   forms_consent_at: string | null;
   manual_consent_at: string | null;
   platform_consent_at: string | null;
+  platform_consent_source: string | null;
   logged_in: boolean;
+  access_configured: boolean;
   interest_1: string | null;
   interest_2: string | null;
   interest_3: string | null;
@@ -41,18 +46,12 @@ export type ExportPayload = {
   extra_columns: ExtraColumn[];
 };
 
-const ORIGIN: Record<string, string> = { forms: 'Forms', manual: 'Alta manual', demo: 'Prueba' };
+const ORIGIN: Record<string, string> = { forms: 'Forms', manual: 'Alta manual', self_service: 'Autorregistro', demo: 'Prueba' };
 
 // Excel has no time zones; shift to Cancún wall-clock (UTC-5) so cells show local time.
 function localDate(iso: string | null) {
   if (!iso) return null;
   return new Date(new Date(iso).getTime() - 5 * 3600 * 1000);
-}
-
-function birthDate(value: string | null) {
-  if (!value) return null;
-  const [y, m, d] = value.split('-').map(Number);
-  return new Date(Date.UTC(y, m - 1, d));
 }
 
 const yesNo = (v: boolean | null) => (v === null ? '' : v ? 'Sí' : 'No');
@@ -65,15 +64,15 @@ export async function buildWorkbook(payload: ExportPayload, reason: string, incl
 
   const extras = Array.isArray(payload.extra_columns) ? payload.extra_columns : [];
   const ws = wb.addWorksheet('Participantes', { views: [{ state: 'frozen', ySplit: 1 }] });
-  const date = 'dd/mm/yyyy';
   const dateTime = 'dd/mm/yyyy hh:mm';
   ws.columns = [
     { header: 'Nombre completo', key: 'full_name', width: 32 },
     { header: 'Correo', key: 'email', width: 32 },
     { header: 'Correos anteriores', key: 'previous_emails', width: 32 },
     { header: 'Teléfono', key: 'phone', width: 16, style: { numFmt: '@' } },
-    { header: 'Fecha de nacimiento', key: 'birth_date', width: 18, style: { numFmt: date } },
-    { header: 'Preparatoria', key: 'high_school', width: 28 },
+    { header: 'Escuela / preparatoria', key: 'high_school', width: 28 },
+    { header: 'Grado', key: 'high_school_grade', width: 12 },
+    { header: 'Periodo de interés', key: 'entry_period', width: 16 },
     { header: 'Carrera inicial 1', key: 'initial_career_1', width: 30 },
     { header: 'Código carrera inicial 1', key: 'initial_career_1_code', width: 14 },
     { header: 'Carrera inicial 1 (texto de Forms)', key: 'initial_career_received', width: 30 },
@@ -85,12 +84,14 @@ export async function buildWorkbook(payload: ExportPayload, reason: string, incl
     { header: 'Interés 2 después del evento', key: 'interest_2', width: 28 },
     { header: 'Interés 3 después del evento', key: 'interest_3', width: 28 },
     { header: 'Talleres asistidos', key: 'attendances', width: 12 },
+    { header: 'Cuenta activa', key: 'access_configured', width: 12 },
     { header: 'Entró a la plataforma', key: 'logged_in', width: 12 },
     { header: 'Origen del registro', key: 'origin', width: 14 },
     { header: 'Aceptó aviso en Forms', key: 'forms_consent', width: 12 },
     { header: 'Fecha aviso en Forms', key: 'forms_consent_at', width: 18, style: { numFmt: dateTime } },
     { header: 'Fecha consentimiento en alta manual', key: 'manual_consent_at', width: 18, style: { numFmt: dateTime } },
     { header: 'Fecha aviso en plataforma', key: 'platform_consent_at', width: 18, style: { numFmt: dateTime } },
+    { header: 'Origen del aviso en plataforma', key: 'platform_consent_source', width: 18 },
     { header: 'Fecha de registro', key: 'created_at', width: 18, style: { numFmt: dateTime } },
     ...(includeDemo ? [{ header: 'Dato de prueba', key: 'is_demo', width: 10 }] : []),
     // Synthetic keys keep Forms questions from ever overwriting structured columns.
@@ -110,7 +111,10 @@ export async function buildWorkbook(payload: ExportPayload, reason: string, incl
       initial_career_2_code: r.initial_career_2_code ?? '',
       initial_career_2_received: r.initial_career_2_received ?? '',
       phone: r.phone ?? '',
-      birth_date: birthDate(r.birth_date),
+      high_school_grade: gradeLabel(r.high_school_grade) ?? '',
+      entry_period: periodLabel(r.entry_period) ?? '',
+      platform_consent_source: r.platform_consent_source === 'self_service' ? 'Autorregistro' : r.platform_consent_source === 'platform' ? 'Plataforma' : '',
+      access_configured: yesNo(r.access_configured),
       origin: ORIGIN[r.origin] ?? r.origin,
       forms_consent: yesNo(r.forms_consent),
       logged_in: yesNo(r.logged_in),

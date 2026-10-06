@@ -41,6 +41,8 @@ type Props = {
   templateName: string;
   buildRow: (record: Record<string, string>, row: number, extras: CsvExtraCell[]) => Record<string, unknown>;
   keepExtraColumns?: boolean;
+  /** Encabezados (normalizados) de columnas que no deben leerse ni conservarse. */
+  discardHeader?: (foldedHeader: string) => boolean;
   preview: (rows: Record<string, unknown>[], isDemo: boolean, options: ImportOptions) => Promise<ImportResult>;
   commit: (rows: Record<string, unknown>[], fileName: string, isDemo: boolean, options: ImportOptions) => Promise<ImportResult>;
   intro: ReactNode;
@@ -71,6 +73,7 @@ export default function CsvImport({
   templateName,
   buildRow,
   keepExtraColumns = false,
+  discardHeader,
   preview,
   commit,
   intro,
@@ -104,7 +107,7 @@ export default function CsvImport({
       const text = await file.text().catch(() => {
         throw new Error('CSV_UNREADABLE');
       });
-      const mapping = mapColumns(parseCsv(text), columns);
+      const mapping = mapColumns(parseCsv(text), columns, discardHeader);
       if (mapping.missing.length) {
         setError(`Faltan columnas obligatorias: ${mapping.missing.map((c) => c.label).join(', ')}.`);
         return;

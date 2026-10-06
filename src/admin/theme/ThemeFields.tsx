@@ -194,7 +194,8 @@ export default function ThemeFields({ section, config: c, divisions, onChange }:
           Puedes usar {'{guide}'} para el nombre del guía, {'{event}'} para el nombre del evento y, en los textos de progreso, {'{rank}'} y{' '}
           {'{remaining}'}.
         </p>
-        {TEXT_KEYS.map((k) => (
+        {/* El acceso de participantes (correo → contraseña) lo decide el sistema: subtítulo y ayuda ya no son configurables. */}
+        {TEXT_KEYS.filter((k) => k !== 'loginSubtitle' && k !== 'loginHelp').map((k) => (
           <Row key={k} label={TEXT_LABELS[k]}>
             <Text area={c.texts[k].length > 60} value={c.texts[k]} onChange={(v) => set('texts', { ...c.texts, [k]: v })} />
           </Row>

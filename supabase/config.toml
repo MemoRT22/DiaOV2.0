@@ -15,3 +15,7 @@ verify_jwt = true
 
 [functions.preparation-reset]
 verify_jwt = true
+
+# Restablecer contraseña de participantes: exige sesión Staff/Coordinación y la función valida el rol.
+[functions.participant-admin]
+verify_jwt = true

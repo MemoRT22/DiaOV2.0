@@ -4,13 +4,14 @@ import { Link, useParams } from 'react-router-dom';
 import { Alert, Badge, Button, Spinner } from '../../components/ui';
 import { hasRole, useAuth } from '../../lib/auth';
 import { FIELD_LABELS, ORIGIN_LABELS, rpc } from '../../lib/adminApi';
-import { fetchCareers, formatDateTime, formatEventDate } from '../../lib/catalog';
+import { fetchCareers, formatDateTime } from '../../lib/catalog';
 import { fold } from '../../lib/csv';
 import { friendlyError } from '../../lib/errors';
+import { gradeLabel, periodLabel } from '../../lib/participantFields';
 import { useLoad } from '../../lib/useLoad';
 import ConflictReview from '../imports/ConflictReview';
-import AccessDiagnosis, { type AccessState } from './AccessDiagnosis';
 import ParticipantForm from './ParticipantForm';
+import PasswordAccess from './PasswordAccess';
 import { EmailHistory, FormsExtra, type EmailHistoryEntry, type FormsExtraEntry } from './ParticipantExtraSections';
 
 type InitialInterest = {
@@ -25,9 +26,10 @@ type Detail = {
   id: string;
   full_name: string;
   email: string;
-  birth_date: string | null;
   phone: string | null;
   high_school: string | null;
+  high_school_grade: string | null;
+  entry_period: string | null;
   initial_career_id: string | null;
   initial_career_raw: string | null;
   initial_interests?: InitialInterest[];
@@ -42,9 +44,10 @@ type Detail = {
   forms_extra?: FormsExtraEntry[];
   pending_conflicts: number;
   has_logged_in: boolean;
+  access_configured: boolean;
   platform_consent_at: string | null;
+  platform_consent_source: 'self_service' | 'platform' | null;
   attendances: number;
-  access: AccessState;
 };
 
 export default function ParticipantDetail() {
@@ -81,9 +84,10 @@ export default function ParticipantDetail() {
   const rows: { key: string; label?: string; value: string | null }[] = [
     { key: 'email', value: p.email },
     { key: 'full_name', value: p.full_name },
-    { key: 'birth_date', value: p.birth_date ? formatEventDate(p.birth_date) : null },
     { key: 'phone', value: p.phone },
     { key: 'high_school', value: p.high_school },
+    { key: 'high_school_grade', value: gradeLabel(p.high_school_grade) },
+    { key: 'entry_period', value: periodLabel(p.entry_period) },
     { key: 'initial_career_id', label: 'Carrera inicial 1 (prerregistro)', value: interest1?.career_name ?? career?.name ?? null },
     ...(rawDiffers ? [{ key: 'initial_career_raw', label: 'Carrera 1 recibida en Forms', value: raw }] : []),
     { key: 'initial_career_id_2', label: 'Carrera inicial 2 (prerregistro)', value: interest2?.career_name ?? null },
@@ -114,14 +118,12 @@ export default function ParticipantDetail() {
       </header>
 
       {saved && <Alert tone="success">Cambios guardados.</Alert>}
-      <AccessDiagnosis
+      <PasswordAccess
         participantId={p.id}
-        hasBirthDate={!!p.birth_date}
+        accessConfigured={p.access_configured}
         hasLoggedIn={p.has_logged_in}
         platformConsentAt={p.platform_consent_at}
-        access={p.access}
         onChanged={reload}
-        onCorrect={() => setEditing(true)}
       />
 
       {p.pending_conflicts > 0 &&
@@ -171,7 +173,7 @@ export default function ParticipantDetail() {
         <div className="card p-5">
           <p className="text-sm text-ink-muted">Consentimiento</p>
           <p className="mt-1 font-semibold">
-            {p.forms_consent ? 'Aceptado en Forms' : p.manual_consent_at ? 'Capturado en alta manual' : 'Sin registro'}
+            {p.forms_consent ? 'Aceptado en Forms' : p.manual_consent_at ? 'Capturado en alta manual' : p.platform_consent_source === 'self_service' ? 'Aceptado al registrarse' : 'Sin registro'}
           </p>
           <p className="mt-1 text-xs text-ink-muted">
             {p.forms_consent_at && formatDateTime(p.forms_consent_at)}
@@ -196,11 +198,11 @@ export default function ParticipantDetail() {
           initial={{
             email: p.email,
             full_name: p.full_name,
-            birth_date: p.birth_date ?? '',
             phone: p.phone ?? '',
             high_school: p.high_school ?? '',
+            high_school_grade: p.high_school_grade ?? '',
+            entry_period: p.entry_period ?? '',
             initial_career_id: p.initial_career_id ?? '',
-            initial_career_id_2: interest2?.career_id ?? '',
           }}
           onClose={() => setEditing(false)}
           onSaved={() => {

@@ -16,7 +16,7 @@ export type StaffAccount = {
 
 const ROLE_HELP: Record<StaffRole, string> = {
   coordinacion: 'Todo el panel: importaciones, catálogo, exportación, personal y operación.',
-  staff: 'Buscar participantes, dar de alta, corregir datos y resolver accesos.',
+  staff: 'Buscar participantes, corregir datos y restablecer contraseñas.',
   sorteo: 'Reservado para el sorteo. Por ahora no tiene pantallas.',
 };
 
