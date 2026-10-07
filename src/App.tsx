@@ -1,6 +1,7 @@
 import { lazy, Suspense } from 'react';
-import { Navigate, Route, Routes } from 'react-router-dom';
-import { Spinner } from './components/ui';
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import RouteErrorBoundary from './components/RouteErrorBoundary';
+import { BootSpinner } from './components/BootSpinner';
 import { hasRole, useAuth } from './lib/auth';
 import AdminSurface from './admin/AdminSurface';
 import AreaLayout from './admin/AreaLayout';
@@ -74,67 +75,70 @@ const REDIRECTS: Array<[from: string, target: string]> = [
 ];
 
 export default function App() {
+  const { pathname } = useLocation();
   return (
-    <Suspense fallback={<Spinner />}>
-      <Routes>
-        <Route element={<PublicSurface />}>
-          <Route path="/" element={<StudentLogin />} />
-          <Route path="/registro-taller" element={<WorkshopRegistration />} />
-          <Route element={<StudentLayout />}>
-            <Route path="/bienvenida" element={<Welcome />} />
-            <Route path="/bitacora" element={<Home />} />
-            <Route path="/pasaporte" element={<PassportPage />} />
-            <Route path="/misiones" element={<Missions />} />
-            <Route path="/ruta" element={<MyRoute />} />
-            <Route path="/escanear" element={<Scanner />} />
-            <Route path="/destinos" element={<Interests />} />
+    <RouteErrorBoundary fullScreen resetKey={pathname}>
+      <Suspense fallback={<BootSpinner />}>
+        <Routes>
+          <Route element={<PublicSurface />}>
+            <Route path="/" element={<StudentLogin />} />
+            <Route path="/registro-taller" element={<WorkshopRegistration />} />
+            <Route element={<StudentLayout />}>
+              <Route path="/bienvenida" element={<Welcome />} />
+              <Route path="/bitacora" element={<Home />} />
+              <Route path="/pasaporte" element={<PassportPage />} />
+              <Route path="/misiones" element={<Missions />} />
+              <Route path="/ruta" element={<MyRoute />} />
+              <Route path="/escanear" element={<Scanner />} />
+              <Route path="/destinos" element={<Interests />} />
+            </Route>
+            <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Route>
 
-        <Route element={<AdminSurface />}>
-          <Route path="/coordinacion" element={<AdminLayout />}>
-            <Route index element={<AdminHome />} />
-            <Route path="participantes" element={<Participants />} />
-            <Route path="participantes/:id" element={<ParticipantDetail />} />
-            <Route path="cuenta" element={<Account />} />
-            <Route path="sorteo" element={<RaffleOperator />} />
+          <Route element={<AdminSurface />}>
+            <Route path="/coordinacion" element={<AdminLayout />}>
+              <Route index element={<AdminHome />} />
+              <Route path="participantes" element={<Participants />} />
+              <Route path="participantes/:id" element={<ParticipantDetail />} />
+              <Route path="cuenta" element={<Account />} />
+              <Route path="sorteo" element={<RaffleOperator />} />
 
-            <Route element={<AreaLayout label="Operación" tabs={OPERATION_TABS} />}>
-              <Route path="operacion-en-vivo" element={<OperationsCenter />} />
-              <Route path="checkin" element={<CheckinModule />} />
+              <Route element={<AreaLayout label="Operación" tabs={OPERATION_TABS} />}>
+                <Route path="operacion-en-vivo" element={<OperationsCenter />} />
+                <Route path="checkin" element={<CheckinModule />} />
+                <Route element={<CoordinationOnly />}>
+                  <Route path="sorteo-admin" element={<RaffleAdmin />} />
+                </Route>
+              </Route>
+
               <Route element={<CoordinationOnly />}>
-                <Route path="sorteo-admin" element={<RaffleAdmin />} />
+                <Route path="participantes/importar" element={<ParticipantImport />} />
+                <Route path="participantes/exportar" element={<ExportPage />} />
+
+                <Route element={<AreaLayout label="Talleres" tabs={WORKSHOP_TABS} />}>
+                  <Route path="talleres" element={<WorkshopInbox />} />
+                  <Route path="talleres/programa" element={<WorkshopProgram />} />
+                  <Route path="talleres/programa/importar" element={<CatalogImport initialKind="workshops" backLabel="Programa de talleres" />} />
+                  <Route path="talleres/:id" element={<WorkshopDetail />} />
+                </Route>
+
+                <Route path="configuracion" element={<AreaLayout label="Configuración" tabs={SETTINGS_TABS} hideAt={SETTINGS_BASE} />}>
+                  <Route index element={<SettingsHome />} />
+                  <Route path="personal" element={<StaffAccounts />} />
+                  <Route path="experiencia-publica" element={<ThemeEditor />} />
+                  <Route path="reservaciones" element={<ReservationRules />} />
+                  <Route path="preparacion" element={<Operation />} />
+                  <Route path="catalogo" element={<Catalog />} />
+                  <Route path="catalogo/importar" element={<CatalogImport />} />
+                  <Route path="auditoria" element={<AuditLog />} />
+                </Route>
+
+                {REDIRECTS.map(([from, target]) => <Route key={from} path={from} element={to(target)} />)}
               </Route>
-            </Route>
-
-            <Route element={<CoordinationOnly />}>
-              <Route path="participantes/importar" element={<ParticipantImport />} />
-              <Route path="participantes/exportar" element={<ExportPage />} />
-
-              <Route element={<AreaLayout label="Talleres" tabs={WORKSHOP_TABS} />}>
-                <Route path="talleres" element={<WorkshopInbox />} />
-                <Route path="talleres/programa" element={<WorkshopProgram />} />
-                <Route path="talleres/programa/importar" element={<CatalogImport initialKind="workshops" backLabel="Programa de talleres" />} />
-                <Route path="talleres/:id" element={<WorkshopDetail />} />
-              </Route>
-
-              <Route path="configuracion" element={<AreaLayout label="Configuración" tabs={SETTINGS_TABS} hideAt={SETTINGS_BASE} />}>
-                <Route index element={<SettingsHome />} />
-                <Route path="personal" element={<StaffAccounts />} />
-                <Route path="experiencia-publica" element={<ThemeEditor />} />
-                <Route path="reservaciones" element={<ReservationRules />} />
-                <Route path="preparacion" element={<Operation />} />
-                <Route path="catalogo" element={<Catalog />} />
-                <Route path="catalogo/importar" element={<CatalogImport />} />
-                <Route path="auditoria" element={<AuditLog />} />
-              </Route>
-
-              {REDIRECTS.map(([from, target]) => <Route key={from} path={from} element={to(target)} />)}
             </Route>
           </Route>
-        </Route>
-      </Routes>
-    </Suspense>
+        </Routes>
+      </Suspense>
+    </RouteErrorBoundary>
   );
 }

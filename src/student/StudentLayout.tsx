@@ -1,5 +1,8 @@
+import { Suspense } from 'react';
 import { Navigate, Link, Outlet, useLocation } from 'react-router-dom';
 import { Backdrop } from '../components/themed';
+import { BootSpinner } from '../components/BootSpinner';
+import RouteErrorBoundary from '../components/RouteErrorBoundary';
 import { Spinner } from '../components/ui';
 import { useAuth } from '../lib/auth';
 import { useEdition } from '../edition/EditionProvider';
@@ -20,7 +23,7 @@ export default function StudentLayout() {
   const { edition } = useEdition();
   const location = useLocation();
 
-  if (!ready || loading) return <Spinner />;
+  if (!ready || loading) return <BootSpinner />;
   if (!profile) return <Navigate to="/" replace />;
 
   const consentOk = !!edition && profile.platform_consent_version === edition.privacy_notice_version;
@@ -51,7 +54,11 @@ export default function StudentLayout() {
       </header>
 
       <main className={`relative mx-auto max-w-2xl px-4 pt-5 ${consentOk ? 'pb-[calc(6.5rem+env(safe-area-inset-bottom))]' : 'pb-10'}`}>
-        <Outlet />
+        <RouteErrorBoundary resetKey={location.pathname}>
+          <Suspense fallback={<Spinner />}>
+            <Outlet />
+          </Suspense>
+        </RouteErrorBoundary>
       </main>
 
       {consentOk && <BottomNav />}

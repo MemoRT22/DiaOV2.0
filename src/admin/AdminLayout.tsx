@@ -2,6 +2,8 @@ import { LogOut, Menu, X } from 'lucide-react';
 import { Suspense, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useEdition } from '../edition/EditionProvider';
+import { BootSpinner } from '../components/BootSpinner';
+import RouteErrorBoundary from '../components/RouteErrorBoundary';
 import { Button, Spinner } from '../components/ui';
 import { ROLE_LABELS } from '../lib/adminApi';
 import { hasRole, useAuth } from '../lib/auth';
@@ -23,7 +25,7 @@ export default function AdminLayout() {
   const [open, setOpen] = useState(false);
   const { pathname } = useLocation();
 
-  if (!ready || loading) return <Spinner />;
+  if (!ready || loading) return <BootSpinner />;
   if (!staff || profile) return <AdminLogin />;
 
   const coord = hasRole(staff, 'coordinacion');
@@ -139,9 +141,11 @@ export default function AdminLayout() {
           </span>
         </header>
         <main className={`admin-rise mx-auto p-4 sm:p-8 lg:p-10 ${pathname.startsWith('/coordinacion/operacion-en-vivo') ? 'max-w-7xl' : 'max-w-6xl'}`}>
-          <Suspense fallback={<Spinner />}>
-            <Outlet />
-          </Suspense>
+          <RouteErrorBoundary resetKey={pathname} home="/coordinacion">
+            <Suspense fallback={<Spinner />}>
+              <Outlet />
+            </Suspense>
+          </RouteErrorBoundary>
         </main>
       </div>
     </div>

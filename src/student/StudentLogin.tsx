@@ -2,7 +2,7 @@ import { CalendarDays, MapPin } from 'lucide-react';
 import { useState } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 import { Backdrop, BrandFooter, Tagline, ThemedTitle } from '../components/themed';
-import { Spinner } from '../components/ui';
+import { BootSpinner } from '../components/BootSpinner';
 import { useAuth } from '../lib/auth';
 import { formatEventDate } from '../lib/catalog';
 import { studentAccess, type AccessState } from '../lib/studentAccess';
@@ -22,7 +22,7 @@ export default function StudentLogin() {
   const { ready, profile, signInParticipant } = useAuth();
   const [step, setStep] = useState<Step>({ kind: 'email', email: '' });
 
-  if (!ready) return <Spinner />;
+  if (!ready) return <BootSpinner />;
   if (profile) return <Navigate to="/bitacora" replace />;
 
   const back = () => setStep((s) => ({ kind: 'email', email: s.email }));
