@@ -3,7 +3,6 @@ import { Navigate, Link, Outlet, useLocation } from 'react-router-dom';
 import { Backdrop } from '../components/themed';
 import { BootSpinner } from '../components/BootSpinner';
 import RouteErrorBoundary from '../components/RouteErrorBoundary';
-import { Spinner } from '../components/ui';
 import { useAuth } from '../lib/auth';
 import { useEdition } from '../edition/EditionProvider';
 import { usePublicTheme } from '../theme/PublicThemeProvider';
@@ -55,7 +54,7 @@ export default function StudentLayout() {
 
       <main className={`relative mx-auto max-w-2xl px-4 pt-5 ${consentOk ? 'pb-[calc(6.5rem+env(safe-area-inset-bottom))]' : 'pb-10'}`}>
         <RouteErrorBoundary resetKey={location.pathname}>
-          <Suspense fallback={<Spinner />}>
+          <Suspense fallback={<BootSpinner />}>
             <Outlet />
           </Suspense>
         </RouteErrorBoundary>

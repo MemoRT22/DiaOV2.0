@@ -15,9 +15,9 @@ export function clearStoredSession() {
 /**
  * «Cargando» for the screens that cannot render until the session, the edition or a route chunk is ready.
  * A request that never answers (weak network) must not leave the person staring at a spinner forever: after a while we say so
- * and offer a way out.
+ * and offer a way out. «Empezar de nuevo» lands on `restartTo`: the student login by default, `/coordinacion` inside the admin.
  */
-export function BootSpinner({ after = SLOW_LOAD_MS }: { after?: number }) {
+export function BootSpinner({ after = SLOW_LOAD_MS, restartTo = '/' }: { after?: number; restartTo?: string }) {
   const [slow, setSlow] = useState(false);
   useEffect(() => {
     const id = window.setTimeout(() => setSlow(true), after);
@@ -39,7 +39,7 @@ export function BootSpinner({ after = SLOW_LOAD_MS }: { after?: number }) {
               className={buttonClasses('secondary')}
               onClick={() => {
                 clearStoredSession();
-                window.location.assign('/');
+                window.location.assign(restartTo);
               }}
             >
               Empezar de nuevo

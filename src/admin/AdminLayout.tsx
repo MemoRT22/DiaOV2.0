@@ -4,7 +4,7 @@ import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useEdition } from '../edition/EditionProvider';
 import { BootSpinner } from '../components/BootSpinner';
 import RouteErrorBoundary from '../components/RouteErrorBoundary';
-import { Button, Spinner } from '../components/ui';
+import { Button } from '../components/ui';
 import { ROLE_LABELS } from '../lib/adminApi';
 import { hasRole, useAuth } from '../lib/auth';
 import AdminLogin from './AdminLogin';
@@ -25,7 +25,7 @@ export default function AdminLayout() {
   const [open, setOpen] = useState(false);
   const { pathname } = useLocation();
 
-  if (!ready || loading) return <BootSpinner />;
+  if (!ready || loading) return <BootSpinner restartTo="/coordinacion" />;
   if (!staff || profile) return <AdminLogin />;
 
   const coord = hasRole(staff, 'coordinacion');
@@ -142,7 +142,7 @@ export default function AdminLayout() {
         </header>
         <main className={`admin-rise mx-auto p-4 sm:p-8 lg:p-10 ${pathname.startsWith('/coordinacion/operacion-en-vivo') ? 'max-w-7xl' : 'max-w-6xl'}`}>
           <RouteErrorBoundary resetKey={pathname} home="/coordinacion">
-            <Suspense fallback={<Spinner />}>
+            <Suspense fallback={<BootSpinner restartTo="/coordinacion" />}>
               <Outlet />
             </Suspense>
           </RouteErrorBoundary>
