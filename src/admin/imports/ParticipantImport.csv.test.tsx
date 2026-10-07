@@ -8,14 +8,17 @@ vi.mock('../../lib/adminApi', async (importOriginal) => ({
   ...await importOriginal<typeof import('../../lib/adminApi')>(), rpc: vi.fn(),
 }));
 vi.mock('../../edition/EditionProvider', () => ({
-  useEdition: () => ({ edition: { roster_status: 'oficial', mode: 'operacion_real' } }),
+  useEdition: () => ({ edition: {
+    mode: 'preparacion',
+    get roster_status() { throw new Error('The import UI must not read roster_status'); },
+  } }),
 }));
 vi.mock('../../lib/catalog', async (importOriginal) => ({
   ...await importOriginal<typeof import('../../lib/catalog')>(),
   fetchCareers: vi.fn().mockResolvedValue([]), fetchHighSchools: vi.fn().mockResolvedValue([]),
 }));
 
-test('CSV preview and import remain available even when the stored roster status is official', async () => {
+test('participant import no longer has roster-status UI or frontend gating', async () => {
   const result = { counts: { new: 1 }, rows: [{ row: 2, status: 'new', errors: [], warnings: [], name: 'Ana', email: 'ana@example.com' }] };
   vi.mocked(rpc).mockImplementation(async (name: string) => {
     if (name === 'list_import_conflicts') return [] as never;
