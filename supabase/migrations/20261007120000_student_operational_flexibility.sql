@@ -8,10 +8,16 @@
 --   * Reservar una sesión que ya comenzó: se permite mientras now() < ends_at (SESSION_STARTED desaparece; ahora es SESSION_ENDED).
 --   * Cancelar / cambiar una reservación ya iniciada: se permite mientras now() < ends_at y no exista asistencia
 --     (SESSION_STARTED / CURRENT_SESSION_STARTED desaparecen; ahora SESSION_ENDED / CURRENT_SESSION_ENDED / ALREADY_ATTENDED).
+--   * Completar libera: una actividad con asistencia deja de ser compromiso (no cuenta entre los activos ni bloquea horarios),
+--     aunque su horario nominal no haya terminado (el taller pudo terminar antes).
 --   * Traslado: travel_buffer_minutes deja de bloquear; solo el SOLAPAMIENTO REAL de horarios es SCHEDULE_CONFLICT. El buffer se
 --     usa únicamente para advertir (tight_transfer_with en my_reservation_board).
 --   * Mismo taller en otro horario: la reservación anterior deja de "ocupar" el taller cuando su sesión termina (ya no
 --     ends_at + checkin_close_after_minutes). Si no tiene asistencia, pasa a `expirada` al reservar la nueva y se conserva como historial.
+--
+-- NOTA: como la hora ya no autoriza el check-in, un alumno con reservación y credencial válida puede registrar asistencia incluso ANTES de
+-- starts_at. Es consecuencia deliberada; la mitigación es operativa (el instructor controla cuándo muestra el QR y Coordinación puede
+-- regenerar la credencial si se filtra).
 --
 -- Reglas que se MANTIENEN (duras): consentimiento, demo/real, edición, capacidad (sin overbooking), máximo de compromisos activos,
 -- solapamiento real, no doble asistencia/sello por actividad, credencial válida, sesión cancelada, reservación requerida para check-in,
@@ -82,12 +88,14 @@ BEGIN
     RAISE EXCEPTION 'MAX_RESERVATIONS';
   END IF;
 
-  -- Solo el solapamiento temporal REAL bloquea. Sesiones consecutivas o con poco traslado son válidas (el buffer es solo una advertencia).
+  -- Solo el solapamiento temporal REAL con un compromiso VIGENTE bloquea: reservación vigente, sin asistencia y cuya sesión no terminó.
+  -- Una actividad con asistencia ya está completada y libera al alumno aunque su horario nominal siga abierto (taller que terminó antes).
+  -- Sesiones consecutivas o con poco traslado son válidas (el buffer es solo una advertencia).
   IF EXISTS (SELECT 1 FROM reservations r
              JOIN activity_sessions o ON o.id = r.session_id
              WHERE r.participant_id = p_pid AND r.status = 'vigente' AND r.id IS DISTINCT FROM p_exclude
-               AND (now() < o.ends_at
-                    OR EXISTS (SELECT 1 FROM attendances a WHERE a.participant_id = p_pid AND a.activity_id = r.activity_id))
+               AND now() < o.ends_at
+               AND NOT EXISTS (SELECT 1 FROM attendances a WHERE a.participant_id = p_pid AND a.activity_id = r.activity_id)
                AND o.starts_at < v_s.ends_at AND v_s.starts_at < o.ends_at) THEN
     RAISE EXCEPTION 'SCHEDULE_CONFLICT';
   END IF;
@@ -310,7 +318,8 @@ $function$;
 -- 4. Tablero: conflicto REAL vs traslado ajustado
 -- ============================================================
 -- Contrato (sessions[*]):
---   conflicts_with       uuid[]  reservaciones propias que se SOLAPAN realmente con la sesión (bloquea).
+--   conflicts_with       uuid[]  compromisos propios VIGENTES (sin asistencia, sesión no terminada) que se SOLAPAN realmente con la sesión (bloquea).
+--                                Misma política exacta que assert_reservable / SCHEDULE_CONFLICT.
 --   tight_transfer_with  uuid[]  reservaciones propias contiguas o a menos de travel_buffer_minutes, sin solaparse (solo advertencia).
 --   started / ended / in_progress  banderas derivadas del reloj del servidor (en curso = started AND NOT ended).
 -- reservations[*].derived_status: completed | expired | cancelled | ended (terminó sin asistencia, aún puede registrarla) |
@@ -354,13 +363,14 @@ BEGIN
           SELECT jsonb_agg(r.id) FROM reservations r
           JOIN activity_sessions o ON o.id = r.session_id
           WHERE r.participant_id = v_pid AND r.status = 'vigente' AND r.session_id <> s.id
-            AND (now() < o.ends_at
-                 OR EXISTS (SELECT 1 FROM attendances a2 WHERE a2.participant_id = v_pid AND a2.activity_id = r.activity_id))
+            AND now() < o.ends_at
+            AND NOT EXISTS (SELECT 1 FROM attendances a2 WHERE a2.participant_id = v_pid AND a2.activity_id = r.activity_id)
             AND o.starts_at < s.ends_at AND s.starts_at < o.ends_at), '[]'::jsonb),
         'tight_transfer_with', coalesce((
           SELECT jsonb_agg(r.id) FROM reservations r
           JOIN activity_sessions o ON o.id = r.session_id
           WHERE r.participant_id = v_pid AND r.status = 'vigente' AND r.session_id <> s.id
+            AND NOT EXISTS (SELECT 1 FROM attendances a3 WHERE a3.participant_id = v_pid AND a3.activity_id = r.activity_id)
             AND ((o.ends_at <= s.starts_at AND s.starts_at < o.ends_at + v_buffer AND now() < o.ends_at)
                  OR (s.ends_at <= o.starts_at AND o.starts_at < s.ends_at + v_buffer AND now() < s.ends_at))), '[]'::jsonb)
       ) ORDER BY s.starts_at, a.title)

@@ -43,18 +43,18 @@ DECLARE
   ed uuid := active_edition_id();
   v_career uuid := (SELECT id FROM careers WHERE is_demo ORDER BY name LIMIT 1);
   u text[] := ARRAY[gen_random_uuid()::text, gen_random_uuid()::text, gen_random_uuid()::text, gen_random_uuid()::text,
-                    gen_random_uuid()::text, gen_random_uuid()::text, gen_random_uuid()::text, gen_random_uuid()::text];
+                    gen_random_uuid()::text, gen_random_uuid()::text, gen_random_uuid()::text, gen_random_uuid()::text, gen_random_uuid()::text];
   pid uuid[] := '{}'; i int;
-  ua text; ub text; uc text; ud text; ue text; uf text; ug text; uh text;
+  ua text; ub text; uc text; ud text; ue text; uf text; ug text; uh text; ui text;
   n int := 0; v text; j jsonb; res_a text; res_b text; msgs0 int; msgs1 int;
   -- sesiones
   f1 jsonb; f2 jsonb; f3 jsonb; f4 jsonb; p1 jsonb; p2 jsonb; e1 jsonb; fl jsonb; cx jsonb; rl jsonb;
-  w10a jsonb; w10b jsonb; w11a jsonb; w11b jsonb; w12a jsonb; w12b jsonb; w13 jsonb; f5 jsonb; q1 jsonb;
+  w10a jsonb; w10b jsonb; w11a jsonb; w11b jsonb; w12a jsonb; w12b jsonb; ta jsonb; tb jsonb; r_i_ta text; w13 jsonb; f5 jsonb; q1 jsonb;
   g jsonb[] := '{}'; h jsonb[] := '{}';
   r_a_p1 text; r_b_f1 text; r_c_p2 text; r_f_p2 text; r_e_f2 text; r_e_f3 text; r_f_new text; r_a_e1 text;
 BEGIN
   -- ---------- usuarios y participantes (A..H), todos demo y con Aviso aceptado ----------
-  FOR i IN 1..8 LOOP
+  FOR i IN 1..9 LOOP
     INSERT INTO auth.users (id, instance_id, aud, role, email, raw_app_meta_data, raw_user_meta_data, created_at, updated_at)
     VALUES (u[i]::uuid, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'sf.' || i || '@test.invalid', '{}', '{}', now(), now());
     INSERT INTO participants (edition_id, email, full_name, phone, high_school, initial_career_id, origin, is_demo, auth_user_id, forms_consent, forms_consent_at, forms_consent_version)
@@ -62,7 +62,7 @@ BEGIN
   END LOOP;
   UPDATE participant_profiles pp SET platform_consent_version = e.privacy_notice_version, platform_consent_at = now()
   FROM participants p JOIN editions e ON e.id = p.edition_id WHERE pp.participant_id = p.id AND p.email LIKE 'sf.%@test.invalid';
-  ua := u[1]; ub := u[2]; uc := u[3]; ud := u[4]; ue := u[5]; uf := u[6]; ug := u[7]; uh := u[8];
+  ua := u[1]; ub := u[2]; uc := u[3]; ud := u[4]; ue := u[5]; uf := u[6]; ug := u[7]; uh := u[8]; ui := u[9];
   UPDATE editions SET reservations_open_at = now() - interval '1 hour', reservations_close_at = NULL,
     max_reservations = 4, travel_buffer_minutes = 10, checkin_open_before_minutes = 5, checkin_close_after_minutes = 20 WHERE id = ed;
 
@@ -268,6 +268,35 @@ BEGIN
   n := n + 3;
 
   -- ======================= SESIÓN TERMINADA: ya no se puede cancelar/cambiar =======================
+  -- ======================= TALLER QUE TERMINÓ ANTES: LA ASISTENCIA LIBERA EL CONFLICTO =======================
+  -- TA (en curso, termina nominalmente en +25) y TB (+15..+45) se solapan en el horario programado.
+  ta := pg_temp.mk('TA', -5, 25);
+  tb := pg_temp.mk('TB', 15, 45);
+  v := pg_temp.run(ui, format($q$select reserve_session(%L)$q$, ta->>'ses'));
+  IF v LIKE 'ERR:%' THEN RAISE EXCEPTION 'STUDENT_FLEX_FAIL[I reserva TA: %]', v; END IF;
+  r_i_ta := v::jsonb->>'reservation_id';
+  -- 3) antes del check-in, el solapamiento real bloquea (servidor y tablero coinciden)
+  v := pg_temp.run(ui, format($q$select reserve_session(%L)$q$, tb->>'ses'));
+  IF v <> 'ERR:SCHEDULE_CONFLICT' THEN RAISE EXCEPTION 'STUDENT_FLEX_FAIL[TB debía chocar con TA: %]', v; END IF;
+  v := pg_temp.run(ui, format($q$select (s->'conflicts_with')::text from jsonb_array_elements(my_reservation_board()->'sessions') s where s->>'id' = %L$q$, tb->>'ses'));
+  IF position(r_i_ta in v) = 0 THEN RAISE EXCEPTION 'STUDENT_FLEX_FAIL[tablero debía listar TA en conflicts_with: %]', v; END IF;
+  -- 4) el taller terminó antes de lo programado: check-in ANTES de su ends_at
+  v := pg_temp.run(ui, format($q$select check_in(%L)$q$, ta->>'qr'));
+  IF v LIKE 'ERR:%' THEN RAISE EXCEPTION 'STUDENT_FLEX_FAIL[check-in temprano de TA: %]', v; END IF;
+  -- 5) el conflicto desaparece del tablero y 6) el servidor permite reservar TB
+  v := pg_temp.run(ui, format($q$select (s->'conflicts_with')::text from jsonb_array_elements(my_reservation_board()->'sessions') s where s->>'id' = %L$q$, tb->>'ses'));
+  IF v <> '[]' THEN RAISE EXCEPTION 'STUDENT_FLEX_FAIL[TB sigue en conflicts_with tras la asistencia: %]', v; END IF;
+  v := pg_temp.run(ui, format($q$select reserve_session(%L)$q$, tb->>'ses'));
+  IF v LIKE 'ERR:%' THEN RAISE EXCEPTION 'STUDENT_FLEX_FAIL[reservar TB tras completar TA: %]', v; END IF;
+  -- el compromiso completado tampoco cuenta entre los activos (solo TB)
+  IF (SELECT active_reservation_count(id) FROM participants WHERE auth_user_id = ui::uuid) <> 1 THEN RAISE EXCEPTION 'STUDENT_FLEX_FAIL[activos tras completar TA]'; END IF;
+  -- sin asistencia el solapamiento real sigue bloqueando (otro alumno con TA sin check-in)
+  v := pg_temp.run(uh, format($q$select reserve_session(%L)$q$, ta->>'ses'));
+  IF v LIKE 'ERR:%' THEN RAISE EXCEPTION 'STUDENT_FLEX_FAIL[H reserva TA: %]', v; END IF;
+  v := pg_temp.run(uh, format($q$select reserve_session(%L)$q$, tb->>'ses'));
+  IF v <> 'ERR:SCHEDULE_CONFLICT' THEN RAISE EXCEPTION 'STUDENT_FLEX_FAIL[sin asistencia sigue bloqueando: %]', v; END IF;
+  n := n + 7;
+
   v := pg_temp.run(ua, format($q$select cancel_reservation(%L)$q$, r_a_e1));
   IF v NOT IN ('ERR:ALREADY_ATTENDED', 'ERR:SESSION_ENDED') THEN RAISE EXCEPTION 'STUDENT_FLEX_FAIL[cancelar terminada: %]', v; END IF;
   n := n + 1;
