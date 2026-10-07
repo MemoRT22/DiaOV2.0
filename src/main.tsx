@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import App from './App';
 import { OfflineBanner } from './components/OfflineBanner';
+import { installChunkRecovery } from './lib/chunkRecovery';
 import { EditionProvider } from './edition/EditionProvider';
 import { AuthProvider } from './lib/auth';
 import { PublicThemeProvider } from './theme/PublicThemeProvider';
@@ -14,6 +15,9 @@ const nav = navigator as Navigator & { deviceMemory?: number; connection?: { sav
 if ((nav.hardwareConcurrency ?? 8) <= 4 || (nav.deviceMemory ?? 8) <= 4 || nav.connection?.saveData) {
   document.documentElement.classList.add('lite');
 }
+
+// A tab left open across a deploy asks for chunks that no longer exist: reload the same URL once instead of leaving a blank screen.
+installChunkRecovery();
 
 // Paint the right surface (admin system or cached public theme) before the first render to avoid a flash.
 bootSurface(window.location.pathname, normalizeTheme);
