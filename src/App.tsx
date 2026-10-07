@@ -10,7 +10,8 @@ import { PublicSurface } from './theme/PublicThemeProvider';
 
 const StudentLayout = lazy(() => import('./student/StudentLayout'));
 const Welcome = lazy(() => import('./student/Welcome'));
-const Passport = lazy(() => import('./student/Passport'));
+const Home = lazy(() => import('./student/Home'));
+const PassportPage = lazy(() => import('./student/PassportPage'));
 const Missions = lazy(() => import('./student/Missions'));
 const MyRoute = lazy(() => import('./student/MyRoute'));
 const Interests = lazy(() => import('./student/Interests'));
@@ -81,7 +82,8 @@ export default function App() {
           <Route path="/registro-taller" element={<WorkshopRegistration />} />
           <Route element={<StudentLayout />}>
             <Route path="/bienvenida" element={<Welcome />} />
-            <Route path="/bitacora" element={<Passport />} />
+            <Route path="/bitacora" element={<Home />} />
+            <Route path="/pasaporte" element={<PassportPage />} />
             <Route path="/misiones" element={<Missions />} />
             <Route path="/ruta" element={<MyRoute />} />
             <Route path="/escanear" element={<Scanner />} />

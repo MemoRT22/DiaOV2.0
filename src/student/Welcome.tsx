@@ -8,6 +8,7 @@ import { supabase } from '../lib/supabase';
 import { useEdition } from '../edition/EditionProvider';
 import { usePublicTheme } from '../theme/PublicThemeProvider';
 
+/** Primer ingreso: one short greeting, the privacy notice in plain words, and one big button. */
 export default function Welcome() {
   const { theme, text } = usePublicTheme();
   const { edition } = useEdition();
@@ -32,20 +33,20 @@ export default function Welcome() {
   };
 
   return (
-    <div className="animate-fade-up space-y-6">
+    <div className="animate-fade-up space-y-5">
       <div className="flex items-end gap-4">
         {theme.assets.mascot && (
-          <img src={theme.assets.mascot} alt={theme.meta.guideName} className="h-40 w-auto shrink-0 drop-shadow-[0_8px_24px_rgba(0,0,0,0.5)]" />
+          <img src={theme.assets.mascot} alt={theme.meta.guideName} className="h-32 w-auto shrink-0 drop-shadow-[0_8px_24px_rgba(0,0,0,0.5)]" />
         )}
-        <div className="card relative mb-6 bg-surface-raised p-4">
-          <h1 className="text-xl font-extrabold">{text('welcomeTitle', { name: profile?.display_name ?? '' })}</h1>
-          <p className="mt-2 text-sm text-ink-muted">{text('welcomeBody')}</p>
+        <div className="min-w-0 pb-1">
+          <h1 className="text-2xl font-extrabold leading-tight">{text('welcomeTitle', { name: profile?.display_name ?? '' })}</h1>
+          <p className="mt-1 text-sm text-ink-muted">{text('welcomeBody')}</p>
         </div>
       </div>
 
-      <section className="card p-5">
+      <section className="card p-5" aria-label="Aviso de Privacidad">
         <div className="mb-3 flex items-center gap-2">
-          <ShieldCheck className="h-5 w-5 text-secondary-400" aria-hidden />
+          <ShieldCheck className="h-5 w-5 text-fg-info" aria-hidden />
           <h2 className="font-semibold">Aviso de Privacidad</h2>
         </div>
         <p className="text-sm text-ink-muted">{edition?.privacy_notice_summary}</p>
@@ -54,12 +55,12 @@ export default function Welcome() {
             href={edition.privacy_notice_url}
             target="_blank"
             rel="noopener noreferrer"
-            className="mt-3 inline-block text-sm font-semibold text-secondary-300 underline underline-offset-4"
+            className="mt-2 inline-flex min-h-11 items-center text-sm font-semibold text-fg-info underline underline-offset-4"
           >
             Leer el aviso completo
           </a>
         )}
-        <label className="mt-5 flex cursor-pointer items-start gap-3 rounded-theme border border-line bg-surface-raised p-4">
+        <label className="mt-3 flex min-h-14 cursor-pointer items-start gap-3 rounded-theme border border-line bg-surface-raised p-4">
           <input
             type="checkbox"
             checked={accepted}

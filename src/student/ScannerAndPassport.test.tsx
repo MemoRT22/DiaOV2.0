@@ -3,7 +3,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, expect, test, vi } from 'vitest';
 import type { CheckInResult } from '../lib/checkin';
 import { neutralTheme } from '../theme/neutralTheme';
-import Passport from './Passport';
+import PassportPage from './PassportPage';
 import Scanner from './Scanner';
 
 const m = vi.hoisted(() => ({
@@ -12,6 +12,7 @@ const m = vi.hoisted(() => ({
   fetchProgress: vi.fn(),
   fetchDivisions: vi.fn(),
   fetchMyRaffleStatus: vi.fn(),
+  fetchBoard: vi.fn(),
   listeners: [] as Array<(kind: string) => void>,
 }));
 
@@ -29,8 +30,12 @@ vi.mock('../lib/catalog', async (importOriginal) => ({
   fetchProgress: m.fetchProgress,
   fetchDivisions: m.fetchDivisions,
 }));
+vi.mock('../lib/reservations', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/reservations')>()),
+  fetchBoard: m.fetchBoard,
+}));
 vi.mock('../lib/raffleApi', () => ({ fetchMyRaffleStatus: m.fetchMyRaffleStatus }));
-vi.mock('../lib/auth', () => ({ useAuth: () => ({ profile: { display_name: 'Alumno E2E' } }) }));
+vi.mock('../lib/auth', () => ({ useAuth: () => ({ profile: { display_name: 'Alumno E2E' }, signOut: vi.fn() }) }));
 vi.mock('../theme/PublicThemeProvider', () => ({
   usePublicTheme: () => ({
     theme: neutralTheme,
@@ -54,6 +59,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   m.listeners = [];
   m.fetchDivisions.mockResolvedValue([]);
+  m.fetchBoard.mockResolvedValue(null);
   m.fetchMyRaffleStatus.mockResolvedValue({ has_won: false, raffle_category_name: null, academic_tickets: 1, leadership_tickets: 0 });
 });
 
@@ -115,26 +121,26 @@ test('H: a failed check-in is not announced as a change', async () => {
 test('C: singular — “1 misión académica”', async () => {
   m.fetchProgress.mockResolvedValue(progress());
   m.fetchMyRaffleStatus.mockResolvedValue({ has_won: false, raffle_category_name: null, academic_tickets: 2, leadership_tickets: 0 });
-  render(<MemoryRouter><Passport /></MemoryRouter>);
+  render(<MemoryRouter><PassportPage /></MemoryRouter>);
   expect(await screen.findByText('Te falta completar 1 misión académica.')).toBeInTheDocument();
 });
 
 test('D: plural — “2 misiones académicas”, never “misiónes”', async () => {
   m.fetchProgress.mockResolvedValue(progress());
   m.fetchMyRaffleStatus.mockResolvedValue({ has_won: false, raffle_category_name: null, academic_tickets: 1, leadership_tickets: 0 });
-  const { container } = render(<MemoryRouter><Passport /></MemoryRouter>);
+  const { container } = render(<MemoryRouter><PassportPage /></MemoryRouter>);
   expect(await screen.findByText('Te faltan completar 2 misiones académicas.')).toBeInTheDocument();
   expect(container.textContent).not.toMatch(/misiónes/i);
 });
 
 test('E: a change announced by another tab re-queries the Passport and updates it without a skeleton', async () => {
-  m.fetchProgress.mockResolvedValueOnce(progress({ reserved_workshops: 7, attended_workshops: 0 }));
-  render(<MemoryRouter><Passport /></MemoryRouter>);
-  expect(await screen.findByText('Reservados')).toBeInTheDocument();
+  m.fetchProgress.mockResolvedValueOnce(progress({ stamps: 7 }));
+  render(<MemoryRouter><PassportPage /></MemoryRouter>);
+  expect(await screen.findByText(/^7 sellos ·/)).toBeInTheDocument();
   expect(m.fetchProgress).toHaveBeenCalledTimes(1);
   expect(m.listeners).toHaveLength(1);
 
-  m.fetchProgress.mockResolvedValueOnce(progress({ reserved_workshops: 6, attended_workshops: 1, stamps: 1 }));
+  m.fetchProgress.mockResolvedValueOnce(progress({ stamps: 6, attended_workshops: 1 }));
   vi.useFakeTimers();
   act(() => m.listeners[0]('attendance'));
   // existing data stays on screen while the quiet refresh runs
@@ -142,21 +148,21 @@ test('E: a change announced by another tab re-queries the Passport and updates i
   await act(async () => { await vi.advanceTimersByTimeAsync(400); });
   vi.useRealTimers();
   await waitFor(() => expect(m.fetchProgress).toHaveBeenCalledTimes(2));
-  await waitFor(() => expect(screen.getByText('6')).toBeInTheDocument());
-  expect(screen.queryByText('7')).not.toBeInTheDocument();
+  await waitFor(() => expect(screen.getByText(/^6 sellos ·/)).toBeInTheDocument());
+  expect(screen.queryByText(/^7 sellos ·/)).not.toBeInTheDocument();
   // reloading never announces (no loop)
   expect(m.announce).not.toHaveBeenCalled();
 });
 
 test('a failed quiet refresh keeps the data already on screen', async () => {
-  m.fetchProgress.mockResolvedValueOnce(progress({ reserved_workshops: 4 }));
-  render(<MemoryRouter><Passport /></MemoryRouter>);
-  await screen.findByText('Reservados');
+  m.fetchProgress.mockResolvedValueOnce(progress({ stamps: 4 }));
+  render(<MemoryRouter><PassportPage /></MemoryRouter>);
+  await screen.findByText(/^4 sellos ·/);
   m.fetchProgress.mockRejectedValueOnce(new Error('offline'));
   vi.useFakeTimers();
   act(() => m.listeners[0]('reservation'));
   await act(async () => { await vi.advanceTimersByTimeAsync(400); });
   vi.useRealTimers();
   await waitFor(() => expect(m.fetchProgress).toHaveBeenCalledTimes(2));
-  expect(screen.getByText('Reservados')).toBeInTheDocument();
+  expect(screen.getByText(/^4 sellos ·/)).toBeInTheDocument();
 });
