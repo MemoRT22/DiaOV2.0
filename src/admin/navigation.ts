@@ -51,14 +51,6 @@ export const OPERATION_TABS: AreaTab[] = [
   { to: '/coordinacion/sorteo-admin', label: 'Sorteo final', coordOnly: true, isActive: (p) => within(p, '/coordinacion/sorteo-admin') },
 ];
 
-export const WORKSHOP_TABS: AreaTab[] = [
-  {
-    to: '/coordinacion/talleres', label: 'Propuestas',
-    isActive: (p) => within(p, '/coordinacion/talleres') && !within(p, '/coordinacion/talleres/programa'),
-  },
-  { to: '/coordinacion/talleres/programa', label: 'Programa', isActive: (p) => within(p, '/coordinacion/talleres/programa') },
-];
-
 export type SettingsSection = { to: string; label: string; description: string; icon: LucideIcon; group: string };
 
 export const SETTINGS_BASE = '/coordinacion/configuracion';

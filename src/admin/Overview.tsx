@@ -39,20 +39,20 @@ export default function Overview() {
   </div>;
 
   const { summary, workshops } = data;
-  const reviewCount = (workshops?.counts.submitted ?? 0) + (workshops?.counts.in_review ?? 0);
+  const reviewCount = workshops?.counts.pending ?? 0;
   const pending: Pending[] = [
     ...(summary.pending_conflicts > 0 ? [{ count: summary.pending_conflicts,
       label: summary.pending_conflicts === 1 ? 'dato de importación por revisar' : 'datos de importación por revisar',
       description: 'Una importación trajo datos distintos a correcciones hechas a mano.', to: '/coordinacion/participantes/importar',
       action: 'Revisar', icon: GitMerge }] : []),
-    ...(reviewCount > 0 ? [{ count: reviewCount, label: reviewCount === 1 ? 'propuesta por revisar' : 'propuestas por revisar',
-      description: 'Hay propuestas nuevas o en revisión.', to: '/coordinacion/talleres',
+    ...(reviewCount > 0 ? [{ count: reviewCount, label: reviewCount === 1 ? 'taller por revisar' : 'talleres por revisar',
+      description: 'Hay talleres pendientes de decisión.', to: '/coordinacion/talleres',
       action: 'Revisar talleres', icon: ClipboardList }] : []),
   ];
   const quickActions = [
     { to: '/coordinacion/participantes', title: 'Gestionar participantes', description: 'Busca participantes, corrige datos y restablece contraseñas.', icon: Users,
       tint: 'from-primary-400 to-primary-600 shadow-[0_10px_22px_-10px_rgba(242,92,5,0.8)]' },
-    { to: '/coordinacion/talleres', title: 'Gestionar talleres', description: 'Revisa propuestas y consulta el programa.', icon: ClipboardList,
+    { to: '/coordinacion/talleres', title: 'Gestionar talleres', description: 'Revisa, edita y administra talleres.', icon: ClipboardList,
       tint: 'from-neutral-600 to-neutral-800 shadow-[0_10px_22px_-10px_rgba(28,25,23,0.6)]' },
     { to: '/coordinacion/operacion-en-vivo', title: 'Abrir operación del evento',
       description: 'Consulta sesiones, aforo y asistencias.', icon: MonitorDot,
@@ -110,7 +110,7 @@ export default function Overview() {
         <div><p className="font-semibold">Sin pendientes conocidos</p>
           <p className="text-sm text-ink-muted">Los indicadores disponibles no muestran tareas por resolver.</p></div>
       </div>}
-      {!workshops && <Alert tone="warning">No se pudieron consultar los pendientes de propuestas de talleres.{' '}
+      {!workshops && <Alert tone="warning">No se pudieron consultar los talleres pendientes.{' '}
         <button onClick={reload} className="font-semibold underline">Reintentar</button>
       </Alert>}
     </section>

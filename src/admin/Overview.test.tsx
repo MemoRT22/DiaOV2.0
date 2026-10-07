@@ -21,19 +21,19 @@ beforeEach(() => {
     name: 'Día OV 2026', event_date: '2026-10-20', start_time: '09:00', venue: 'Campus Cancún', mode: 'preparacion',
   } } as ReturnType<typeof useEdition>);
   vi.mocked(supabase.rpc).mockResolvedValue({ data: summary, error: null } as never);
-  vi.mocked(workshopAdminApi.list).mockResolvedValue(list({}));
+  vi.mocked(workshopAdminApi.list).mockResolvedValue(list({ pending: 0, published: 0, archived: 0 }));
 });
 
 test('shows reliable pending work with links to its resolution area', async () => {
   vi.mocked(supabase.rpc).mockResolvedValue({ data: { ...summary, pending_conflicts: 3 }, error: null } as never);
-  vi.mocked(workshopAdminApi.list).mockResolvedValue(list({ submitted: 2, in_review: 1, approved: 4, changes_requested: 7 }));
+  vi.mocked(workshopAdminApi.list).mockResolvedValue(list({ pending: 3, published: 4, archived: 7 }));
   show();
   const section = await screen.findByRole('region', { name: 'Pendientes' });
   expect(within(section).getAllByRole('link')).toHaveLength(2);
   expect(within(section).getByText('3 datos de importación por revisar').closest('a'))
     .toHaveAttribute('href', '/coordinacion/participantes/importar');
   expect(within(section).queryByText(/fecha de nacimiento/)).not.toBeInTheDocument();
-  expect(within(section).getByText('3 propuestas por revisar').closest('a')).toHaveAttribute('href', '/coordinacion/talleres');
+  expect(within(section).getByText('3 talleres por revisar').closest('a')).toHaveAttribute('href', '/coordinacion/talleres');
   expect(within(section).queryByText(/listas para publicar/)).not.toBeInTheDocument();
   expect(within(section).queryByText(/7 cambios solicitados/)).not.toBeInTheDocument();
   expect(supabase.rpc).toHaveBeenCalledWith('coordination_summary');
@@ -63,13 +63,13 @@ test('quick actions lead to the three main destinations', async () => {
 test('does not claim all clear when workshop counts are unavailable', async () => {
   vi.mocked(workshopAdminApi.list).mockRejectedValue(new Error('NETWORK'));
   show();
-  expect(await screen.findByText(/No se pudieron consultar los pendientes/)).toBeInTheDocument();
+  expect(await screen.findByText(/No se pudieron consultar los talleres pendientes/)).toBeInTheDocument();
   expect(screen.queryByText('Sin pendientes conocidos')).not.toBeInTheDocument();
   expect(screen.getByText('120')).toBeInTheDocument();
 });
 
-test('approved workshops do not become an action on Inicio', async () => {
-  vi.mocked(workshopAdminApi.list).mockResolvedValue(list({ approved: 1 }));
+test('published workshops do not become an action on Inicio', async () => {
+  vi.mocked(workshopAdminApi.list).mockResolvedValue(list({ pending: 0, published: 1, archived: 0 }));
   show();
   expect(await screen.findByText('Sin pendientes conocidos')).toBeInTheDocument();
 });

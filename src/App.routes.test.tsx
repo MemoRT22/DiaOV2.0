@@ -22,7 +22,7 @@ vi.mock('./admin/catalog/Catalog', () => ({ default: () => <div>Ruta catálogo</
 vi.mock('./admin/catalog/CatalogImport', () => ({ default: () => <div>Ruta importar catálogo</div> }));
 vi.mock('./admin/workshops/WorkshopInbox', () => ({ default: () => <div>Ruta talleres</div> }));
 vi.mock('./admin/workshops/WorkshopDetail', () => ({ default: () => <div>Ruta detalle taller</div> }));
-vi.mock('./admin/workshops/WorkshopProgram', () => ({ default: () => <div>Ruta programa</div> }));
+vi.mock('./admin/workshops/WorkshopEdit', () => ({ default: () => <div>Ruta editar taller</div> }));
 vi.mock('./admin/staff/StaffAccounts', () => ({ default: () => <div>Ruta personal</div> }));
 vi.mock('./admin/theme/ThemeEditor', () => ({ default: () => <div>Ruta experiencia pública</div> }));
 vi.mock('./admin/RaffleOperator', () => ({ default: () => <div>Ruta sorteo</div> }));
@@ -49,8 +49,7 @@ test.each([
   ['/coordinacion/sorteo-admin', 'Ruta sorteo final'],
   ['/coordinacion/talleres', 'Ruta talleres'],
   ['/coordinacion/talleres/123', 'Ruta detalle taller'],
-  ['/coordinacion/talleres/programa', 'Ruta programa'],
-  ['/coordinacion/talleres/programa/importar', 'Ruta importar catálogo'],
+  ['/coordinacion/talleres/123/editar', 'Ruta editar taller'],
   ['/coordinacion/configuracion/personal', 'Ruta personal'],
   ['/coordinacion/configuracion/experiencia-publica', 'Ruta experiencia pública'],
   ['/coordinacion/configuracion/catalogo', 'Ruta catálogo'],
@@ -59,6 +58,13 @@ test.each([
   role(['coordinacion']);
   show(path);
   expect(await screen.findByText(content)).toBeInTheDocument();
+});
+
+test.each(['/coordinacion/talleres/programa', '/coordinacion/talleres/programa/importar'])('%s redirects to Talleres', async (path) => {
+  role(['coordinacion']);
+  show(path);
+  expect(await screen.findByText('Ruta talleres')).toBeInTheDocument();
+  expect(screen.queryByText(/Ruta programa|Ruta importar catálogo/)).not.toBeInTheDocument();
 });
 
 test.each([

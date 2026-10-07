@@ -187,7 +187,7 @@ export default function OperationsCenter() {
       {unlocated.length > 0 && active !== 'atencion' && (
         <Alert tone="info">
           {unlocated.length} {unlocated.length === 1 ? 'sesión próxima sin ubicación' : 'sesiones próximas sin ubicación'}.{' '}
-          <Link to="/coordinacion/talleres/programa" className="font-semibold underline">Asignarla en Talleres → Programa</Link>
+          <Link to="/coordinacion/talleres" className="font-semibold underline">Ver Talleres</Link>
         </Alert>
       )}
 
