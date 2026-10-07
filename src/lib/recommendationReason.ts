@@ -7,21 +7,22 @@ export function joinNames(names: string[]): string {
 }
 
 export type RecommendationReason = {
-  /** Short label for the card: «Para ti» (exact career) or «También te puede interesar» (same division). */
-  badge: string;
-  /** Why it is here, in the student's words. Never claims a career the workshop is not linked to. */
+  /** One discreet line: «Por tu interés en X» / «Por tus intereses en X y Y» / «Relacionado con <división>». */
   reason: string;
   kind: 'exact_career' | 'same_division';
 };
 
 /**
- * The server explains each recommendation (`recommendation_type`, `matched_careers`, `matched_division`);
- * the screen only words it. Older payloads (without those fields) are treated as exact matches by career.
+ * The server explains each suggestion (`recommendation_type`, `matched_careers`, `matched_division`); the screen only words it.
+ * An exact match names the careers; a same-division suggestion names only the division and never claims a career match.
+ * Older payloads (without those fields) are treated as exact matches by career.
  */
 export function recommendationReason(rec: RecommendedActivity): RecommendationReason {
   if (rec.recommendation_type === 'same_division') {
-    return { badge: 'También te puede interesar', reason: rec.matched_division?.division_name ?? rec.division_name ?? '', kind: 'same_division' };
+    const division = rec.matched_division?.division_name ?? rec.division_name ?? '';
+    return { reason: division ? `Relacionado con ${division}` : '', kind: 'same_division' };
   }
   const names = rec.matched_careers?.map((c) => c.career_name) ?? rec.careers.map((c) => c.career_name);
-  return { badge: 'Para ti', reason: names.length ? `Porque te interesa ${joinNames(names)}` : '', kind: 'exact_career' };
+  if (names.length === 0) return { reason: '', kind: 'exact_career' };
+  return { reason: `${names.length === 1 ? 'Por tu interés en' : 'Por tus intereses en'} ${joinNames(names)}`, kind: 'exact_career' };
 }

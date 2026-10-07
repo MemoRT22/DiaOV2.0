@@ -65,10 +65,14 @@ export default function Missions() {
 
   const divisionById = new Map(divisions.data.map((d) => [d.id, d]));
   const anyLive = workshops.some((w) => w.some((s) => s.in_progress));
+  // «Todos» is always the starting filter and the student is never moved to «Para ti» automatically. If the chip they chose
+  // stops applying (e.g. the ranking came back empty), they simply see the whole catalogue.
+  const current: Filter =
+    (filter.kind === 'foryou' && recommendedIds.size === 0) || (filter.kind === 'live' && !anyLive) ? { kind: 'all' } : filter;
   const visible = workshops.filter((w) => {
-    if (filter.kind === 'foryou') return recommendedIds.has(w[0].activity_id);
-    if (filter.kind === 'live') return w.some((s) => s.in_progress);
-    if (filter.kind === 'division') return w[0].division_id === filter.id;
+    if (current.kind === 'foryou') return recommendedIds.has(w[0].activity_id);
+    if (current.kind === 'live') return w.some((s) => s.in_progress);
+    if (current.kind === 'division') return w[0].division_id === current.id;
     return true;
   });
   const active = board.active_reservation_count;
@@ -114,7 +118,7 @@ export default function Missions() {
     `min-h-11 shrink-0 rounded-full border px-4 text-sm font-semibold transition-colors ${
       on ? 'border-primary-500 bg-primary-500 text-on-primary' : 'border-line bg-surface text-ink-muted hover:text-ink'
     }`;
-  const isFilter = (f: Filter) => JSON.stringify(f) === JSON.stringify(filter);
+  const isFilter = (f: Filter) => JSON.stringify(f) === JSON.stringify(current);
   const toggleExpanded = (id: string) =>
     setExpanded((cur) => {
       const next = new Set(cur);
@@ -170,28 +174,35 @@ export default function Missions() {
       )}
 
       <div className="no-scrollbar sticky top-[calc(3rem+env(safe-area-inset-top))] z-20 -mx-4 flex gap-2 overflow-x-auto overscroll-x-contain bg-surface-sunken/90 px-4 py-2 backdrop-blur" aria-label="Filtrar" role="group">
-        <button className={chip(isFilter({ kind: 'all' }))} onClick={() => setFilter({ kind: 'all' })}>
+        <button className={chip(isFilter({ kind: 'all' }))} aria-pressed={isFilter({ kind: 'all' })} onClick={() => setFilter({ kind: 'all' })}>
           Todos
         </button>
         {recommendedIds.size > 0 && (
-          <button className={chip(isFilter({ kind: 'foryou' }))} onClick={() => setFilter({ kind: 'foryou' })}>
+          <button className={chip(isFilter({ kind: 'foryou' }))} aria-pressed={isFilter({ kind: 'foryou' })} onClick={() => setFilter({ kind: 'foryou' })}>
             Para ti
           </button>
         )}
         {anyLive && (
-          <button className={chip(isFilter({ kind: 'live' }))} onClick={() => setFilter({ kind: 'live' })}>
+          <button className={chip(isFilter({ kind: 'live' }))} aria-pressed={isFilter({ kind: 'live' })} onClick={() => setFilter({ kind: 'live' })}>
             En curso
           </button>
         )}
         {divisions.data.map((d) => (
-          <button key={d.id} className={chip(isFilter({ kind: 'division', id: d.id }))} onClick={() => setFilter({ kind: 'division', id: d.id })}>
+          <button key={d.id} className={chip(isFilter({ kind: 'division', id: d.id }))} aria-pressed={isFilter({ kind: 'division', id: d.id })} onClick={() => setFilter({ kind: 'division', id: d.id })}>
             {d.name}
           </button>
         ))}
       </div>
 
+      {current.kind === 'foryou' && (
+        <div className="-mt-1">
+          <p className="text-sm font-bold">Talleres para ti</p>
+          <p className="text-xs text-ink-muted">Sugerencias basadas en las carreras que elegiste. Tú decides qué agregar a tu ruta.</p>
+        </div>
+      )}
+
       {visible.length === 0 ? (
-        <Alert>{filter.kind === 'all' ? text('activitiesEmpty') : 'No hay talleres con este filtro.'}</Alert>
+        <Alert>{current.kind === 'all' ? text('activitiesEmpty') : 'No hay talleres con este filtro.'}</Alert>
       ) : (
         <ul className="space-y-3">
           {visible.map((sessions, i) => {
@@ -226,19 +237,16 @@ export default function Missions() {
                       </span>
                     ) : null}
                   </div>
-                  {why && !rec?.already_attended && (
-                    <p className="mt-2 flex items-start gap-1.5 text-xs">
-                      <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-fg-brand" aria-hidden />
-                      <span className="min-w-0">
-                        <span className="block font-bold text-fg-brand">{why.badge}</span>
-                        {why.reason && <span className="line-clamp-2 break-words text-ink-muted">{why.reason}</span>}
-                      </span>
-                    </p>
-                  )}
                   {sharedLocation && (
                     <p className="mt-1 flex items-start gap-1 text-xs text-ink-muted">
                       <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
                       <span className="min-w-0 break-words">{sharedLocation}</span>
+                    </p>
+                  )}
+                  {why?.reason && !rec?.already_attended && (
+                    <p className="mt-1.5 flex items-start gap-1.5 text-xs text-ink-muted">
+                      <Sparkles className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${rec?.already_reserved ? 'text-ink-muted' : 'text-fg-brand'}`} aria-hidden />
+                      <span className="line-clamp-2 min-w-0 break-words">{why.reason}</span>
                     </p>
                   )}
                   {first.description && (
