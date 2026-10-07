@@ -1,6 +1,13 @@
 import { fillTemplate } from '../theme/themeEngine';
 import type { ThemeConfig } from '../theme/types';
 
+/** «Te falta completar 1 misión académica.» / «Te faltan completar 2 misiones académicas.» */
+export function missingAcademicMissionsMessage(missing: number) {
+  return missing === 1
+    ? 'Te falta completar 1 misión académica.'
+    : `Te faltan completar ${missing} misiones académicas.`;
+}
+
 type Next = { level: number; required_attendances: number; required_divisions: number };
 
 /**

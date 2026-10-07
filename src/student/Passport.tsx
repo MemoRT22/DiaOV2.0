@@ -8,8 +8,9 @@ import { useAuth } from '../lib/auth';
 import { fetchDivisions, fetchProgress } from '../lib/catalog';
 import { fetchMyRaffleStatus } from '../lib/raffleApi';
 import { useLoad } from '../lib/useLoad';
+import { useParticipantSync } from '../lib/useParticipantSync';
 import ScanButton from './ScanButton';
-import { progressNextMessage } from './progressText';
+import { missingAcademicMissionsMessage, progressNextMessage } from './progressText';
 import { usePublicTheme } from '../theme/PublicThemeProvider';
 
 const DISMISS_KEY = 'diaov.interestsPromptDismissed';
@@ -22,9 +23,11 @@ export default function Passport() {
     [],
   );
   const [dismissed, setDismissed] = useState(() => sessionStorage.getItem(DISMISS_KEY) === '1');
+  // Other tabs of this browser (reserve, cancel, change, check-in) or a long time hidden → quietly re-query, keeping what is on screen.
+  useParticipantSync(reload);
 
   if (loading && !data) return <PageSkeleton />;
-  if (error || !data) return <LoadError error={error} onRetry={reload} />;
+  if (!data) return <LoadError error={error} onRetry={reload} />;
 
   const [progress, divisions, raffle] = data;
   const visited = new Set(progress.division_ids);
@@ -93,7 +96,7 @@ export default function Passport() {
             </div>
             <p className="text-center text-sm text-ink-muted">
               {raffle.academic_tickets < 3
-                ? `Te falta completar ${3 - raffle.academic_tickets} misión${3 - raffle.academic_tickets !== 1 ? 'es' : ''} académica${3 - raffle.academic_tickets !== 1 ? 's' : ''}.`
+                ? missingAcademicMissionsMessage(3 - raffle.academic_tickets)
                 : raffle.leadership_tickets === 0
                   ? 'Te falta 1 actividad de liderazgo.'
                   : 'Aún no perteneces a ningún grupo de sorteo.'}

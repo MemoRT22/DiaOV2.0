@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom';
 import { Alert, Button } from '../components/ui';
 import { checkIn, type CheckInResult } from '../lib/checkin';
 import { friendlyError } from '../lib/errors';
+import { announceParticipantChange } from '../lib/participantSync';
 import { formatTime } from '../lib/catalog';
 import { usePublicTheme } from '../theme/PublicThemeProvider';
 
@@ -51,6 +52,8 @@ export default function Scanner() {
     setPhase('validating');
     try {
       const res = await checkIn(credential);
+      // A repeated check-in changes nothing, so only a new attendance is announced to the other tabs.
+      if (!res.already_registered) announceParticipantChange('attendance');
       setResult(res);
       setPhase('success');
     } catch (cause) {
@@ -91,16 +94,20 @@ export default function Scanner() {
       <div className="space-y-6">
         <div className="card animate-fade-up p-6 text-center">
           <CheckCircle2 className="mx-auto h-16 w-16 text-success" aria-hidden />
-          <h1 className="mt-4 text-xl font-extrabold">Misión completada</h1>
+          <h1 className="mt-4 text-xl font-extrabold">{result.already_registered ? 'Asistencia ya registrada' : 'Misión completada'}</h1>
           <p className="mt-1 text-lg font-semibold">{result.title}</p>
           <p className="text-sm text-ink-muted">
             {formatTime(result.starts_at)} — {formatTime(result.ends_at)}
           </p>
-          <div className="mt-4 inline-flex items-center gap-2 rounded-theme bg-accent-500/15 px-4 py-2">
-            <Sparkles className="h-5 w-5 text-accent-400" aria-hidden />
-            <span className="text-lg font-extrabold text-accent-400">+{result.credits_granted}</span>
-            <span className="text-sm text-ink-muted">{term('stamp', true).toLowerCase()}</span>
-          </div>
+          {result.already_registered ? (
+            <p className="mt-4 text-sm text-ink-muted">Esta asistencia ya estaba registrada. Tus {term('stamp', true).toLowerCase()} no cambiaron.</p>
+          ) : (
+            <div className="mt-4 inline-flex items-center gap-2 rounded-theme bg-accent-500/15 px-4 py-2">
+              <Sparkles className="h-5 w-5 text-accent-400" aria-hidden />
+              <span className="text-lg font-extrabold text-accent-400">+{result.credits_granted}</span>
+              <span className="text-sm text-ink-muted">{term('stamp', true).toLowerCase()}</span>
+            </div>
+          )}
           <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
             <div className="rounded-theme border border-line p-3">
               <p className="font-display text-xl font-extrabold">{result.stamps}</p>
@@ -120,9 +127,6 @@ export default function Scanner() {
               </p>
             </div>
           </div>
-          {result.already_registered && (
-            <p className="mt-3 text-sm text-ink-muted">Esta asistencia ya estaba registrada.</p>
-          )}
         </div>
         <div className="flex gap-3">
           <Button variant="secondary" onClick={reset} className="flex-1">

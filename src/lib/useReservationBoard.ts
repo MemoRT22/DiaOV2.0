@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { announceParticipantChange } from './participantSync';
 import { supabase } from './supabase';
+import { useParticipantSync } from './useParticipantSync';
 import {
   availabilityTopic,
   cancelReservation,
@@ -10,7 +12,6 @@ import {
   type Board,
 } from './reservations';
 
-const STALE_AFTER_HIDDEN_MS = 20_000;
 const CLOCK_TICK_MS = 30_000;
 
 export function applyClock(board: Board, offsetMs: number): Board {
@@ -98,15 +99,9 @@ export function useReservationBoard(editionId: string | undefined) {
     return () => window.clearInterval(id);
   }, []);
 
-  useEffect(() => {
-    let hiddenAt = 0;
-    const onVisibility = () => {
-      if (document.visibilityState === 'hidden') hiddenAt = Date.now();
-      else if (hiddenAt && Date.now() - hiddenAt > STALE_AFTER_HIDDEN_MS) void reload();
-    };
-    document.addEventListener('visibilitychange', onVisibility);
-    return () => document.removeEventListener('visibilitychange', onVisibility);
-  }, [reload]);
+  // Personal state: another tab of this browser changed my reservations/attendance, or this tab was hidden for a while.
+  // (Seat counts come from the availability broadcast below; these are different concerns.)
+  useParticipantSync(reload);
 
   useEffect(() => {
     if (!editionId) return;
@@ -159,6 +154,8 @@ export function useReservationBoard(editionId: string | undefined) {
     async (action: () => Promise<unknown>) => {
       try {
         await action();
+        // Only a successful action is announced; the reload below never announces, so tabs cannot ping-pong.
+        announceParticipantChange('reservation');
       } finally {
         await reload();
       }
