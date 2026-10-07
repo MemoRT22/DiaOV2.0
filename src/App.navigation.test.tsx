@@ -25,8 +25,7 @@ vi.mock('./admin/participants/Participants', () => ({ default: () => (
 ) }));
 vi.mock('./admin/imports/ParticipantImport', () => ({ default: () => <div><h1>Pantalla importar padrón</h1><Back label="Participantes" /></div> }));
 vi.mock('./admin/export/ExportPage', () => ({ default: () => <div><h1>Pantalla exportar</h1><Back label="Participantes" /></div> }));
-vi.mock('./admin/workshops/WorkshopInbox', () => ({ default: () => <h1>Pantalla propuestas</h1> }));
-vi.mock('./admin/workshops/WorkshopProgram', () => ({ default: () => <div><h1>Pantalla programa</h1><Link to="importar">Importar programa</Link></div> }));
+vi.mock('./admin/workshops/WorkshopInbox', () => ({ default: () => <h1>Pantalla talleres</h1> }));
 vi.mock('./admin/catalog/CatalogImport', () => ({ default: ({ backLabel }: { backLabel?: string }) => (
   <div><h1>Pantalla importar catálogo</h1><Back label={backLabel ?? 'Carreras y divisiones'} /></div>
 ) }));
@@ -44,7 +43,6 @@ function History() {
   return null;
 }
 const back = () => act(() => go(-1));
-const forward = () => act(() => go(1));
 
 function open(path: string) {
   return render(<MemoryRouter initialEntries={[path]}><History /><App /></MemoryRouter>);
@@ -78,24 +76,11 @@ test('the sidebar also leads back out of the coordination-only branch', async ()
   expect(await heading('Participantes')).toBeInTheDocument();
 });
 
-test('Talleres → Programa → Importar programa → back link → Programa; browser back/forward walk the same history', async () => {
+test('Talleres has one entry and no Propuestas or Programa navigation', async () => {
   open('/coordinacion/talleres');
-  await heading('Pantalla propuestas');
-  fireEvent.click(screen.getByRole('link', { name: 'Programa' }));
-  await heading('Pantalla programa');
-  fireEvent.click(screen.getByRole('link', { name: 'Importar programa' }));
-  await heading('Pantalla importar catálogo');
-  fireEvent.click(screen.getByRole('link', { name: '← Programa de talleres' }));
-  expect(await heading('Pantalla programa')).toBeInTheDocument();
-
-  back(); // → importar programa
-  expect(await heading('Pantalla importar catálogo')).toBeInTheDocument();
-  back(); // → programa
-  expect(await heading('Pantalla programa')).toBeInTheDocument();
-  back(); // → propuestas
-  expect(await heading('Pantalla propuestas')).toBeInTheDocument();
-  forward();
-  expect(await heading('Pantalla programa')).toBeInTheDocument();
+  await heading('Pantalla talleres');
+  expect(screen.queryByRole('link', { name: 'Propuestas' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('link', { name: 'Programa' })).not.toBeInTheDocument();
 });
 
 test('Operación → Check-in → Sorteo final through the area tabs', async () => {

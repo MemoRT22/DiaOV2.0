@@ -5,7 +5,7 @@ import { BootSpinner } from './components/BootSpinner';
 import { hasRole, useAuth } from './lib/auth';
 import AdminSurface from './admin/AdminSurface';
 import AreaLayout from './admin/AreaLayout';
-import { OPERATION_TABS, SETTINGS_BASE, SETTINGS_TABS, WORKSHOP_TABS } from './admin/navigation';
+import { OPERATION_TABS, SETTINGS_BASE, SETTINGS_TABS } from './admin/navigation';
 import StudentLogin from './student/StudentLogin';
 import { PublicSurface } from './theme/PublicThemeProvider';
 
@@ -30,7 +30,7 @@ const Catalog = lazy(() => import('./admin/catalog/Catalog'));
 const CatalogImport = lazy(() => import('./admin/catalog/CatalogImport'));
 const WorkshopInbox = lazy(() => import('./admin/workshops/WorkshopInbox'));
 const WorkshopDetail = lazy(() => import('./admin/workshops/WorkshopDetail'));
-const WorkshopProgram = lazy(() => import('./admin/workshops/WorkshopProgram'));
+const WorkshopEdit = lazy(() => import('./admin/workshops/WorkshopEdit'));
 const StaffAccounts = lazy(() => import('./admin/staff/StaffAccounts'));
 const OperationsCenter = lazy(() => import('./admin/OperationsCenter'));
 const ThemeEditor = lazy(() => import('./admin/theme/ThemeEditor'));
@@ -112,12 +112,11 @@ export default function App() {
                 <Route path="participantes/importar" element={<ParticipantImport />} />
                 <Route path="participantes/exportar" element={<ExportPage />} />
 
-                <Route element={<AreaLayout label="Talleres" tabs={WORKSHOP_TABS} />}>
-                  <Route path="talleres" element={<WorkshopInbox />} />
-                  <Route path="talleres/programa" element={<WorkshopProgram />} />
-                  <Route path="talleres/programa/importar" element={<CatalogImport initialKind="workshops" backLabel="Programa de talleres" />} />
-                  <Route path="talleres/:id" element={<WorkshopDetail />} />
-                </Route>
+                <Route path="talleres" element={<WorkshopInbox />} />
+                <Route path="talleres/programa" element={to('/coordinacion/talleres')} />
+                <Route path="talleres/programa/importar" element={to('/coordinacion/talleres')} />
+                <Route path="talleres/:id" element={<WorkshopDetail />} />
+                <Route path="talleres/:id/editar" element={<WorkshopEdit />} />
 
                 <Route path="configuracion" element={<AreaLayout label="Configuración" tabs={SETTINGS_TABS} hideAt={SETTINGS_BASE} />}>
                   <Route index element={<SettingsHome />} />

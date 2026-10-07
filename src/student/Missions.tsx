@@ -5,7 +5,7 @@ import { Alert, LoadError, PageSkeleton } from '../components/ui';
 import { fetchDivisions, formatTime } from '../lib/catalog';
 import { recommendationReason } from '../lib/recommendationReason';
 import { fetchRecommendedActivities } from '../lib/recommendationsApi';
-import { hasTightTransfer, sessionState, type BoardSession } from '../lib/reservations';
+import { belongsToDivision, hasTightTransfer, sessionState, type BoardSession } from '../lib/reservations';
 import { useLoad } from '../lib/useLoad';
 import { useParticipantSync } from '../lib/useParticipantSync';
 import { useReservationBoard } from '../lib/useReservationBoard';
@@ -72,7 +72,7 @@ export default function Missions() {
   const visible = workshops.filter((w) => {
     if (current.kind === 'foryou') return recommendedIds.has(w[0].activity_id);
     if (current.kind === 'live') return w.some((s) => s.in_progress);
-    if (current.kind === 'division') return w[0].division_id === current.id;
+    if (current.kind === 'division') return belongsToDivision(w[0], current.id);
     return true;
   });
   const active = board.active_reservation_count;
@@ -207,7 +207,7 @@ export default function Missions() {
         <ul className="space-y-3">
           {visible.map((sessions, i) => {
             const first = sessions[0];
-            const division = divisionById.get(first.division_id);
+            const division = divisionById.get(first.division_id ?? '');
             const color = (division && theme.divisions[division.code]?.color) || theme.colors.secondary;
             const sharedLocation = sessions.every((s) => s.location === first.location) ? first.location : '';
             const rec = recommendations.find((r) => r.activity_id === first.activity_id);

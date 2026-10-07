@@ -1,9 +1,10 @@
 // Frontera HTTP de revisión. Las dependencias con service_role viven solo en index.ts.
+import { validateSubmission } from '../workshop-intake/validation.ts';
 export type DbError = { code?: string; message?: string };
 export type AuthResult = { kind: 'ok'; userId: string } | { kind: 'unauthorized' | 'forbidden' };
 export type Deps = {
   authorize: (token: string) => Promise<AuthResult>;
-  rpc: (name: 'workshop_admin_list_internal' | 'workshop_admin_get_internal' | 'workshop_review_transition_internal' | 'publish_workshop_submission_internal', args: Record<string, unknown>) => Promise<{ data: unknown; error: DbError | null }>;
+  rpc: (name: 'workshop_admin_list_internal' | 'workshop_admin_get_internal' | 'workshop_admin_edit_internal' | 'workshop_review_transition_internal' | 'publish_workshop_submission_internal', args: Record<string, unknown>) => Promise<{ data: unknown; error: DbError | null }>;
   log?: (event: string, code?: string) => void;
 };
 
@@ -15,9 +16,9 @@ const CORS = {
   'X-Content-Type-Options': 'nosniff',
 };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const STATUSES = new Set(['submitted', 'in_review', 'changes_requested', 'approved', 'published', 'archived']);
+const STATUSES = new Set(['pending', 'submitted', 'in_review', 'changes_requested', 'approved', 'published', 'archived']);
 const TYPES = new Set(['academica', 'vida_universitaria']);
-const MUTATIONS = new Set(['start_review', 'save_notes', 'request_changes', 'resume_review', 'archive', 'approve', 'publish']);
+const MUTATIONS = new Set(['start_review', 'save_notes', 'request_changes', 'resume_review', 'archive', 'approve', 'publish', 'edit', 'approve_publish']);
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { ...CORS, 'Content-Type': 'application/json; charset=utf-8' } });
@@ -30,7 +31,7 @@ function dbFailure(error: DbError, deps: Deps): Response {
   if (message.includes('INVALID_TRANSITION')) return json({ error: 'INVALID_TRANSITION' }, 409);
   if (message.includes('PUBLISH_STATE_INCONSISTENT')) return json({ error: 'PUBLISH_STATE_INCONSISTENT' }, 409);
   if (message.includes('NO_ACTIVE_EDITION')) return json({ error: 'NO_ACTIVE_EDITION' }, 503);
-  for (const code of ['INVALID_FILTER', 'INVALID_ACTION', 'NOTES_REQUIRED', 'FEEDBACK_REQUIRED', 'TEXT_TOO_LONG']) {
+  for (const code of ['INVALID_FILTER', 'INVALID_ACTION', 'NOTES_REQUIRED', 'FEEDBACK_REQUIRED', 'INVALID_PAYLOAD', 'INVALID_CAREER', 'DUPLICATE_CAREER', 'CAREERS_REQUIRED', 'TEXT_TOO_LONG']) {
     if (message.includes(code)) return json({ error: code }, 422);
   }
   deps.log?.('db_error', error.code);
@@ -83,7 +84,15 @@ export async function handleRequest(req: Request, deps: Deps): Promise<Response>
       return data ? json({ submission: data }) : json({ error: 'NOT_FOUND' }, 404);
     }
     if (!MUTATIONS.has(body.action)) return json({ error: 'INVALID_ACTION' }, 400);
-    if (body.action === 'publish') {
+    if (body.action === 'edit') {
+      const checked = validateSubmission(body.payload);
+      if (!checked.ok) return json({ error: 'VALIDATION_FAILED', errors: checked.kind === 'invalid' ? checked.errors : [] }, 422);
+      const { data, error } = await deps.rpc('workshop_admin_edit_internal', {
+        p_actor: caller.userId, p_submission_id: id, p_payload: checked.value,
+      });
+      return error ? dbFailure(error, deps) : json({ submission: data });
+    }
+    if (body.action === 'approve_publish' || body.action === 'publish') {
       const { data, error } = await deps.rpc('publish_workshop_submission_internal', {
         p_actor: caller.userId, p_submission_id: id
       });

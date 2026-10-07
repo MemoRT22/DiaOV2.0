@@ -5,8 +5,10 @@ DECLARE
   v_actor uuid;
   v_email text;
   v_id uuid;
+  v_approved_id uuid;
   v_careers uuid[];
   v_result jsonb;
+  v_counts jsonb;
   v_edition uuid;
   v_initial_activities bigint;
   v_initial_sessions bigint;
@@ -60,11 +62,26 @@ BEGIN
     RAISE EXCEPTION 'TYPE_FILTER_FAILED'; END IF;
   IF workshop_admin_get_internal(gen_random_uuid()) IS NOT NULL THEN RAISE EXCEPTION 'GET_NOT_FOUND_FAILED'; END IF;
   v_result := workshop_admin_get_internal(v_id);
-  IF jsonb_array_length(v_result->'careers') <> 2 THEN RAISE EXCEPTION 'GET_CAREERS_FAILED'; END IF;
+  IF jsonb_array_length(v_result->'careers') <> 2 OR v_result->>'reviewer_name' IS NOT NULL
+    OR jsonb_array_length(v_result->'sessions') <> 0
+    OR NOT (v_result ?& ARRAY['id','status','admin_notes','review_feedback','reviewed_by','careers','reviewer_name','sessions'])
+    THEN RAISE EXCEPTION 'GET_COMPATIBILITY_FAILED'; END IF;
+  v_result := workshop_admin_list_internal('pending', NULL, 'ZZ-FASE-9C', 1);
+  IF (v_result->>'total')::int <> 1 THEN RAISE EXCEPTION 'PENDING_FILTER_FAILED'; END IF;
+  v_counts := v_result->'counts';
+  IF NOT (v_counts ?& ARRAY['pending','submitted','in_review','changes_requested','approved','published','archived'])
+    OR (v_counts->>'pending')::int <> (v_counts->>'submitted')::int + (v_counts->>'in_review')::int
+      + (v_counts->>'changes_requested')::int + (v_counts->>'approved')::int
+    THEN RAISE EXCEPTION 'HYBRID_COUNTS_FAILED'; END IF;
 
   v_result := workshop_review_transition_internal(v_actor, v_id, 'start_review');
   IF v_result->>'status' <> 'in_review' OR (v_result->>'reviewed_by')::uuid <> v_actor
     OR v_result->>'reviewed_at' IS NULL THEN RAISE EXCEPTION 'START_REVIEW_FAILED'; END IF;
+  v_result := workshop_admin_get_internal(v_id);
+  IF v_result->>'reviewer_name' <> 'Coordinación temporal 9C' THEN RAISE EXCEPTION 'REVIEWER_NAME_FAILED'; END IF;
+  IF (workshop_admin_list_internal('in_review', NULL, 'ZZ-FASE-9C', 1)->>'total')::int <> 1
+    OR (workshop_admin_list_internal('submitted', NULL, 'ZZ-FASE-9C', 1)->>'total')::int <> 0
+    THEN RAISE EXCEPTION 'LEGACY_EXACT_FILTER_FAILED'; END IF;
   BEGIN
     PERFORM workshop_review_transition_internal(v_actor, v_id, 'start_review');
     RAISE EXCEPTION 'INVALID_TRANSITION_ACCEPTED';
@@ -84,10 +101,16 @@ BEGIN
   v_result := workshop_review_transition_internal(v_actor, v_id, 'request_changes', NULL, 'Especifica los materiales.');
   IF v_result->>'status' <> 'changes_requested' OR v_result->>'review_feedback' <> 'Especifica los materiales.' THEN
     RAISE EXCEPTION 'REQUEST_CHANGES_FAILED'; END IF;
+  IF (workshop_admin_list_internal('changes_requested', NULL, 'ZZ-FASE-9C', 1)->>'total')::int <> 1
+    OR (workshop_admin_list_internal('pending', NULL, 'ZZ-FASE-9C', 1)->>'total')::int <> 1
+    THEN RAISE EXCEPTION 'CHANGES_REQUESTED_FILTER_FAILED'; END IF;
   v_result := workshop_review_transition_internal(v_actor, v_id, 'resume_review');
   IF v_result->>'status' <> 'in_review' THEN RAISE EXCEPTION 'RESUME_FAILED'; END IF;
   v_result := workshop_review_transition_internal(v_actor, v_id, 'archive');
   IF v_result->>'status' <> 'archived' THEN RAISE EXCEPTION 'ARCHIVE_FAILED'; END IF;
+  IF (workshop_admin_list_internal('archived', NULL, 'ZZ-FASE-9C', 1)->>'total')::int <> 1
+    OR (workshop_admin_list_internal('pending', NULL, 'ZZ-FASE-9C', 1)->>'total')::int <> 0
+    THEN RAISE EXCEPTION 'ARCHIVED_FILTER_FAILED'; END IF;
 
   SELECT count(*) INTO v_audit_count FROM audit_log
   WHERE edition_id = v_edition AND actor_user_id = v_actor
@@ -102,6 +125,30 @@ BEGIN
     OR (SELECT count(*) FROM activity_sessions) <> v_initial_sessions
     OR (SELECT count(*) FROM activity_credentials) <> v_initial_credentials THEN
     RAISE EXCEPTION 'CATALOG_SIDE_EFFECT'; END IF;
+
+  v_result := create_workshop_submission_internal(jsonb_build_object(
+    'facilitator_name', 'Prueba compatibilidad', 'facilitator_email', 'compat9c@example.invalid',
+    'activity_type', 'academica', 'title', 'ZZ-FASE-9C-COMPAT',
+    'student_pitch', 'Propuesta temporal para comprobar aprobación heredada.',
+    'objective', 'Comprobar transición de revisión.', 'takeaway', 'Resultado de prueba.',
+    'keywords', jsonb_build_array('uno', 'dos', 'tres'),
+    'session_duration_minutes', 30, 'capacity_per_session', 20,
+    'building', 'Edificio A', 'room_space', 'Salón 1', 'career_ids', to_jsonb(v_careers)));
+  v_approved_id := (v_result->>'submission_id')::uuid;
+  PERFORM workshop_review_transition_internal(v_actor, v_approved_id, 'start_review');
+  v_result := workshop_review_transition_internal(v_actor, v_approved_id, 'approve');
+  IF v_result->>'status' <> 'approved'
+    OR (workshop_admin_list_internal('approved', NULL, 'ZZ-FASE-9C-COMPAT', 1)->>'total')::int <> 1
+    OR (workshop_admin_list_internal('pending', NULL, 'ZZ-FASE-9C-COMPAT', 1)->>'total')::int <> 1
+    THEN RAISE EXCEPTION 'LEGACY_APPROVE_COMPATIBILITY_FAILED'; END IF;
+  v_result := publish_workshop_submission_internal(v_actor, v_approved_id);
+  IF v_result->>'status' <> 'published'
+    OR (workshop_admin_list_internal('published', NULL, 'ZZ-FASE-9C-COMPAT', 1)->>'total')::int <> 1
+    THEN RAISE EXCEPTION 'LEGACY_PUBLISH_COMPATIBILITY_FAILED'; END IF;
+  v_result := workshop_admin_get_internal(v_approved_id);
+  IF v_result->>'reviewer_name' <> 'Coordinación temporal 9C'
+    OR jsonb_array_length(v_result->'sessions') = 0
+    THEN RAISE EXCEPTION 'PUBLISHED_GET_COMPATIBILITY_FAILED'; END IF;
 END
 $test$;
 ROLLBACK;

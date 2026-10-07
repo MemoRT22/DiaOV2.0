@@ -10,7 +10,9 @@ export type BoardSession = {
   activity_id: string;
   title: string;
   description: string;
-  division_id: string;
+  division_id: string | null;
+  /** EVERY division the workshop belongs to (a workshop can relate to several; `division_id` is only the legacy singular one). */
+  division_ids?: string[];
   starts_at: string;
   ends_at: string;
   location: string;
@@ -104,6 +106,14 @@ export type SessionState =
   | 'already_attended';
 
 const FEW_PLACES_RATIO = 0.15;
+
+/**
+ * A workshop belongs to a division when it is among ALL its related divisions (`division_ids`); the legacy singular
+ * `division_id` still counts so older payloads and legacy activities keep working.
+ */
+export function belongsToDivision(s: Pick<BoardSession, 'division_id' | 'division_ids'>, divisionId: string): boolean {
+  return !!s.division_ids?.includes(divisionId) || s.division_id === divisionId;
+}
 
 export function isFewPlaces(s: Pick<BoardSession, 'remaining' | 'capacity'>) {
   return s.remaining > 0 && s.remaining <= Math.max(3, Math.ceil(s.capacity * FEW_PLACES_RATIO));
