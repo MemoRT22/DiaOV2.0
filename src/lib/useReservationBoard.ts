@@ -13,15 +13,53 @@ import {
 const STALE_AFTER_HIDDEN_MS = 20_000;
 const CLOCK_TICK_MS = 30_000;
 
-function applyClock(board: Board, offsetMs: number): Board {
+export function applyClock(board: Board, offsetMs: number): Board {
   const now = Date.now() + offsetMs;
   let changed = false;
   const sessions = board.sessions.map((s) => {
-    if (s.started || new Date(s.starts_at).getTime() > now) return s;
+    const started = new Date(s.starts_at).getTime() <= now;
+    const ended = new Date(s.ends_at).getTime() <= now;
+    const inProgress = started && !ended;
+    if (s.started === started && s.ended === ended && s.in_progress === inProgress) return s;
     changed = true;
-    return { ...s, started: true };
+    return { ...s, started, ended, in_progress: inProgress };
   });
-  return changed ? { ...board, sessions } : board;
+  const sessionById = new Map(sessions.map((s) => [s.id, s]));
+  // A reservation moves active → in_progress → ended with the clock; completion/expiry only come from the server.
+  // Crossing into `ended` also releases the commitment (it no longer counts toward the limit nor blocks schedules),
+  // exactly like the server snapshot would after a reload. Each reservation is released at most once.
+  let released = 0;
+  const releasedIds = new Set<string>();
+  const reservations = board.reservations.map((r) => {
+    const s = sessionById.get(r.session_id);
+    if (!s || r.status !== 'vigente' || (r.derived_status !== 'active' && r.derived_status !== 'in_progress')) return r;
+    const next = s.ended ? 'ended' : s.in_progress ? 'in_progress' : 'active';
+    if (next === r.derived_status) return r;
+    changed = true;
+    if (next === 'ended') {
+      released += 1;
+      releasedIds.add(r.id);
+    }
+    return { ...r, derived_status: next };
+  });
+  if (!changed) return board;
+  // Conflicts and tight transfers that pointed at a commitment that just ended no longer apply.
+  const sessionsOut =
+    releasedIds.size === 0
+      ? sessions
+      : sessions.map((s) => {
+          const conflicts = s.conflicts_with.filter((id) => !releasedIds.has(id));
+          const tight = s.tight_transfer_with.filter((id) => !releasedIds.has(id));
+          return conflicts.length === s.conflicts_with.length && tight.length === s.tight_transfer_with.length
+            ? s
+            : { ...s, conflicts_with: conflicts, tight_transfer_with: tight };
+        });
+  return {
+    ...board,
+    sessions: sessionsOut,
+    reservations,
+    active_reservation_count: Math.max(0, board.active_reservation_count - released),
+  };
 }
 
 /**

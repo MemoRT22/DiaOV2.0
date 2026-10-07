@@ -10,16 +10,19 @@ export default function SessionRow({
   actionLabel,
   onAction,
   showLocation,
+  tightMinutes = null,
 }: {
   session: BoardSession;
   state: SessionState;
   actionLabel: string;
   onAction: () => void;
   showLocation: boolean;
+  /** Recommended minutes between talleres when this session leaves less than that (warning only). */
+  tightMinutes?: number | null;
 }) {
   const { label, tone } = STATE_LABELS[state];
   const selectable = isSelectable(state);
-  const showCount = state !== 'cancelled' && state !== 'started';
+  const showCount = state !== 'cancelled' && state !== 'ended';
 
   return (
     <li className="flex items-center gap-3 rounded-theme border border-line bg-surface-sunken/40 p-3">
@@ -43,8 +46,11 @@ export default function SessionRow({
             </span>
           )}
         </div>
-        <div className="mt-2">
+        <div className="mt-2 flex flex-wrap items-center gap-2">
           <Badge tone={tone}>{label}</Badge>
+          {tightMinutes != null && selectable && (
+            <Badge tone="warning">Traslado ajustado · menos de {tightMinutes} min</Badge>
+          )}
         </div>
       </div>
       {selectable && (

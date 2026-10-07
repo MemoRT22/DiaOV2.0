@@ -84,7 +84,7 @@ export default function ReservationRules() {
           type="datetime-local"
           value={closeAt}
           onChange={(e) => setCloseAt(e.target.value)}
-          hint="Después del cierre ya no se reserva ni se cambia; sí se puede cancelar antes de que inicie la sesión."
+          hint="Después del cierre ya no se reserva ni se cambia; sí se puede cancelar mientras la sesión no termine."
         />
         {status && <Alert tone={status.tone}>{status.msg}</Alert>}
         <div className="flex justify-end">
@@ -102,12 +102,13 @@ export default function ReservationRules() {
         <p className="text-sm text-ink-muted">No necesitan configuración: el sistema las hace cumplir en cada reservación.</p>
         <ul className="list-disc space-y-1 pl-5 text-sm text-ink-muted">
           <li>Hasta {edition.max_reservations} talleres activos por aspirante.</li>
-          <li>No se permiten talleres que se empalmen; se deja un traslado mínimo de {edition.travel_buffer_minutes} minutos entre sesiones.</li>
+          <li>No se permiten talleres que se empalmen. Se recomienda un traslado de {edition.travel_buffer_minutes} minutos entre sesiones: si hay menos, se avisa al aspirante, pero puede reservar.</li>
           <li>Un mismo taller no se reserva dos veces, ni uno que ya se asistió.</li>
           <li>Cambiar de horario es atómico: si el nuevo no está disponible, el aspirante conserva su lugar actual.</li>
           <li>
-            El check-in abre {edition.checkin_open_before_minutes} minutos antes de que termine la sesión y cierra {edition.checkin_close_after_minutes} minutos después.
+            El check-in lo habilita la persona que dirige el taller al mostrar su QR; no depende de la hora programada. Sí exige una reservación vigente.
           </li>
+          <li>Una sesión en curso sigue aceptando reservaciones hasta que termina, y se puede cancelar o cambiar mientras no termine ni tenga asistencia.</li>
           <li>El cupo de cada sesión nunca se excede, aunque varias personas reserven al mismo tiempo.</li>
         </ul>
       </section>

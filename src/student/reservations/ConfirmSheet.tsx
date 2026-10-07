@@ -7,6 +7,8 @@ export type ConfirmRequest = {
   body: string;
   confirmLabel: string;
   danger?: boolean;
+  /** Non-blocking notice shown inside the same dialog (e.g. a tight transfer). */
+  warning?: string;
   action: () => Promise<unknown>;
 };
 
@@ -30,6 +32,7 @@ export default function ConfirmSheet({ request, onClose }: { request: ConfirmReq
     <Modal title={request.title} onClose={() => !busy && onClose(false)}>
       <div className="space-y-4">
         <p className="text-sm text-ink-muted">{request.body}</p>
+        {request.warning && !error && <Alert tone="warning">{request.warning}</Alert>}
         {error && <Alert tone="error">{error}</Alert>}
         <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <Button variant="secondary" disabled={busy} onClick={() => onClose(false)}>

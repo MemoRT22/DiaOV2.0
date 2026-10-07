@@ -50,7 +50,8 @@ test('the rules the system enforces are shown as information, not as controls', 
   render(<ReservationRules />);
   const rules = screen.getByRole('region', { name: 'Reglas del sistema' });
   expect(within(rules).getByText(/Hasta 4 talleres activos/)).toBeInTheDocument();
-  expect(within(rules).getByText(/traslado mínimo de 10 minutos/)).toBeInTheDocument();
-  expect(within(rules).getByText(/abre 5 minutos antes.*cierra 20 minutos después/)).toBeInTheDocument();
+  expect(within(rules).getByText(/Se recomienda un traslado de 10 minutos/)).toBeInTheDocument();
+  expect(within(rules).getByText(/no depende de la hora programada/)).toBeInTheDocument();
+  expect(within(rules).getByText(/Una sesión en curso sigue aceptando reservaciones/)).toBeInTheDocument();
   expect(within(rules).queryAllByRole('spinbutton')).toHaveLength(0);
 });

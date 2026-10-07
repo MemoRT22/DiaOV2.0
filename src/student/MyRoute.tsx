@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Badge, buttonClasses, LoadError, PageSkeleton } from '../components/ui';
 import { fetchDivisions, formatTime } from '../lib/catalog';
-import { canModify, durationMinutes } from '../lib/reservations';
+import { canModify, durationMinutes, hasTightTransfer, isActiveReservation } from '../lib/reservations';
 import { useLoad } from '../lib/useLoad';
 import { useReservationBoard } from '../lib/useReservationBoard';
 import { useEdition } from '../edition/EditionProvider';
@@ -34,6 +34,7 @@ export default function MyRoute() {
 
   const divisionById = new Map(divisions.data.map((d) => [d.id, d]));
   const sessionById = new Map(board.sessions.map((s) => [s.id, s]));
+  const sessionOfReservation = new Map(board.reservations.map((r) => [r.id, sessionById.get(r.session_id)]));
   const items = board.reservations
     .filter((r) => r.status === 'vigente' || r.status === 'expirada' || !r.resolved)
     .flatMap((r) => {
@@ -48,7 +49,7 @@ export default function MyRoute() {
       <header className="animate-fade-up">
         <h1 className="text-2xl font-extrabold">{term('route')}</h1>
         <p className="mt-1 text-sm text-ink-muted">
-          {activeCount} de {board.max_reservations} talleres activos · {board.travel_buffer_minutes} min para trasladarte entre sesiones
+          {activeCount} de {board.max_reservations} talleres activos · Recomendamos {board.travel_buffer_minutes} min entre talleres
         </p>
       </header>
 
@@ -75,6 +76,8 @@ export default function MyRoute() {
             const isCheckinOpen = ds === 'ended';
             const isEnded = ds === 'expired';
             const allowed = canModify(board, s, r);
+            const tight = isActiveReservation(r) && hasTightTransfer(s);
+            const tightNext = tight && s.tight_transfer_with.some((id) => (sessionOfReservation.get(id)?.starts_at ?? '') > s.starts_at);
             return (
               <li key={r.id} className="animate-fade-up relative" style={{ animationDelay: `${Math.min(i, 8) * 50}ms` }}>
                 <span
@@ -114,9 +117,17 @@ export default function MyRoute() {
                         Coordinación canceló este horario. Tu lugar ya no cuenta en tu ruta; elige otra sesión.
                       </p>
                     )}
+                    {tight && (
+                      <p className="mt-2 text-sm font-semibold text-fg-warning">
+                        Traslado ajustado ·{' '}
+                        {tightNext
+                          ? `tienes menos de ${board.travel_buffer_minutes} min para llegar a tu siguiente taller.`
+                          : `llegas con menos de ${board.travel_buffer_minutes} min desde tu taller anterior.`}
+                      </p>
+                    )}
                     {isCheckinOpen && (
                       <p className="mt-2 text-sm text-ink-muted">
-                        El horario terminó. Aún puedes registrar tu asistencia con el QR del taller; mientras tanto no puedes reservar otro horario de este taller.
+                        El horario terminó. Si participaste, registra tu asistencia con el QR del taller; si no, puedes reservar otra sesión de este taller.
                       </p>
                     )}
                     {isEnded && (
@@ -124,7 +135,7 @@ export default function MyRoute() {
                         El horario finalizó. Puedes reservar otra sesión de este taller si hay disponibles.
                       </p>
                     )}
-                    {(isCancelled || isEnded) && board.window === 'open' && (
+                    {(isCancelled || isEnded || isCheckinOpen) && board.window === 'open' && (
                       <Link to="/misiones" className={buttonClasses('primary', 'mt-3 w-full')}>
                         Elegir otra sesión
                       </Link>
