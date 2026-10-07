@@ -160,7 +160,9 @@ BEGIN
   n := n + 1;
   IF (j->'summary'->>'exact')::int <> 3 OR (j->'summary'->>'same_division')::int <> 2 THEN RAISE EXCEPTION 'RECOMMENDER_FAIL[resumen: %]', j->'summary'; END IF;
   IF (pg_temp.item(j, 'Cardiología básica')->>'has_open_session')::boolean THEN RAISE EXCEPTION 'RECOMMENDER_FAIL[sin lugares marcada abierta]'; END IF;
-  n := n + 2;
+  -- sessions[*] lleva `ended` (el tipo TypeScript RecommendedSession debe reflejarlo)
+  IF (pg_temp.item(j, 'Simulación clínica')#>>'{sessions,0,ended}') <> 'false' THEN RAISE EXCEPTION 'RECOMMENDER_FAIL[sessions[*].ended ausente]'; END IF;
+  n := n + 3;
   -- determinista: dos llamadas, mismo resultado
   IF pg_temp.recs(u1)::text <> j::text THEN RAISE EXCEPTION 'RECOMMENDER_FAIL[no determinista]'; END IF;
   n := n + 1;

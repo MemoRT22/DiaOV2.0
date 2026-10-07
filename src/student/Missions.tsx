@@ -7,6 +7,7 @@ import { recommendationReason } from '../lib/recommendationReason';
 import { fetchRecommendedActivities } from '../lib/recommendationsApi';
 import { hasTightTransfer, sessionState, type BoardSession } from '../lib/reservations';
 import { useLoad } from '../lib/useLoad';
+import { useParticipantSync } from '../lib/useParticipantSync';
 import { useReservationBoard } from '../lib/useReservationBoard';
 import { useEdition } from '../edition/EditionProvider';
 import { usePublicTheme } from '../theme/PublicThemeProvider';
@@ -22,7 +23,12 @@ export default function Missions() {
   const { edition } = useEdition();
   const { board, error, loading, reload, reserve, change } = useReservationBoard(edition?.id);
   const divisions = useLoad(fetchDivisions, []);
-  const recs = useLoad(() => fetchRecommendedActivities().catch(() => null), []);
+  // The personalised ranking is an enhancement: if it fails the catalogue keeps working, and `useLoad` keeps the last good
+  // snapshot when a re-query fails (it only replaces `data` on success).
+  const recs = useLoad(fetchRecommendedActivities, []);
+  // Personal changes announced by OTHER tabs (reserve / change / cancel / check-in) and a long time hidden re-query the ranking.
+  // Seat counts are NOT part of this: they keep arriving through the board's availability broadcast, never re-ranking per movement.
+  useParticipantSync(recs.reload);
   const [filter, setFilter] = useState<Filter>({ kind: 'all' });
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [confirm, setConfirm] = useState<ConfirmRequest | null>(null);
@@ -94,7 +100,12 @@ export default function Missions() {
         summary,
         warning,
         success: { title: 'Listo. Lo agregamos a tu ruta.', body: `${s.title} · ${when}`, link: { to: '/ruta', label: 'Ver mi ruta' } },
-        action: () => reserve(s.id),
+        action: async () => {
+          await reserve(s.id);
+          // The tab that made the change is never notified by participantSync, so refresh its own ranking (→ «En tu ruta»).
+          // `useLoad.reload` never throws: a failed refresh cannot turn an already confirmed reservation into an error.
+          void recs.reload();
+        },
       });
     }
   };

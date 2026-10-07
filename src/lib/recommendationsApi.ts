@@ -10,6 +10,7 @@ export interface RecommendedSession {
   remaining: number;
   credits: number;
   started: boolean;
+  ended: boolean;
 }
 
 export interface RecommendedActivity {
