@@ -1,7 +1,7 @@
 import { CheckCircle2, RefreshCw, Search } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Alert, Badge, Button, LoadError, PageSkeleton } from '../components/ui';
+import { Alert, Button, LoadError, PageSkeleton } from '../components/ui';
 import { formatTime } from '../lib/catalog';
 import { fetchOperationsOverview, type OperationsOverview } from '../lib/operationsApi';
 import {
@@ -92,16 +92,12 @@ export default function OperationsCenter() {
   const tz = data.timezone;
   const searching = filters.query.trim() !== '' || filters.divisionId !== '';
   const unlocated = unlocatedUpcoming(rows);
-  const real = data.mode === 'operacion_real';
 
   return (
     <div className="space-y-5">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <div className="flex flex-wrap items-center gap-3">
-            <h1 className="text-2xl font-extrabold">Centro de Operación</h1>
-            <Badge tone={real ? 'success' : 'warning'}>{real ? 'Operación real' : 'Preparación'}</Badge>
-          </div>
+          <h1 className="text-2xl font-extrabold">Centro de Operación</h1>
           <p className="mt-1.5 flex items-center gap-2 text-sm text-ink-muted">
             <span aria-hidden className={`admin-pulse h-2 w-2 rounded-full ${error ? 'bg-amber-500 text-amber-500' : 'bg-emerald-500 text-emerald-500'}`} />
             {formatUpdatedAgo(elapsed)}

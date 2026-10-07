@@ -29,12 +29,12 @@ test('shows reliable pending work with links to its resolution area', async () =
   vi.mocked(workshopAdminApi.list).mockResolvedValue(list({ submitted: 2, in_review: 1, approved: 4, changes_requested: 7 }));
   show();
   const section = await screen.findByRole('region', { name: 'Pendientes' });
-  expect(within(section).getAllByRole('link')).toHaveLength(3);
+  expect(within(section).getAllByRole('link')).toHaveLength(2);
   expect(within(section).getByText('3 datos de importación por revisar').closest('a'))
     .toHaveAttribute('href', '/coordinacion/participantes/importar');
   expect(within(section).queryByText(/fecha de nacimiento/)).not.toBeInTheDocument();
   expect(within(section).getByText('3 propuestas por revisar').closest('a')).toHaveAttribute('href', '/coordinacion/talleres');
-  expect(within(section).getByText('4 propuestas listas para publicar').closest('a')).toHaveAttribute('href', '/coordinacion/talleres');
+  expect(within(section).queryByText(/listas para publicar/)).not.toBeInTheDocument();
   expect(within(section).queryByText(/7 cambios solicitados/)).not.toBeInTheDocument();
   expect(supabase.rpc).toHaveBeenCalledWith('coordination_summary');
   expect(workshopAdminApi.list).toHaveBeenCalledWith({});
@@ -45,9 +45,7 @@ test('shows a calm empty state, event context and useful indicators', async () =
   expect(await screen.findByText('Sin pendientes conocidos')).toBeInTheDocument();
   expect(screen.getByText('Día OV 2026')).toBeInTheDocument();
   expect(screen.getByText('Campus Cancún')).toBeInTheDocument();
-  expect(screen.getByText('Preparación')).toBeInTheDocument();
-  expect(screen.getByRole('link', { name: 'realiza la puesta en marcha y activa la operación real' }))
-    .toHaveAttribute('href', '/coordinacion/configuracion/preparacion');
+  expect(screen.queryByText(/Preparación|Operación real|puesta en marcha|activación/i)).not.toBeInTheDocument();
   expect(screen.queryByText(/retira los datos de prueba/)).not.toBeInTheDocument();
   expect(screen.getByText('120')).toBeInTheDocument();
   expect(screen.getByText('22')).toBeInTheDocument();
@@ -70,8 +68,8 @@ test('does not claim all clear when workshop counts are unavailable', async () =
   expect(screen.getByText('120')).toBeInTheDocument();
 });
 
-test('uses singular labels for one pending item', async () => {
+test('approved workshops do not become an action on Inicio', async () => {
   vi.mocked(workshopAdminApi.list).mockResolvedValue(list({ approved: 1 }));
   show();
-  expect(await screen.findByText('1 propuesta lista para publicar')).toBeInTheDocument();
+  expect(await screen.findByText('Sin pendientes conocidos')).toBeInTheDocument();
 });

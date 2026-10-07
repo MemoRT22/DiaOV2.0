@@ -80,17 +80,23 @@ test('Operación groups the live center, check-in and the final raffle', () => {
     .querySelector('a[href="/coordinacion/operacion-en-vivo"]')).toHaveAttribute('data-active', 'true');
 });
 
-test('Configuración home lists every section and sections keep a tab bar', () => {
+test('Configuración contains only useful visual tools, grouped by purpose', () => {
   role(['coordinacion']);
   const { unmount } = show('/coordinacion/configuracion');
   expect(screen.getByRole('heading', { name: 'Configuración' })).toBeInTheDocument();
-  for (const label of ['Personal', 'Experiencia pública', 'Reservaciones', 'Preparación y puesta en marcha', 'Catálogos académicos', 'Auditoría']) {
+  for (const label of ['Personal', 'Experiencia del alumno', 'Catálogos académicos']) {
     expect(screen.getByRole('link', { name: new RegExp(label) })).toBeInTheDocument();
+  }
+  for (const label of ['Administración', 'Experiencia', 'Datos maestros']) {
+    expect(screen.getByRole('region', { name: label })).toBeInTheDocument();
+  }
+  for (const retired of ['Preparación y puesta en marcha', 'Reservaciones', 'Auditoría']) {
+    expect(screen.queryByRole('link', { name: retired })).not.toBeInTheDocument();
   }
   expect(screen.queryByRole('navigation', { name: 'Configuración' })).not.toBeInTheDocument();
   unmount();
   show('/coordinacion/configuracion/personal');
-  expect(within(screen.getByRole('navigation', { name: 'Configuración' })).getAllByRole('link')).toHaveLength(6);
+  expect(within(screen.getByRole('navigation', { name: 'Configuración' })).getAllByRole('link')).toHaveLength(3);
   expect(screen.getByText('Personal abierto')).toBeInTheDocument();
 });
 
@@ -124,6 +130,7 @@ test('uses the fixed admin identity even if the edition has a name', () => {
   role(['coordinacion']);
   show('/coordinacion');
   expect(screen.getByText('Día OV 2026')).toBeInTheDocument();
-  expect(screen.getByText('Preparación')).toBeInTheDocument();
+  expect(screen.queryByText('Preparación')).not.toBeInTheDocument();
+  expect(screen.queryByText('Operación real')).not.toBeInTheDocument();
   expect(document.querySelector('aside img')).toHaveAttribute('src', '/assets/images/Logo_A.png');
 });

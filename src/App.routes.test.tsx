@@ -25,9 +25,6 @@ vi.mock('./admin/workshops/WorkshopDetail', () => ({ default: () => <div>Ruta de
 vi.mock('./admin/workshops/WorkshopProgram', () => ({ default: () => <div>Ruta programa</div> }));
 vi.mock('./admin/staff/StaffAccounts', () => ({ default: () => <div>Ruta personal</div> }));
 vi.mock('./admin/theme/ThemeEditor', () => ({ default: () => <div>Ruta experiencia pública</div> }));
-vi.mock('./admin/ReservationRules', () => ({ default: () => <div>Ruta reservaciones</div> }));
-vi.mock('./admin/Operation', () => ({ default: () => <div>Ruta preparación</div> }));
-vi.mock('./admin/AuditLog', () => ({ default: () => <div>Ruta auditoría</div> }));
 vi.mock('./admin/RaffleOperator', () => ({ default: () => <div>Ruta sorteo</div> }));
 
 function role(roles: StaffRole[]) {
@@ -56,11 +53,8 @@ test.each([
   ['/coordinacion/talleres/programa/importar', 'Ruta importar catálogo'],
   ['/coordinacion/configuracion/personal', 'Ruta personal'],
   ['/coordinacion/configuracion/experiencia-publica', 'Ruta experiencia pública'],
-  ['/coordinacion/configuracion/reservaciones', 'Ruta reservaciones'],
-  ['/coordinacion/configuracion/preparacion', 'Ruta preparación'],
   ['/coordinacion/configuracion/catalogo', 'Ruta catálogo'],
   ['/coordinacion/configuracion/catalogo/importar', 'Ruta importar catálogo'],
-  ['/coordinacion/configuracion/auditoria', 'Ruta auditoría'],
 ])('Coordinación opens %s', async (path, content) => {
   role(['coordinacion']);
   show(path);
@@ -74,15 +68,23 @@ test.each([
   ['/coordinacion/exportacion', 'Ruta exportar'],
   ['/coordinacion/personal', 'Ruta personal'],
   ['/coordinacion/tematica', 'Ruta experiencia pública'],
-  ['/coordinacion/reservaciones', 'Ruta reservaciones'],
-  ['/coordinacion/operacion', 'Ruta preparación'],
   ['/coordinacion/catalogo', 'Ruta catálogo'],
   ['/coordinacion/catalogo/importar', 'Ruta importar catálogo'],
-  ['/coordinacion/auditoria', 'Ruta auditoría'],
 ])('retired deep link %s redirects to its new home', async (path, content) => {
   role(['coordinacion']);
   show(path);
   expect(await screen.findByText(content)).toBeInTheDocument();
+});
+
+test.each([
+  '/coordinacion/configuracion/preparacion', '/coordinacion/configuracion/reservaciones',
+  '/coordinacion/configuracion/auditoria', '/coordinacion/operacion',
+  '/coordinacion/reservaciones', '/coordinacion/auditoria',
+])('retired technical route %s redirects to Configuración', async (path) => {
+  role(['coordinacion']);
+  show(path);
+  expect(await screen.findByRole('heading', { name: 'Configuración' })).toBeInTheDocument();
+  expect(screen.queryByText(/Preparación y puesta en marcha|Reglas de reservaciones|Auditoría/)).not.toBeInTheDocument();
 });
 
 test.each(['/coordinacion/mas', '/coordinacion/rangos'])('retired %s lands on the Configuración home', async (path) => {

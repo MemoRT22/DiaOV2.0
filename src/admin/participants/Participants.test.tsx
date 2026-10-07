@@ -30,7 +30,7 @@ beforeEach(() => {
 
 test('Participantes is the single place for search, import and export: nobody is registered by hand any more', async () => {
   show();
-  expect(screen.getByRole('link', { name: /Importar padrón/ })).toHaveAttribute('href', '/coordinacion/participantes/importar');
+  expect(screen.getByRole('link', { name: /Importar participantes/ })).toHaveAttribute('href', '/coordinacion/participantes/importar');
   expect(screen.getByRole('link', { name: /Exportar/ })).toHaveAttribute('href', '/coordinacion/participantes/exportar');
   expect(screen.queryByRole('button', { name: /Dar de alta/ })).not.toBeInTheDocument();
   expect(screen.queryByText(/dar de alta|dalo de alta|alta presencial/i)).not.toBeInTheDocument();
@@ -39,7 +39,7 @@ test('Participantes is the single place for search, import and export: nobody is
 test('staff can search but does not get coordination-only import/export, and there is no creation button either', async () => {
   role(['staff']);
   show();
-  expect(screen.queryByRole('link', { name: /Importar padrón/ })).not.toBeInTheDocument();
+  expect(screen.queryByRole('link', { name: /Importar participantes/ })).not.toBeInTheDocument();
   expect(screen.queryByRole('link', { name: /Exportar/ })).not.toBeInTheDocument();
   expect(screen.getByRole('textbox', { name: 'Buscar participante' })).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: /Dar de alta/ })).not.toBeInTheDocument();

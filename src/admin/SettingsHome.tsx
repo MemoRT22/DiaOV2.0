@@ -11,7 +11,7 @@ export default function SettingsHome() {
         <p className="text-xs font-bold uppercase tracking-[0.18em] text-fg-brand">Coordinación</p>
         <h1 className="mt-2 font-display text-3xl font-extrabold">Configuración</h1>
         <p className="mt-2 max-w-2xl text-sm text-ink-muted">
-          Solo lo que Coordinación necesita decidir. Las reglas estables del evento las define el sistema.
+          Herramientas para administrar el equipo, la experiencia del alumno y los datos académicos.
         </p>
       </header>
       {GROUPS.map((group) => (

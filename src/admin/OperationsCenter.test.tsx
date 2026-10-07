@@ -193,7 +193,7 @@ test('before the event it opens on the upcoming program with preparation indicat
   }
   expect(within(kpis).queryByText('En curso')).not.toBeInTheDocument();
   expect(within(kpis).getByText('40%')).toBeInTheDocument();
-  expect(screen.getByText('Preparación')).toBeInTheDocument();
+  expect(screen.queryByText('Preparación')).not.toBeInTheDocument();
   expect(screen.queryByText(/MODO PRUEBA/i)).not.toBeInTheDocument();
 });
 
@@ -213,7 +213,7 @@ test('on the event day it prioritizes Now: in-progress and soon-starting session
     expect(within(kpis).getByText(label)).toBeInTheDocument();
   }
   expect(within(kpis).queryByText('Aceptaron aviso')).not.toBeInTheDocument();
-  expect(screen.getByText('Operación real')).toBeInTheDocument();
+  expect(screen.queryByText('Operación real')).not.toBeInTheDocument();
 });
 
 test('Now never renders an empty panel: it says so and points at what is next', async () => {

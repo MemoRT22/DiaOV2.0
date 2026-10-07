@@ -65,7 +65,7 @@ export default function ParticipantForm({ participantId, initial, careers, highS
   return (
     <Modal title="Corregir datos" onClose={onClose}>
       <form onSubmit={submit} className="space-y-4">
-        <Alert tone="info">Los campos que cambies quedan marcados como corrección manual. Si el padrón se vuelve a cargar durante la preparación, no los reemplazará.</Alert>
+        <Alert tone="info">Los campos que cambies quedan marcados como corrección manual. Si vuelves a importar el CSV, no se reemplazarán.</Alert>
         <Field label="Correo" type="email" required value={values.email} onChange={set('email')} autoComplete="off" />
         {emailChanged && (
           <Field
@@ -74,7 +74,7 @@ export default function ParticipantForm({ participantId, initial, careers, highS
             onChange={(e) => setEmailReason(e.target.value)}
             maxLength={300}
             placeholder="Ej. el aspirante escribió mal su correo en Forms"
-            hint="El correo anterior se guarda solo para reconocer al aspirante si el padrón se vuelve a cargar durante la preparación. No servirá para entrar."
+            hint="El correo anterior se guarda para reconocer al aspirante en futuras importaciones. No servirá para entrar."
           />
         )}
         <Field label="Nombre completo" required minLength={3} value={values.full_name} onChange={set('full_name')} autoComplete="off" />

@@ -181,7 +181,7 @@ export default function ThemeEditor() {
     <div className="space-y-6">
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-extrabold">Edición y temática</h1>
+          <h1 className="text-2xl font-extrabold">Experiencia del alumno</h1>
           <p className="mt-1 text-sm text-ink-muted">
             {published ? `Publicada: versión ${published.version}` : 'Sin versión publicada'}
             {draft && ` · Borrador guardado ${formatDateTime(draft.updated_at)}`}
@@ -211,7 +211,7 @@ export default function ThemeEditor() {
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <p className="flex items-center gap-2">
               <LockKeyhole className="h-4 w-4 shrink-0" aria-hidden />
-              La temática está bloqueada porque el evento está en operación real. Solo puedes consultarla.
+              La temática está bloqueada. Solo puedes consultarla.
             </p>
             <Button variant="secondary" onClick={() => setModal('unlock')}>
               <ShieldAlert className="h-4 w-4" aria-hidden />

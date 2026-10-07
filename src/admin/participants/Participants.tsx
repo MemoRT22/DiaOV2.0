@@ -68,7 +68,7 @@ export default function Participants() {
             <>
               <Link to="importar" className={buttonClasses('secondary')}>
                 <Upload className="h-4 w-4" aria-hidden />
-                Importar padrón
+                Importar participantes
               </Link>
               <Link to="exportar" className={buttonClasses('secondary')}>
                 <FileSpreadsheet className="h-4 w-4" aria-hidden />
