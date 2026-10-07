@@ -92,3 +92,25 @@ export function firstName(displayName: string | undefined | null) {
   const name = (displayName ?? '').trim();
   return name ? name.split(/\s+/)[0] : '';
 }
+
+export type Hero =
+  | { kind: 'now' | 'imminent' | 'pending' | 'next'; stop: Stop }
+  | { kind: 'none' };
+
+/** The pending attendance that matters most: the one that ended last (the workshop the student just left). */
+export const latestPending = (journey: Journey): Stop | undefined => journey.pending[journey.pending.length - 1];
+
+/**
+ * ONE main action for «¿qué hago ahora?», in human priority order:
+ *  1) something in progress; 2) the next activity when it is imminent (never make them late);
+ *  3) an attendance still to be registered; 4) the next future activity; 5) nothing booked → pick workshops.
+ */
+export function heroAction(journey: Journey, now: number): Hero {
+  if (journey.now[0]) return { kind: 'now', stop: journey.now[0] };
+  const next = journey.upcoming[0];
+  if (next && isImminent(next.session, now)) return { kind: 'imminent', stop: next };
+  const pending = latestPending(journey);
+  if (pending) return { kind: 'pending', stop: pending };
+  if (next) return { kind: 'next', stop: next };
+  return { kind: 'none' };
+}

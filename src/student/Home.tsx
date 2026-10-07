@@ -5,7 +5,7 @@ import { Alert, buttonClasses, LoadError, PageSkeleton } from '../components/ui'
 import { fetchDivisions, fetchProgress } from '../lib/catalog';
 import { useAuth } from '../lib/auth';
 import { fetchMyRaffleStatus } from '../lib/raffleApi';
-import { buildJourney, firstName } from '../lib/studentJourney';
+import { buildJourney, firstName, heroAction, latestPending } from '../lib/studentJourney';
 import { useLoad } from '../lib/useLoad';
 import { useNow } from '../lib/useNow';
 import { useParticipantSync } from '../lib/useParticipantSync';
@@ -42,7 +42,9 @@ export default function Home() {
   const interestsDone = progress.post_event_interests_completed;
   const showPrompt = progress.post_event_interests_prompt && progress.post_event_interests_open && !interestsDone && !dismissed;
   const finished = progress.level === 5 || interestsDone;
-  const pending = journey?.pending[0];
+  const hero = journey ? heroAction(journey, now) : null;
+  // The reminder is a secondary notice: it is hidden when the main card already IS the pending attendance.
+  const pending = journey && hero?.kind !== 'pending' ? latestPending(journey) : undefined;
   const name = firstName(profile?.display_name);
   const raffleUnlocked = !!raffle && (raffle.has_won || !!raffle.raffle_category_name);
 

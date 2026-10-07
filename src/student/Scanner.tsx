@@ -30,6 +30,9 @@ export default function Scanner() {
   const [errorMsg, setErrorMsg] = useState('');
   const [manualCode, setManualCode] = useState('');
   const [cameraError, setCameraError] = useState(false);
+  // Bumped to request a fresh camera session. The <video> only exists on the scanning screen, so the camera must be
+  // (re)started by an effect AFTER React has rendered it — never synchronously from an event handler.
+  const [cameraRun, setCameraRun] = useState(0);
 
   const startCamera = async () => {
     setPhase('scanning');
@@ -96,9 +99,12 @@ export default function Scanner() {
     setNext(null);
     setErrorMsg('');
     setManualCode('');
-    void startCamera();
+    setPhase('scanning');
+    setCameraRun((n) => n + 1);
   };
 
+  // Runs on mount and every time a new camera session is requested. The cleanup destroys the previous scanner first
+  // (also on unmount), so there is never more than one QRScanner alive.
   useEffect(() => {
     void startCamera();
     return () => {
@@ -106,7 +112,7 @@ export default function Scanner() {
       scannerRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [cameraRun]);
 
   useEffect(() => {
     if (phase !== 'scanning') scannerRef.current?.stop();

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import type { Board, BoardSession, MyReservation } from './reservations';
-import { buildJourney, firstName, focusStop, isImminent, timingLabel } from './studentJourney';
+import { buildJourney, firstName, focusStop, heroAction, isImminent, timingLabel } from './studentJourney';
 
 const T = (hhmm: string, day = '2026-10-15') => `${day}T${hhmm}:00-05:00`; // Cancún time
 const at = (hhmm: string, day = '2026-10-15') => new Date(T(hhmm, day)).getTime();
@@ -78,4 +78,34 @@ test('firstName', () => {
   expect(firstName('  Ana María López ')).toBe('Ana');
   expect(firstName('')).toBe('');
   expect(firstName(undefined)).toBe('');
+});
+
+describe('heroAction priority', () => {
+  const sessions = [session('old', '08:00', '08:30'), session('live', '09:00', '09:30'), session('soon', '09:35', '10:05'), session('later', '12:00', '12:30')];
+  const journeyOf = (reservations: MyReservation[]) => buildJourney(board(sessions, reservations));
+  const pending = res('p', 'old', 'ended');
+
+  test('1. in progress wins over everything', () => {
+    const j = journeyOf([pending, res('l', 'live', 'in_progress'), res('s', 'soon', 'active')]);
+    expect(heroAction(j, at('09:10'))).toMatchObject({ kind: 'now', stop: { reservation: { id: 'l' } } });
+  });
+  test('2. an imminent next activity wins over a pending attendance', () => {
+    const j = journeyOf([pending, res('s', 'soon', 'active')]);
+    expect(heroAction(j, at('09:31'))).toMatchObject({ kind: 'imminent', stop: { reservation: { id: 's' } } });
+  });
+  test('3. a pending attendance wins over a next activity that is not imminent', () => {
+    const j = journeyOf([pending, res('t', 'later', 'active')]);
+    expect(heroAction(j, at('09:40'))).toMatchObject({ kind: 'pending', stop: { reservation: { id: 'p' } } });
+  });
+  test('4. otherwise the next future activity', () => {
+    expect(heroAction(journeyOf([res('t', 'later', 'active')]), at('09:40'))).toMatchObject({ kind: 'next' });
+  });
+  test('5. nothing booked or pending → none (pick workshops)', () => {
+    expect(heroAction(journeyOf([]), at('09:40'))).toEqual({ kind: 'none' });
+  });
+  test('with several pending, the one that ended last is the main one', () => {
+    const more = [...sessions, session('older', '06:00', '06:30')];
+    const j = buildJourney(board(more, [res('a', 'older', 'ended'), res('b', 'old', 'ended')]));
+    expect(heroAction(j, at('11:00'))).toMatchObject({ kind: 'pending', stop: { reservation: { id: 'b' } } });
+  });
 });

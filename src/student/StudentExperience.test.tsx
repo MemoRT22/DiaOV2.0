@@ -136,13 +136,69 @@ test('Inicio without reservations guides to pick workshops instead of showing de
   expect(within(hero).getByRole('link', { name: /Ver talleres/ })).toHaveAttribute('href', '/misiones');
 });
 
-test('Inicio reminds to register attendance when a session ended without it', async () => {
+// -- Inicio: ONE main action, in human priority order (in progress > imminent > pending attendance > next > pick workshops)
+const MIN = 60_000;
+const ended = session('old', -2 * HOUR, -HOUR, { my_reservation_id: 'rp' });
+const pendingRes = reservation('rp', 'old', 'ended');
+
+test('Home A: an activity in progress beats an old pending attendance, which stays as a secondary notice', async () => {
   m.board = board(
-    [session('1', -2 * HOUR, -HOUR, { my_reservation_id: 'r1' }), session('2', HOUR, 2 * HOUR, { my_reservation_id: 'r2' })],
-    [reservation('r1', '1', 'ended'), reservation('r2', '2', 'active')],
+    [ended, session('live', -10 * MIN, 20 * MIN, { my_reservation_id: 'rl' })],
+    [pendingRes, reservation('rl', 'live', 'in_progress')],
   );
   renderAt('/bitacora', <Home />);
-  expect(await screen.findByText('¿Ya fuiste a Taller 1?')).toBeInTheDocument();
+  const hero = await screen.findByRole('region', { name: 'Actividad en curso' });
+  expect(within(hero).getByRole('heading', { name: 'Taller live' })).toBeInTheDocument();
+  expect(screen.getByText('¿Ya fuiste a Taller old?')).toBeInTheDocument();
+});
+
+test('Home B: next activity in 5 minutes beats the pending attendance (never make them late); pending stays reachable', async () => {
+  m.board = board(
+    [ended, session('soon', 5 * MIN, 35 * MIN, { my_reservation_id: 'rs' })],
+    [pendingRes, reservation('rs', 'soon', 'active')],
+  );
+  renderAt('/bitacora', <Home />);
+  const hero = await screen.findByRole('region', { name: 'Siguiente actividad' });
+  expect(within(hero).getByRole('heading', { name: 'Taller soon' })).toBeInTheDocument();
+  expect(within(hero).getByText(/Empieza en [45] min/)).toBeInTheDocument();
+  const reminder = screen.getByRole('link', { name: /¿Ya fuiste a Taller old\?/ });
+  expect(reminder).toHaveAttribute('href', '/escanear');
+});
+
+test('Home C: next activity in 2 hours → the main action is registering the pending attendance (no contradictory second instruction)', async () => {
+  m.board = board(
+    [ended, session('later', 2 * HOUR, 3 * HOUR, { my_reservation_id: 'rt' })],
+    [pendingRes, reservation('rt', 'later', 'active')],
+  );
+  renderAt('/bitacora', <Home />);
+  const hero = await screen.findByRole('region', { name: 'Asistencia pendiente' });
+  expect(within(hero).getByRole('heading', { name: 'Taller old' })).toBeInTheDocument();
+  expect(within(hero).getByText('Falta registrar asistencia')).toBeInTheDocument();
+  expect(within(hero).getByText(/Terminó a las/)).toBeInTheDocument();
+  expect(within(hero).getByRole('link', { name: 'Registrar asistencia' })).toHaveAttribute('href', '/escanear');
+  expect(within(hero).getByRole('link', { name: 'Ver mi ruta' })).toHaveAttribute('href', '/ruta');
+  // it is not presented as running, nor as a stamp earned, and the same reminder is not repeated below the hero
+  expect(within(hero).queryByText(/En curso/)).not.toBeInTheDocument();
+  expect(within(hero).queryByText(/sello/i)).not.toBeInTheDocument();
+  expect(screen.queryByText('¿Ya fuiste a Taller old?')).not.toBeInTheDocument();
+  expect(screen.queryByRole('region', { name: 'Siguiente actividad' })).not.toBeInTheDocument();
+});
+
+test('Home D: with only a pending attendance, that is the main action', async () => {
+  m.board = board([ended], [pendingRes]);
+  renderAt('/bitacora', <Home />);
+  const hero = await screen.findByRole('region', { name: 'Asistencia pendiente' });
+  expect(within(hero).getByRole('link', { name: 'Registrar asistencia' })).toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: 'Elige tu siguiente taller' })).not.toBeInTheDocument();
+});
+
+test('Home E: nothing booked and nothing pending → pick workshops', async () => {
+  m.board = board([], []);
+  renderAt('/bitacora', <Home />);
+  const hero = await screen.findByRole('region', { name: 'Siguiente actividad' });
+  expect(within(hero).getByRole('heading', { name: 'Arma tu ruta del día' })).toBeInTheDocument();
+  expect(within(hero).getByRole('link', { name: /Ver talleres/ })).toHaveAttribute('href', '/misiones');
+  expect(screen.queryByText(/¿Ya fuiste a/)).not.toBeInTheDocument();
 });
 
 test('Inicio shows progress with a clear hierarchy: rank, stamps and a collection of divisions', async () => {
