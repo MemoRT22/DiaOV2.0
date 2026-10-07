@@ -98,6 +98,9 @@ BEGIN
   IF v_result->>'status' <> 'published' THEN RAISE EXCEPTION 'PUBLISH_FAILED'; END IF;
   IF (v_result->>'session_count')::int <> 4 THEN RAISE EXCEPTION 'SESSION_COUNT_30_FAILED'; END IF;
   IF (v_result->>'career_count')::int <> 2 THEN RAISE EXCEPTION 'CAREER_COUNT_FAILED'; END IF;
+  -- Contrato que alimenta al recomendador: la publicación copia workshop_submission_careers → activity_careers y deriva activity_divisions.
+  IF (SELECT count(*) FROM public.activity_careers WHERE activity_id = v_act) <> 2 THEN RAISE EXCEPTION 'ACTIVITY_CAREERS_COPY_FAILED'; END IF;
+  IF NOT EXISTS (SELECT 1 FROM public.activity_divisions WHERE activity_id = v_act) THEN RAISE EXCEPTION 'ACTIVITY_DIVISIONS_DERIVED_FAILED'; END IF;
   
   -- Session timestamps exact check (10:00)
   SELECT starts_at INTO v_sess_start FROM public.activity_sessions WHERE activity_id = v_act ORDER BY starts_at LIMIT 1;

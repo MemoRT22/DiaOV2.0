@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Alert, LoadError, PageSkeleton } from '../components/ui';
 import { fetchDivisions, formatTime } from '../lib/catalog';
+import { recommendationReason } from '../lib/recommendationReason';
 import { fetchRecommendedActivities } from '../lib/recommendationsApi';
 import { hasTightTransfer, sessionState, type BoardSession } from '../lib/reservations';
 import { useLoad } from '../lib/useLoad';
@@ -44,10 +45,10 @@ export default function Missions() {
       byActivity.set(s.activity_id, [...(byActivity.get(s.activity_id) ?? []), s]);
     }
     const list = [...byActivity.values()];
-    // Recommended (and not yet attended) first; otherwise keep chronological order.
+    // Recommended (and not yet attended) first, in the order the server ranked them; the rest keep their order.
     const rank = (w: BoardSession[]) => {
-      const rec = recommendations.find((r) => r.activity_id === w[0].activity_id);
-      return rec && !rec.already_attended ? 0 : 1;
+      const idx = recommendations.findIndex((r) => r.activity_id === w[0].activity_id);
+      return idx >= 0 && !recommendations[idx].already_attended ? idx : Number.MAX_SAFE_INTEGER;
     };
     return list.sort((a, b) => rank(a) - rank(b));
   }, [board, recommendations]);
@@ -188,6 +189,7 @@ export default function Missions() {
             const color = (division && theme.divisions[division.code]?.color) || theme.colors.secondary;
             const sharedLocation = sessions.every((s) => s.location === first.location) ? first.location : '';
             const rec = recommendations.find((r) => r.activity_id === first.activity_id);
+            const why = rec ? recommendationReason(rec) : null;
             const open = expanded.has(first.activity_id);
             const longDescription = (first.description?.length ?? 0) > 90;
             return (
@@ -201,19 +203,27 @@ export default function Missions() {
                       </p>
                       <h2 className="mt-0.5 text-base font-extrabold leading-snug">{first.title}</h2>
                     </div>
-                    {rec && !rec.already_attended && (
-                      <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-primary-500/15 px-2.5 py-1 text-xs font-bold text-fg-brand">
-                        <Sparkles className="h-3 w-3" aria-hidden />
-                        Para ti
-                      </span>
-                    )}
-                    {rec?.already_attended && (
+                    {rec?.already_attended ? (
                       <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-success-500/15 px-2.5 py-1 text-xs font-bold text-fg-success">
                         <Check className="h-3 w-3" aria-hidden />
                         Explorado
                       </span>
-                    )}
+                    ) : rec?.already_reserved ? (
+                      <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-success-500/15 px-2.5 py-1 text-xs font-bold text-fg-success">
+                        <Check className="h-3 w-3" aria-hidden />
+                        En tu ruta
+                      </span>
+                    ) : null}
                   </div>
+                  {why && !rec?.already_attended && (
+                    <p className="mt-2 flex items-start gap-1.5 text-xs">
+                      <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-fg-brand" aria-hidden />
+                      <span className="min-w-0">
+                        <span className="block font-bold text-fg-brand">{why.badge}</span>
+                        {why.reason && <span className="line-clamp-2 break-words text-ink-muted">{why.reason}</span>}
+                      </span>
+                    </p>
+                  )}
                   {sharedLocation && (
                     <p className="mt-1 flex items-start gap-1 text-xs text-ink-muted">
                       <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
@@ -223,8 +233,7 @@ export default function Missions() {
                   {first.description && (
                     <div className="mt-2">
                       <p className={`text-sm text-ink-muted ${open ? '' : 'line-clamp-2'}`}>{first.description}</p>
-                      {rec?.related_careers && open && <p className="mt-1 text-xs text-fg-brand">Relacionado con: {rec.related_careers}</p>}
-                      {(longDescription || rec?.related_careers) && (
+                      {longDescription && (
                         <button
                           onClick={() => toggleExpanded(first.activity_id)}
                           aria-expanded={open}
