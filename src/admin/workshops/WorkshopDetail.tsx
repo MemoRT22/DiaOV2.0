@@ -3,6 +3,7 @@ import { useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { Alert, Badge, Button, Modal, Spinner } from '../../components/ui';
 import { friendlyError } from '../../lib/errors';
+import { formatEventDateTime, formatEventTime } from '../../lib/eventTime';
 import { useLoad } from '../../lib/useLoad';
 import {
   CATEGORY_LABELS, GROUP_LABELS, TYPE_LABELS, groupForStatus, workshopAdminApi,
@@ -10,6 +11,8 @@ import {
 } from '../../lib/workshopAdminApi';
 
 const formatDate = (value: string) => new Intl.DateTimeFormat('es-MX', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value));
+const SESSION_STATUS_LABELS: Record<string, string> = { activa: 'Disponible', oculta: 'Oculto', cancelada: 'Cancelado' };
+const sessionStatusLabel = (status: string) => SESSION_STATUS_LABELS[status] ?? 'Sin estado';
 const fallback = (value: string | null | undefined) => value?.trim() || 'No especificado';
 const groupCareers = (careers: WorkshopCareer[]) => {
   const groups = new Map<string, string[]>();
@@ -24,10 +27,10 @@ function Item({ label, children }: { label: string; children: React.ReactNode })
 }
 function Operational({ detail }: { detail: Detail }) {
   return <Section title="Operación del taller">
-    <p className="text-sm text-ink-muted">Horarios y cupos de la actividad vinculada a este taller.</p>
+    <p className="text-sm text-ink-muted">Horarios y cupos del taller.</p>
     {detail.sessions?.length ? <div className="space-y-3">{detail.sessions.map((session) => <div key={session.id} className="rounded-theme border border-line p-4">
-      <p className="font-semibold">{formatDate(session.starts_at)} – {new Intl.DateTimeFormat('es-MX', { timeStyle: 'short' }).format(new Date(session.ends_at))}</p>
-      <p className="mt-1 text-sm text-ink-muted">Cupo {session.capacity} · Reservados {session.reserved} · {fallback(session.location)} · {session.status}</p>
+      <p className="font-semibold">{formatEventDateTime(session.starts_at)} – {formatEventTime(session.ends_at)}</p>
+      <p className="mt-1 text-sm text-ink-muted">Cupo {session.capacity} · Reservados {session.reserved} · {fallback(session.location)} · {sessionStatusLabel(session.status)}</p>
     </div>)}</div> : <p className="text-sm text-ink-muted">Sin sesiones registradas.</p>}
   </Section>;
 }

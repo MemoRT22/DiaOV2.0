@@ -6,16 +6,20 @@ export function useLoad<T>(loader: () => Promise<T>, deps: unknown[]) {
   const [loading, setLoading] = useState(true);
   const loaderRef = useRef(loader);
   loaderRef.current = loader;
+  // Only the latest request may touch the state: a slower, older one (previous filter/page/search) must not overwrite a newer result.
+  const latest = useRef(0);
 
   const reload = useCallback(async () => {
+    const request = ++latest.current;
     setLoading(true);
     setError(null);
     try {
-      setData(await loaderRef.current());
+      const result = await loaderRef.current();
+      if (request === latest.current) setData(result);
     } catch (cause) {
-      setError(cause);
+      if (request === latest.current) setError(cause);
     } finally {
-      setLoading(false);
+      if (request === latest.current) setLoading(false);
     }
   }, []);
 

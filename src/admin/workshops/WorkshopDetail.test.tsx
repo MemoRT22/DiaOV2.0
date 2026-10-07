@@ -69,3 +69,34 @@ test('published workshop stays in its editorial detail with operational sessions
   expect(screen.getByText(/Cupo 20 · Reservados 4/)).toBeInTheDocument();
   expect(screen.getByText('Medicina')).toBeInTheDocument();
 });
+
+const published = (status: string) => ({
+  ...academic(), status: 'published' as const, published_activity_id: 'activity-1', sessions: [
+    { id: 'session-1', starts_at: '2026-10-15T15:00:00Z', ends_at: '2026-10-15T16:00:00Z', capacity: 20, reserved: 3, location: 'Salón 1', status },
+  ],
+});
+
+test('the operational block shows event time (America/Cancun), not the browser time', async () => {
+  vi.mocked(workshopAdminApi.get).mockResolvedValue(published('activa'));
+  show();
+  expect(await screen.findByRole('heading', { name: 'Operación del taller' })).toBeInTheDocument();
+  // 15:00 UTC is 10:00 in Cancún whatever the device time zone is
+  expect(screen.getByText(/10:00.*–.*11:00/)).toBeInTheDocument();
+});
+
+test('the operational block speaks product language and translates the session status', async () => {
+  vi.mocked(workshopAdminApi.get).mockResolvedValue(published('activa'));
+  show();
+  await screen.findByRole('heading', { name: 'Operación del taller' });
+  expect(screen.getByText('Horarios y cupos del taller.')).toBeInTheDocument();
+  expect(screen.queryByText(/actividad vinculada/i)).not.toBeInTheDocument();
+  expect(screen.getByText(/Disponible/)).toBeInTheDocument();
+  expect(screen.queryByText(/\bactiva\b/)).not.toBeInTheDocument();
+});
+
+test.each([['oculta', 'Oculto'], ['cancelada', 'Cancelado'], ['rara', 'Sin estado']])('session status %s is shown as «%s»', async (status, label) => {
+  vi.mocked(workshopAdminApi.get).mockResolvedValue(published(status));
+  show();
+  await screen.findByRole('heading', { name: 'Operación del taller' });
+  expect(screen.getByText(new RegExp(label))).toBeInTheDocument();
+});

@@ -131,7 +131,7 @@ function StopCard({
   const { theme } = usePublicTheme();
   const navigate = useNavigate();
   const { reservation: r, session: s } = stop;
-  const division = divisionById.get(s.division_id);
+  const division = divisionById.get(s.division_id ?? '');
   const color = (division && theme.divisions[division.code]?.color) || theme.colors.secondary;
   const ds = r.derived_status || r.status;
   const badge = BADGE[ds] || { label: r.status, tone: 'neutral' as const };
