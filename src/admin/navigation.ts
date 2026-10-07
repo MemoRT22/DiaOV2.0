@@ -1,5 +1,5 @@
 import {
-  CalendarClock, ClipboardList, GraduationCap, History, LayoutDashboard, MonitorDot, Palette, Power,
+  ClipboardList, GraduationCap, LayoutDashboard, MonitorDot, Palette,
   Settings2, Ticket, Users, UsersRound, type LucideIcon,
 } from 'lucide-react';
 
@@ -64,21 +64,14 @@ export type SettingsSection = { to: string; label: string; description: string; 
 export const SETTINGS_BASE = '/coordinacion/configuracion';
 
 export const SETTINGS_SECTIONS: SettingsSection[] = [
-  { to: `${SETTINGS_BASE}/personal`, label: 'Personal', icon: UsersRound, group: 'Equipo',
-    description: 'Cuentas y roles de Coordinación, staff y sorteo.' },
-  { to: `${SETTINGS_BASE}/experiencia-publica`, label: 'Experiencia pública', icon: Palette, group: 'Experiencia del alumno',
-    description: 'Temática y branding que ven los aspirantes. No cambia la apariencia de este panel.' },
-  { to: `${SETTINGS_BASE}/reservaciones`, label: 'Reservaciones', icon: CalendarClock, group: 'Experiencia del alumno',
-    description: 'Cuándo abren y cierran las reservaciones.' },
-  { to: `${SETTINGS_BASE}/preparacion`, label: 'Preparación y puesta en marcha', icon: Power, group: 'Evento',
-    description: 'Reinicia el ambiente de ensayo y activa la operación real.' },
-  { to: `${SETTINGS_BASE}/catalogo`, label: 'Catálogos académicos', icon: GraduationCap, group: 'Evento',
-    description: 'Divisiones, carreras y preparatorias oficiales.' },
-  { to: `${SETTINGS_BASE}/auditoria`, label: 'Auditoría', icon: History, group: 'Avanzado',
-    description: 'Consulta las acciones registradas por el sistema.' },
+  { to: `${SETTINGS_BASE}/personal`, label: 'Personal', icon: UsersRound, group: 'Administración',
+    description: 'Cuentas y roles del equipo.' },
+  { to: `${SETTINGS_BASE}/experiencia-publica`, label: 'Experiencia del alumno', icon: Palette, group: 'Experiencia',
+    description: 'Identidad visual y contenido que ven los aspirantes.' },
+  { to: `${SETTINGS_BASE}/catalogo`, label: 'Catálogos académicos', icon: GraduationCap, group: 'Datos maestros',
+    description: 'Divisiones, carreras y preparatorias.' },
 ];
 
 export const SETTINGS_TABS: AreaTab[] = SETTINGS_SECTIONS.map(({ to, label }) => ({
   to, label, isActive: (p) => within(p, to),
 }));
-

@@ -6,8 +6,6 @@ import { importSummary } from './CsvImport';
 import ParticipantImport from './ParticipantImport';
 
 vi.mock('../../lib/adminApi', async (importOriginal) => ({ ...await importOriginal<typeof import('../../lib/adminApi')>(), rpc: vi.fn() }));
-vi.mock('../../edition/EditionProvider', () => ({ useEdition: () => ({ edition: { roster_status: 'preparacion', mode: 'preparacion' } }) }));
-vi.mock('./RosterStatus', () => ({ default: () => <div>Estado del padrón</div> }));
 // The CSV step is covered elsewhere: here it only reports that an import finished with rows needing review.
 vi.mock('./CsvImport', async (importOriginal) => ({
   ...await importOriginal<typeof import('./CsvImport')>(),
@@ -40,7 +38,11 @@ test('summarises an import as updated, new and needing review', () => {
 
 test('import lives under Participantes and there is no separate conflicts screen to visit', async () => {
   show();
-  expect(screen.getByRole('heading', { name: 'Importar padrón' })).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: 'Importar participantes' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Simular importación' })).toBeInTheDocument();
+  for (const hidden of ['Estado del padrón', 'Declarar padrón oficial', 'Reabrir importación']) {
+    expect(screen.queryByText(hidden)).not.toBeInTheDocument();
+  }
   expect(screen.getByRole('link', { name: 'Participantes' })).toHaveAttribute('href', '/');
   await waitFor(() => expect(rpc).toHaveBeenCalledWith('list_import_conflicts'));
   expect(screen.queryByRole('link', { name: /Conflictos/ })).not.toBeInTheDocument();

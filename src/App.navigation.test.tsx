@@ -21,7 +21,7 @@ vi.mock('./theme/PublicThemeProvider', () => ({ PublicSurface: () => <Outlet />,
 const Back = ({ label }: { label: string }) => <Link to=".." relative="path">{`← ${label}`}</Link>;
 
 vi.mock('./admin/participants/Participants', () => ({ default: () => (
-  <div><h1>Participantes</h1><Link to="importar">Importar padrón</Link><Link to="exportar">Exportar</Link></div>
+  <div><h1>Participantes</h1><Link to="importar">Importar participantes</Link><Link to="exportar">Exportar</Link></div>
 ) }));
 vi.mock('./admin/imports/ParticipantImport', () => ({ default: () => <div><h1>Pantalla importar padrón</h1><Back label="Participantes" /></div> }));
 vi.mock('./admin/export/ExportPage', () => ({ default: () => <div><h1>Pantalla exportar</h1><Back label="Participantes" /></div> }));
@@ -36,9 +36,6 @@ vi.mock('./admin/CheckinModule', () => ({ default: () => <h1>Pantalla check-in</
 vi.mock('./admin/RaffleAdmin', () => ({ default: () => <h1>Pantalla sorteo final</h1> }));
 vi.mock('./admin/staff/StaffAccounts', () => ({ default: () => <h1>Pantalla personal</h1> }));
 vi.mock('./admin/theme/ThemeEditor', () => ({ default: () => <h1>Pantalla experiencia pública</h1> }));
-vi.mock('./admin/ReservationRules', () => ({ default: () => <h1>Pantalla reservaciones</h1> }));
-vi.mock('./admin/Operation', () => ({ default: () => <h1>Pantalla preparación</h1> }));
-vi.mock('./admin/AuditLog', () => ({ default: () => <h1>Pantalla auditoría</h1> }));
 
 let go: (delta: number) => void = () => {};
 function History() {
@@ -62,9 +59,9 @@ beforeEach(() => {
     edition: { name: 'Día OV 2026', mode: 'preparacion' } } as unknown as ReturnType<typeof useEdition>);
 });
 
-test('Participantes → Importar padrón → back link → Exportar → back link, never an empty content area', async () => {
+test('Participantes → Importar participantes → back link → Exportar → back link, never an empty content area', async () => {
   open('/coordinacion/participantes');
-  fireEvent.click(await screen.findByRole('link', { name: 'Importar padrón' }));
+  fireEvent.click(await screen.findByRole('link', { name: 'Importar participantes' }));
   expect(await heading('Pantalla importar padrón')).toBeInTheDocument();
   fireEvent.click(screen.getByRole('link', { name: '← Participantes' }));
   fireEvent.click(await screen.findByRole('link', { name: 'Exportar' }));
@@ -75,7 +72,7 @@ test('Participantes → Importar padrón → back link → Exportar → back lin
 
 test('the sidebar also leads back out of the coordination-only branch', async () => {
   open('/coordinacion/participantes');
-  fireEvent.click(await screen.findByRole('link', { name: 'Importar padrón' }));
+  fireEvent.click(await screen.findByRole('link', { name: 'Importar participantes' }));
   await heading('Pantalla importar padrón');
   fireEvent.click(sidebar().getByRole('link', { name: 'Participantes' }));
   expect(await heading('Participantes')).toBeInTheDocument();

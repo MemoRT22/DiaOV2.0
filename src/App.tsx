@@ -32,15 +32,12 @@ const WorkshopInbox = lazy(() => import('./admin/workshops/WorkshopInbox'));
 const WorkshopDetail = lazy(() => import('./admin/workshops/WorkshopDetail'));
 const WorkshopProgram = lazy(() => import('./admin/workshops/WorkshopProgram'));
 const StaffAccounts = lazy(() => import('./admin/staff/StaffAccounts'));
-const Operation = lazy(() => import('./admin/Operation'));
 const OperationsCenter = lazy(() => import('./admin/OperationsCenter'));
 const ThemeEditor = lazy(() => import('./admin/theme/ThemeEditor'));
-const ReservationRules = lazy(() => import('./admin/ReservationRules'));
 const CheckinModule = lazy(() => import('./admin/CheckinModule'));
 const RaffleAdmin = lazy(() => import('./admin/RaffleAdmin'));
 const RaffleOperator = lazy(() => import('./admin/RaffleOperator'));
 const Scanner = lazy(() => import('./student/Scanner'));
-const AuditLog = lazy(() => import('./admin/AuditLog'));
 const Account = lazy(() => import('./admin/Account'));
 
 function AdminHome() {
@@ -67,11 +64,11 @@ const REDIRECTS: Array<[from: string, target: string]> = [
   ['rangos', SETTINGS_BASE],
   ['personal', `${SETTINGS_BASE}/personal`],
   ['tematica', `${SETTINGS_BASE}/experiencia-publica`],
-  ['reservaciones', `${SETTINGS_BASE}/reservaciones`],
-  ['operacion', `${SETTINGS_BASE}/preparacion`],
+  ['reservaciones', SETTINGS_BASE],
+  ['operacion', SETTINGS_BASE],
   ['catalogo', `${SETTINGS_BASE}/catalogo`],
   ['catalogo/importar', `${SETTINGS_BASE}/catalogo/importar`],
-  ['auditoria', `${SETTINGS_BASE}/auditoria`],
+  ['auditoria', SETTINGS_BASE],
 ];
 
 export default function App() {
@@ -126,11 +123,11 @@ export default function App() {
                   <Route index element={<SettingsHome />} />
                   <Route path="personal" element={<StaffAccounts />} />
                   <Route path="experiencia-publica" element={<ThemeEditor />} />
-                  <Route path="reservaciones" element={<ReservationRules />} />
-                  <Route path="preparacion" element={<Operation />} />
                   <Route path="catalogo" element={<Catalog />} />
                   <Route path="catalogo/importar" element={<CatalogImport />} />
-                  <Route path="auditoria" element={<AuditLog />} />
+                  <Route path="reservaciones" element={to(SETTINGS_BASE)} />
+                  <Route path="preparacion" element={to(SETTINGS_BASE)} />
+                  <Route path="auditoria" element={to(SETTINGS_BASE)} />
                 </Route>
 
                 {REDIRECTS.map(([from, target]) => <Route key={from} path={from} element={to(target)} />)}

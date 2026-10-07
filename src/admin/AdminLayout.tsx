@@ -42,7 +42,6 @@ export default function AdminLayout() {
     );
   }
 
-  const real = edition?.mode === 'operacion_real';
   const roleLabel = staff.roles.map((r) => ROLE_LABELS[r]).join(' · ');
   const items: AdminNavItem[] = coord ? COORD_NAV : isStaff ? STAFF_NAV : SORTEO_NAV;
   const navLabel = coord ? 'Navegación de Coordinación' : isStaff ? 'Navegación de staff' : 'Navegación de sorteo';
@@ -69,13 +68,6 @@ export default function AdminLayout() {
             <X className="h-5 w-5" />
           </button>
         </div>
-        <div className="mb-7">
-          <span className="inline-flex items-center gap-2 rounded-full border border-line bg-surface-raised px-3 py-1.5 text-xs font-semibold text-ink">
-            <span aria-hidden className={`admin-pulse h-2 w-2 rounded-full ${real ? 'bg-emerald-500 text-emerald-500' : 'bg-amber-500 text-amber-500'}`} />
-            <span>{real ? 'Operación real' : 'Preparación'}</span>
-          </span>
-        </div>
-
         <p aria-hidden className="mb-2 px-2.5 text-[0.65rem] font-bold uppercase tracking-[0.2em] text-ink-muted/70">Menú</p>
         <nav aria-label={navLabel} className="flex-1 space-y-1.5">
           {items.map((item) => {

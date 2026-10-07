@@ -3,8 +3,8 @@ import {
   MonitorDot, Users, type LucideIcon,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { Alert, Badge, Button, Spinner } from '../components/ui';
-import { formatDateTime, formatEventDate } from '../lib/catalog';
+import { Alert, Button, Spinner } from '../components/ui';
+import { formatEventDate } from '../lib/catalog';
 import { friendlyError } from '../lib/errors';
 import { supabase } from '../lib/supabase';
 import { useLoad } from '../lib/useLoad';
@@ -40,7 +40,6 @@ export default function Overview() {
 
   const { summary, workshops } = data;
   const reviewCount = (workshops?.counts.submitted ?? 0) + (workshops?.counts.in_review ?? 0);
-  const approvedCount = workshops?.counts.approved ?? 0;
   const pending: Pending[] = [
     ...(summary.pending_conflicts > 0 ? [{ count: summary.pending_conflicts,
       label: summary.pending_conflicts === 1 ? 'dato de importación por revisar' : 'datos de importación por revisar',
@@ -49,15 +48,11 @@ export default function Overview() {
     ...(reviewCount > 0 ? [{ count: reviewCount, label: reviewCount === 1 ? 'propuesta por revisar' : 'propuestas por revisar',
       description: 'Hay propuestas nuevas o en revisión.', to: '/coordinacion/talleres',
       action: 'Revisar talleres', icon: ClipboardList }] : []),
-    ...(approvedCount > 0 ? [{ count: approvedCount,
-      label: approvedCount === 1 ? 'propuesta lista para publicar' : 'propuestas listas para publicar',
-      description: 'Ya fueron aprobadas y esperan publicación.', to: '/coordinacion/talleres',
-      action: 'Publicar talleres', icon: ClipboardList }] : []),
   ];
   const quickActions = [
     { to: '/coordinacion/participantes', title: 'Gestionar participantes', description: 'Busca participantes, corrige datos y restablece contraseñas.', icon: Users,
       tint: 'from-primary-400 to-primary-600 shadow-[0_10px_22px_-10px_rgba(242,92,5,0.8)]' },
-    { to: '/coordinacion/talleres', title: 'Gestionar talleres', description: 'Revisa propuestas y publica actividades.', icon: ClipboardList,
+    { to: '/coordinacion/talleres', title: 'Gestionar talleres', description: 'Revisa propuestas y consulta el programa.', icon: ClipboardList,
       tint: 'from-neutral-600 to-neutral-800 shadow-[0_10px_22px_-10px_rgba(28,25,23,0.6)]' },
     { to: '/coordinacion/operacion-en-vivo', title: 'Abrir operación del evento',
       description: 'Consulta sesiones, aforo y asistencias.', icon: MonitorDot,
@@ -75,7 +70,7 @@ export default function Overview() {
       <div className="relative z-10 max-w-2xl">
         <p className="text-xs font-bold uppercase tracking-[0.18em] text-fg-brand">Panel de Coordinación</p>
         <h1 className="mt-3 font-display text-4xl font-extrabold sm:text-5xl">Inicio</h1>
-        <p className="mt-3 text-base text-ink-muted">Lo que necesita atención para preparar y operar el Día OV.</p>
+        <p className="mt-3 text-base text-ink-muted">Lo que necesita atención en el Día OV.</p>
       </div>
     </header>
 
@@ -140,25 +135,14 @@ export default function Overview() {
     <section aria-label="Estado del evento" className="card overflow-hidden p-0">
       <div className="h-1.5 bg-gradient-to-r from-primary-500 via-primary-300 to-neutral-300" aria-hidden />
       <div className="p-5 sm:p-7">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div><p className="text-xs font-semibold uppercase tracking-wider text-ink-muted">Edición actual</p>
-            <h2 className="mt-1 font-display text-2xl font-extrabold">{edition?.name ?? 'Día OV'}</h2></div>
-          <Badge tone={edition?.mode === 'operacion_real' ? 'success' : 'warning'}>
-            {edition?.mode === 'operacion_real' ? 'Operación real' : 'Preparación'}
-          </Badge>
-        </div>
+        <div><p className="text-xs font-semibold uppercase tracking-wider text-ink-muted">Edición actual</p>
+          <h2 className="mt-1 font-display text-2xl font-extrabold">{edition?.name ?? 'Día OV'}</h2></div>
         {edition && <dl className="mt-5 grid gap-3 text-sm sm:grid-cols-2">
           <div className="flex items-center gap-3 rounded-xl bg-surface-raised px-4 py-3 text-ink"><CalendarDays className="h-4 w-4 shrink-0 text-fg-brand" aria-hidden />
             <dt className="sr-only">Fecha</dt><dd className="font-medium">{formatEventDate(edition.event_date)} · {edition.start_time} h</dd></div>
           <div className="flex items-center gap-3 rounded-xl bg-surface-raised px-4 py-3 text-ink"><MapPin className="h-4 w-4 shrink-0 text-fg-brand" aria-hidden />
             <dt className="sr-only">Sede</dt><dd className="font-medium">{edition.venue}</dd></div>
         </dl>}
-        <p className="mt-5 border-t border-line pt-4 text-xs text-ink-muted">
-          {edition?.mode === 'operacion_real'
-            ? `Operación real activa desde ${edition.real_operation_at ? formatDateTime(edition.real_operation_at) : '—'}.`
-            : <>El sistema está en preparación. Antes del evento,{' '}
-              <Link to="/coordinacion/configuracion/preparacion" className="font-semibold text-ink underline decoration-primary-400 decoration-2 underline-offset-4">realiza la puesta en marcha y activa la operación real</Link>.</>}
-        </p>
       </div>
     </section>
   </div>;
