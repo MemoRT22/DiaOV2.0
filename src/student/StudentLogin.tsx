@@ -30,17 +30,17 @@ export default function StudentLogin() {
   return (
     <div className="relative min-h-dvh overflow-hidden">
       <Backdrop />
-      <main className="relative mx-auto flex min-h-dvh w-full max-w-md flex-col px-6 pb-8 pt-10">
+      <main className="relative mx-auto flex min-h-dvh w-full max-w-md flex-col px-6 pb-8 pt-6 sm:pt-10">
         <div className="flex flex-col items-center text-center animate-fade-up">
-          <div className="relative flex h-56 w-56 items-center justify-center">
+          <div className="relative flex h-40 w-40 items-center justify-center sm:h-56 sm:w-56">
             {theme.style.glowRing && <div className="glow-ring absolute inset-0 rounded-full animate-spin-slow" aria-hidden />}
             <div className={`absolute ${theme.style.glowRing ? 'inset-[3px]' : 'inset-0 border border-line'} rounded-full bg-surface-sunken`} />
             <h1 className="relative flex flex-col font-display font-extrabold leading-none">
-              <ThemedTitle className="text-4xl tracking-wide">{theme.meta.eventName.split(' ')[0]}</ThemedTitle>
-              <ThemedTitle className="text-6xl">{theme.meta.eventName.split(' ').slice(1).join(' ')}</ThemedTitle>
+              <ThemedTitle className="text-3xl tracking-wide sm:text-4xl">{theme.meta.eventName.split(' ')[0]}</ThemedTitle>
+              <ThemedTitle className="text-5xl sm:text-6xl">{theme.meta.eventName.split(' ').slice(1).join(' ')}</ThemedTitle>
             </h1>
           </div>
-          <Tagline className="mt-6 text-lg text-ink" />
+          <Tagline className="mt-4 text-base text-ink sm:mt-6 sm:text-lg" />
           {edition && (
             <div className="mt-4 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-sm text-ink-muted">
               <span className="inline-flex items-center gap-1">
@@ -55,7 +55,7 @@ export default function StudentLogin() {
           )}
         </div>
 
-        <div className="card mt-8 bg-surface/80 p-6 backdrop-blur animate-fade-up [animation-delay:120ms]">
+        <div className="card mt-6 bg-surface/80 p-5 sm:mt-8 sm:p-6 backdrop-blur animate-fade-up [animation-delay:120ms]">
           {step.kind === 'email' && <EmailStep title={text('loginTitle')} initial={step.email} onContinue={(email, kind) => setStep({ kind, email })} />}
           {step.kind === 'password_login' && (
             <LoginStep email={step.email} onBack={back} onSignIn={(password) => signInParticipant(step.email, password)} />

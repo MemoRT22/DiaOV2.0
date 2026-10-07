@@ -1,9 +1,9 @@
-import { ArrowLeftRight, Compass, Check, X } from 'lucide-react';
+import { ArrowLeftRight, Check, ChevronDown, MapPin, Sparkles, X } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Alert, LoadError, PageSkeleton } from '../components/ui';
 import { fetchDivisions, formatTime } from '../lib/catalog';
-import { fetchRecommendedActivities, type RecommendedActivity } from '../lib/recommendationsApi';
+import { fetchRecommendedActivities } from '../lib/recommendationsApi';
 import { hasTightTransfer, sessionState, type BoardSession } from '../lib/reservations';
 import { useLoad } from '../lib/useLoad';
 import { useReservationBoard } from '../lib/useReservationBoard';
@@ -13,13 +13,17 @@ import ConfirmSheet, { type ConfirmRequest } from './reservations/ConfirmSheet';
 import SessionRow from './reservations/SessionRow';
 import WindowNotice from './reservations/WindowNotice';
 
+type Filter = { kind: 'all' } | { kind: 'foryou' } | { kind: 'live' } | { kind: 'division'; id: string };
+
+/** Talleres: explore, see at a glance what has room / is live / clashes, and book in two taps. */
 export default function Missions() {
   const { theme, term, text } = usePublicTheme();
   const { edition } = useEdition();
   const { board, error, loading, reload, reserve, change } = useReservationBoard(edition?.id);
   const divisions = useLoad(fetchDivisions, []);
   const recs = useLoad(() => fetchRecommendedActivities().catch(() => null), []);
-  const [filter, setFilter] = useState<string | null>(null);
+  const [filter, setFilter] = useState<Filter>({ kind: 'all' });
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [confirm, setConfirm] = useState<ConfirmRequest | null>(null);
   const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
@@ -30,37 +34,51 @@ export default function Missions() {
   }, [board, params]);
   const replacingSession = replacing && board?.sessions.find((s) => s.id === replacing.session_id);
 
+  const recommendations = recs.data?.recommendations ?? [];
+  const recommendedIds = useMemo(() => new Set(recommendations.map((r) => r.activity_id)), [recommendations]);
+
   const workshops = useMemo(() => {
     const byActivity = new Map<string, BoardSession[]>();
     for (const s of board?.sessions ?? []) {
       if (s.status !== 'activa') continue;
       byActivity.set(s.activity_id, [...(byActivity.get(s.activity_id) ?? []), s]);
     }
-    return [...byActivity.values()];
-  }, [board]);
+    const list = [...byActivity.values()];
+    // Recommended (and not yet attended) first; otherwise keep chronological order.
+    const rank = (w: BoardSession[]) => {
+      const rec = recommendations.find((r) => r.activity_id === w[0].activity_id);
+      return rec && !rec.already_attended ? 0 : 1;
+    };
+    return list.sort((a, b) => rank(a) - rank(b));
+  }, [board, recommendations]);
 
   if ((loading && !board) || (divisions.loading && !divisions.data)) return <PageSkeleton blocks={4} />;
   if (error || !board) return <LoadError error={error} onRetry={reload} />;
   if (divisions.error || !divisions.data) return <LoadError error={divisions.error} onRetry={divisions.reload} />;
 
   const divisionById = new Map(divisions.data.map((d) => [d.id, d]));
-  const visible = filter ? workshops.filter((w) => w[0].division_id === filter) : workshops;
+  const anyLive = workshops.some((w) => w.some((s) => s.in_progress));
+  const visible = workshops.filter((w) => {
+    if (filter.kind === 'foryou') return recommendedIds.has(w[0].activity_id);
+    if (filter.kind === 'live') return w.some((s) => s.in_progress);
+    if (filter.kind === 'division') return w[0].division_id === filter.id;
+    return true;
+  });
   const active = board.active_reservation_count;
-
-  const recommendations = recs.data?.recommendations ?? [];
-  const recommendedIds = new Set(recommendations.map((r) => r.activity_id));
-  const notYetAttended = recommendations.filter((r) => !r.already_attended);
+  const full = active >= board.max_reservations;
 
   const ask = (s: BoardSession) => {
     const when = `${formatTime(s.starts_at)}–${formatTime(s.ends_at)}`;
     const warning = hasTightTransfer(s, replacing)
       ? `Traslado ajustado: tienes menos de ${board.travel_buffer_minutes} min entre este taller y otro de tu ruta. Puedes continuar.`
       : undefined;
+    const summary = { title: s.title, when: s.in_progress ? `${when} · En curso, puedes entrar` : when, where: s.location || undefined };
     if (replacing && replacingSession) {
       setConfirm({
         title: 'Cambiar horario',
         body: `Cambiarás ${replacingSession.title} (${formatTime(replacingSession.starts_at)}) por ${s.title} (${when}). Si el nuevo lugar ya no está disponible, conservas tu reservación actual.`,
         confirmLabel: 'Confirmar cambio',
+        summary,
         warning,
         action: async () => {
           await change(replacing.id, s.id);
@@ -70,9 +88,11 @@ export default function Missions() {
     } else {
       setConfirm({
         title: 'Reservar lugar',
-        body: `${s.title} · ${when}${s.location ? ` · ${s.location}` : ''}${s.in_progress ? ' · Ya está en curso: puedes entrar ahora.' : ''}`,
+        body: s.in_progress ? 'Ya está en curso: puedes entrar ahora.' : '',
         confirmLabel: 'Reservar',
+        summary,
         warning,
+        success: { title: 'Listo. Lo agregamos a tu ruta.', body: `${s.title} · ${when}`, link: { to: '/ruta', label: 'Ver mi ruta' } },
         action: () => reserve(s.id),
       });
     }
@@ -82,17 +102,36 @@ export default function Missions() {
     `min-h-11 shrink-0 rounded-full border px-4 text-sm font-semibold transition-colors ${
       on ? 'border-primary-500 bg-primary-500 text-on-primary' : 'border-line bg-surface text-ink-muted hover:text-ink'
     }`;
+  const isFilter = (f: Filter) => JSON.stringify(f) === JSON.stringify(filter);
+  const toggleExpanded = (id: string) =>
+    setExpanded((cur) => {
+      const next = new Set(cur);
+      if (!next.delete(id)) next.add(id);
+      return next;
+    });
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       <header className="animate-fade-up">
         <h1 className="text-2xl font-extrabold">{term('activity', true)}</h1>
-        <p className="mt-1 text-sm text-ink-muted">{text('activitiesIntro')}</p>
+        {!replacing && (
+          <Link to="/ruta" className="mt-1 inline-flex min-h-11 items-center gap-3 text-sm text-ink-muted" aria-label={`Llevas ${active} de ${board.max_reservations} en ${term('route')}`}>
+            <span className="flex gap-1.5" aria-hidden>
+              {Array.from({ length: board.max_reservations }, (_, i) => (
+                <span key={i} className={`h-2.5 w-7 rounded-full ${i < active ? 'bg-primary-500' : 'bg-line'}`} />
+              ))}
+            </span>
+            <span>
+              Llevas {active} de {board.max_reservations} en <span className="font-semibold text-fg-brand">{term('route')}</span>
+            </span>
+          </Link>
+        )}
+        {!replacing && <p className="sr-only">{text('activitiesIntro')}</p>}
       </header>
 
       {replacing && replacingSession ? (
-        <div className="card flex items-center gap-3 border-secondary-500/50 p-3">
-          <ArrowLeftRight className="h-5 w-5 shrink-0 text-secondary-300" aria-hidden />
+        <div className="card flex items-center gap-3 border-primary-500/50 p-3">
+          <ArrowLeftRight className="h-5 w-5 shrink-0 text-fg-brand" aria-hidden />
           <p className="min-w-0 flex-1 text-sm">
             Elige el nuevo horario para <strong>{replacingSession.title}</strong> ({formatTime(replacingSession.starts_at)}).
           </p>
@@ -108,44 +147,39 @@ export default function Missions() {
         <WindowNotice board={board} />
       )}
 
-      {!replacing && board.window === 'open' && (
-        <p className="text-sm text-ink-muted">
-          Llevas {active} de {board.max_reservations} en <Link to="/ruta" className="font-semibold text-primary-300 underline-offset-4 hover:underline">{term('route')}</Link>.
-        </p>
+      {!replacing && full && board.window === 'open' && (
+        <Alert>
+          Tu ruta está completa ({active} de {board.max_reservations}). Para elegir otro, cambia o cancela uno desde{' '}
+          <Link to="/ruta" className="font-semibold underline underline-offset-4">
+            {term('route')}
+          </Link>
+          .
+        </Alert>
       )}
 
-      {notYetAttended.length > 0 && (
-        <section className="space-y-3">
-          <div className="flex items-center gap-2">
-            <Compass className="h-5 w-5 text-primary-400" aria-hidden />
-            <h2 className="text-lg font-extrabold">Recomendados para ti</h2>
-          </div>
-          {notYetAttended.map((rec) => (
-            <RecommendedCard
-              key={rec.activity_id}
-              rec={rec}
-              theme={theme}
-              board={board}
-              replacing={replacing}
-              onAsk={ask}
-            />
-          ))}
-        </section>
-      )}
-
-      <div className="-mx-4 flex gap-2 overflow-x-auto overscroll-x-contain px-4 pb-1 [scrollbar-width:none]" aria-label={term('division', true)}>
-        <button className={chip(filter === null)} onClick={() => setFilter(null)}>
+      <div className="no-scrollbar sticky top-[calc(3rem+env(safe-area-inset-top))] z-20 -mx-4 flex gap-2 overflow-x-auto overscroll-x-contain bg-surface-sunken/90 px-4 py-2 backdrop-blur" aria-label="Filtrar" role="group">
+        <button className={chip(isFilter({ kind: 'all' }))} onClick={() => setFilter({ kind: 'all' })}>
           Todos
         </button>
+        {recommendedIds.size > 0 && (
+          <button className={chip(isFilter({ kind: 'foryou' }))} onClick={() => setFilter({ kind: 'foryou' })}>
+            Para ti
+          </button>
+        )}
+        {anyLive && (
+          <button className={chip(isFilter({ kind: 'live' }))} onClick={() => setFilter({ kind: 'live' })}>
+            En curso
+          </button>
+        )}
         {divisions.data.map((d) => (
-          <button key={d.id} className={chip(filter === d.id)} onClick={() => setFilter(d.id)}>
+          <button key={d.id} className={chip(isFilter({ kind: 'division', id: d.id }))} onClick={() => setFilter({ kind: 'division', id: d.id })}>
             {d.name}
           </button>
         ))}
       </div>
 
       {visible.length === 0 ? (
-        <Alert>{text('activitiesEmpty')}</Alert>
+        <Alert>{filter.kind === 'all' ? text('activitiesEmpty') : 'No hay talleres con este filtro.'}</Alert>
       ) : (
         <ul className="space-y-3">
           {visible.map((sessions, i) => {
@@ -153,40 +187,55 @@ export default function Missions() {
             const division = divisionById.get(first.division_id);
             const color = (division && theme.divisions[division.code]?.color) || theme.colors.secondary;
             const sharedLocation = sessions.every((s) => s.location === first.location) ? first.location : '';
-            const isRecommended = recommendedIds.has(first.activity_id);
             const rec = recommendations.find((r) => r.activity_id === first.activity_id);
+            const open = expanded.has(first.activity_id);
+            const longDescription = (first.description?.length ?? 0) > 90;
             return (
               <li key={first.activity_id} className="card animate-fade-up overflow-hidden" style={{ animationDelay: `${Math.min(i, 8) * 40}ms` }}>
                 <div className="h-1" style={{ background: color }} />
                 <div className="p-4">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0 flex-1">
-                      <p className="text-xs font-semibold uppercase tracking-wide" style={{ color }}>
-                        {term('division')} · {division?.name}
+                      <p className="text-[11px] font-bold uppercase tracking-wide" style={{ color }}>
+                        {division?.name}
                       </p>
-                      <h2 className="mt-1 text-base font-extrabold">{first.title}</h2>
+                      <h2 className="mt-0.5 text-base font-extrabold leading-snug">{first.title}</h2>
                     </div>
-                    {isRecommended && !rec?.already_attended && (
-                      <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-primary-500/15 px-2.5 py-0.5 text-xs font-semibold text-primary-400">
-                        <Compass className="h-3 w-3" />
+                    {rec && !rec.already_attended && (
+                      <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-primary-500/15 px-2.5 py-1 text-xs font-bold text-fg-brand">
+                        <Sparkles className="h-3 w-3" aria-hidden />
                         Para ti
                       </span>
                     )}
                     {rec?.already_attended && (
-                      <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-success-500/15 px-2.5 py-0.5 text-xs font-semibold text-success-400">
-                        <Check className="h-3 w-3" />
+                      <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-success-500/15 px-2.5 py-1 text-xs font-bold text-fg-success">
+                        <Check className="h-3 w-3" aria-hidden />
                         Explorado
                       </span>
                     )}
                   </div>
-                  {first.description && <p className="mt-2 text-sm text-ink-muted">{first.description}</p>}
-                  {isRecommended && rec && rec.related_careers && (
-                    <p className="mt-1 text-xs text-primary-400">
-                      {rec.already_attended ? 'Relacionado con: ' : 'Recomendado porque te interesa: '}
-                      {rec.related_careers}
+                  {sharedLocation && (
+                    <p className="mt-1 flex items-start gap-1 text-xs text-ink-muted">
+                      <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
+                      <span className="min-w-0 break-words">{sharedLocation}</span>
                     </p>
                   )}
-                  {sharedLocation && <p className="mt-2 text-xs text-ink-muted">{sharedLocation}</p>}
+                  {first.description && (
+                    <div className="mt-2">
+                      <p className={`text-sm text-ink-muted ${open ? '' : 'line-clamp-2'}`}>{first.description}</p>
+                      {rec?.related_careers && open && <p className="mt-1 text-xs text-fg-brand">Relacionado con: {rec.related_careers}</p>}
+                      {(longDescription || rec?.related_careers) && (
+                        <button
+                          onClick={() => toggleExpanded(first.activity_id)}
+                          aria-expanded={open}
+                          className="mt-1 inline-flex min-h-11 items-center gap-1 text-xs font-semibold text-fg-brand"
+                        >
+                          {open ? 'Ver menos' : 'Ver más'}
+                          <ChevronDown className={`h-4 w-4 transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden />
+                        </button>
+                      )}
+                    </div>
+                  )}
                   <ul className="mt-3 space-y-2">
                     {sessions.map((s) => (
                       <SessionRow
@@ -208,82 +257,6 @@ export default function Missions() {
       )}
 
       {confirm && <ConfirmSheet request={confirm} onClose={() => setConfirm(null)} />}
-    </div>
-  );
-}
-
-function RecommendedCard({
-  rec,
-  theme,
-  board,
-  replacing,
-  onAsk,
-}: {
-  rec: RecommendedActivity;
-  theme: ReturnType<typeof usePublicTheme>['theme'];
-  board: ReturnType<typeof useReservationBoard>['board'];
-  replacing: ReturnType<typeof useReservationBoard>['board'] extends infer B ? (B extends null ? null : { id: string }) : null;
-  onAsk: (s: BoardSession) => void;
-}) {
-  const color = theme.divisions[rec.division_code]?.color ?? theme.colors.secondary;
-  const availableSessions = rec.sessions.filter((s) => new Date(s.ends_at).getTime() > Date.now() && s.remaining > 0);
-  const hasAvailable = availableSessions.length > 0;
-
-  return (
-    <div className="card animate-fade-up overflow-hidden border-primary-500/30" style={{ borderLeft: `3px solid ${color}` }}>
-      <div className="p-4">
-        <p className="text-xs font-semibold uppercase tracking-wide" style={{ color }}>
-          {rec.division_name}
-        </p>
-        <h3 className="mt-1 text-base font-extrabold">{rec.title}</h3>
-        <p className="mt-1 text-xs text-primary-400">Recomendado porque te interesa: {rec.related_careers}</p>
-        {rec.description && <p className="mt-2 text-sm text-ink-muted">{rec.description}</p>}
-
-        {hasAvailable ? (
-          <ul className="mt-3 space-y-2">
-            {availableSessions.slice(0, 3).map((s) => {
-              const live = board?.sessions.find((x) => x.id === s.session_id);
-              const boardSession: BoardSession = {
-                id: s.session_id,
-                activity_id: rec.activity_id,
-                title: rec.title,
-                description: rec.description,
-                division_id: rec.division_id,
-                starts_at: s.starts_at,
-                ends_at: s.ends_at,
-                location: s.location,
-                credits: s.credits,
-                status: 'activa',
-                capacity: s.capacity,
-                reserved: s.reserved,
-                remaining: s.remaining,
-                started: s.started,
-                ended: false,
-                in_progress: s.started,
-                my_reservation_id: rec.already_reserved ? 'rec' : null,
-                conflicts_with: live?.conflicts_with ?? [],
-                tight_transfer_with: live?.tight_transfer_with ?? [],
-                attended: rec.already_attended ?? false,
-              };
-              return (
-                <SessionRow
-                  key={s.session_id}
-                  session={boardSession}
-                  state={sessionState(board!, boardSession, replacing as never)}
-                  actionLabel="Reservar"
-                  onAction={() => onAsk(boardSession)}
-                  showLocation
-                  tightMinutes={hasTightTransfer(boardSession) ? board!.travel_buffer_minutes : null}
-                />
-              );
-            })}
-          </ul>
-        ) : (
-          <p className="mt-3 text-sm text-ink-muted">
-            {rec.sessions.length > 0 ? 'Las sesiones de este taller ya terminaron o están llenas.' : 'No hay sesiones disponibles en este momento.'}
-          </p>
-        )}
-      </div>
     </div>
   );
 }
