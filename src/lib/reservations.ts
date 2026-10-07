@@ -20,9 +20,14 @@ export type BoardSession = {
   reserved: number;
   remaining: number;
   started: boolean;
+  ended: boolean;
+  in_progress: boolean;
   attended: boolean;
   my_reservation_id: string | null;
+  /** Own reservations that REALLY overlap this session in time (blocks). */
   conflicts_with: string[];
+  /** Own reservations that do not overlap but leave less than `travel_buffer_minutes` between sessions (warning only). */
+  tight_transfer_with: string[];
 };
 
 export type MyReservation = {
@@ -44,8 +49,10 @@ export type Board = {
   closes_at: string | null;
   max_reservations: number;
   active_reservation_count: number;
+  /** Recommended (not enforced) minutes between sessions. */
   travel_buffer_minutes: number;
-  checkin_close_after_minutes: number;
+  /** Deprecated: no longer authorizes check-in. Kept in the payload for compatibility. */
+  checkin_close_after_minutes?: number;
   sessions: BoardSession[];
   reservations: MyReservation[];
 };
@@ -84,7 +91,8 @@ export const updateReservationSettings = (p: ReservationSettings) => rpc('update
 export type SessionState =
   | 'reserved'
   | 'cancelled'
-  | 'started'
+  | 'ended'
+  | 'in_progress'
   | 'not_open'
   | 'closed'
   | 'full'
@@ -102,31 +110,31 @@ export function isFewPlaces(s: Pick<BoardSession, 'remaining' | 'capacity'>) {
 }
 
 /**
- * Commitment: counts toward the personal limit (`active_reservation_count`) and toward schedule conflicts.
- * A session in progress is still a commitment even though it can no longer be modified.
+ * Commitment: counts toward the personal limit (`active_reservation_count`). A reservation stops being a commitment
+ * once its session ends (derived_status `ended`) or when attendance is registered (`completed`).
  */
 export function isActiveReservation(r: MyReservation): boolean {
   return r.status === 'vigente' && (r.derived_status === 'active' || r.derived_status === 'in_progress');
 }
 
 /**
- * The reservation still "owns" its workshop: SAME_WORKSHOP applies until the check-in window closes.
- * After `ends_at` it no longer counts toward the limit, but it may still produce a valid attendance
- * (derived_status `ended`), so another session of the same workshop cannot be reserved yet.
+ * The reservation still "owns" its workshop while its session has not ended: SAME_WORKSHOP applies until `ends_at`.
+ * After that (without attendance) another session of the same workshop can be reserved; the old one stays as history.
  */
 export function holdsWorkshop(r: MyReservation): boolean {
-  return isActiveReservation(r) || (r.status === 'vigente' && r.derived_status === 'ended');
+  return isActiveReservation(r);
 }
 
 /**
  * Preview of the server rules so the screen can explain why a session is not selectable.
  * The server re-checks everything; this never authorizes anything.
+ * A session in progress is still joinable until it ends.
  */
 export function sessionState(board: Board, s: BoardSession, replacing?: MyReservation | null): SessionState {
   if (s.status === 'cancelada') return 'cancelled';
   if (s.attended) return 'already_attended';
   if (s.my_reservation_id) return 'reserved';
-  if (s.started) return 'started';
+  if (s.ended) return 'ended';
   if (board.window === 'not_open') return 'not_open';
   if (board.window === 'closed') return 'closed';
   if (s.remaining <= 0) return 'full';
@@ -137,14 +145,23 @@ export function sessionState(board: Board, s: BoardSession, replacing?: MyReserv
     ? board.active_reservation_count - (isActiveReservation(replacing) ? 1 : 0)
     : board.active_reservation_count;
   if (activeCount >= board.max_reservations) return 'max';
+  if (s.in_progress) return 'in_progress';
   return isFewPlaces(s) ? 'few' : 'available';
 }
 
-export const isSelectable = (state: SessionState) => state === 'available' || state === 'few';
+export const isSelectable = (state: SessionState) => state === 'available' || state === 'few' || state === 'in_progress';
 
-/** Modifiable is narrower than committed: a session in progress still commits the student but cannot change. */
+/** Tight transfer is a warning, never a block: the student may still reserve. */
+export function hasTightTransfer(s: Pick<BoardSession, 'tight_transfer_with'>, replacing?: MyReservation | null): boolean {
+  return s.tight_transfer_with.some((id) => id !== replacing?.id);
+}
+
+/**
+ * Cancelling or changing is allowed while the session has not ended and no attendance was registered
+ * (so a session in progress can still be left). Changing creates a new reservation, so it needs the global window open.
+ */
 export function canModify(board: Board, s: BoardSession, r: MyReservation) {
-  const editable = r.status === 'vigente' && !s.started && r.derived_status === 'active';
+  const editable = isActiveReservation(r) && !s.ended && !s.attended;
   return { cancel: editable, change: editable && board.window === 'open' };
 }
 

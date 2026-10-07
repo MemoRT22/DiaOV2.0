@@ -4,7 +4,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Alert, LoadError, PageSkeleton } from '../components/ui';
 import { fetchDivisions, formatTime } from '../lib/catalog';
 import { fetchRecommendedActivities, type RecommendedActivity } from '../lib/recommendationsApi';
-import { sessionState, type BoardSession } from '../lib/reservations';
+import { hasTightTransfer, sessionState, type BoardSession } from '../lib/reservations';
 import { useLoad } from '../lib/useLoad';
 import { useReservationBoard } from '../lib/useReservationBoard';
 import { useEdition } from '../edition/EditionProvider';
@@ -53,11 +53,15 @@ export default function Missions() {
 
   const ask = (s: BoardSession) => {
     const when = `${formatTime(s.starts_at)}–${formatTime(s.ends_at)}`;
+    const warning = hasTightTransfer(s, replacing)
+      ? `Traslado ajustado: tienes menos de ${board.travel_buffer_minutes} min entre este taller y otro de tu ruta. Puedes continuar.`
+      : undefined;
     if (replacing && replacingSession) {
       setConfirm({
         title: 'Cambiar horario',
         body: `Cambiarás ${replacingSession.title} (${formatTime(replacingSession.starts_at)}) por ${s.title} (${when}). Si el nuevo lugar ya no está disponible, conservas tu reservación actual.`,
         confirmLabel: 'Confirmar cambio',
+        warning,
         action: async () => {
           await change(replacing.id, s.id);
           navigate('/ruta');
@@ -66,8 +70,9 @@ export default function Missions() {
     } else {
       setConfirm({
         title: 'Reservar lugar',
-        body: `${s.title} · ${when}${s.location ? ` · ${s.location}` : ''}`,
+        body: `${s.title} · ${when}${s.location ? ` · ${s.location}` : ''}${s.in_progress ? ' · Ya está en curso: puedes entrar ahora.' : ''}`,
         confirmLabel: 'Reservar',
+        warning,
         action: () => reserve(s.id),
       });
     }
@@ -191,6 +196,7 @@ export default function Missions() {
                         actionLabel={replacing ? 'Cambiar aquí' : 'Reservar'}
                         onAction={() => ask(s)}
                         showLocation={!sharedLocation}
+                        tightMinutes={hasTightTransfer(s, replacing) ? board.travel_buffer_minutes : null}
                       />
                     ))}
                   </ul>
@@ -220,7 +226,7 @@ function RecommendedCard({
   onAsk: (s: BoardSession) => void;
 }) {
   const color = theme.divisions[rec.division_code]?.color ?? theme.colors.secondary;
-  const availableSessions = rec.sessions.filter((s) => !s.started && s.remaining > 0);
+  const availableSessions = rec.sessions.filter((s) => new Date(s.ends_at).getTime() > Date.now() && s.remaining > 0);
   const hasAvailable = availableSessions.length > 0;
 
   return (
@@ -236,6 +242,7 @@ function RecommendedCard({
         {hasAvailable ? (
           <ul className="mt-3 space-y-2">
             {availableSessions.slice(0, 3).map((s) => {
+              const live = board?.sessions.find((x) => x.id === s.session_id);
               const boardSession: BoardSession = {
                 id: s.session_id,
                 activity_id: rec.activity_id,
@@ -251,8 +258,11 @@ function RecommendedCard({
                 reserved: s.reserved,
                 remaining: s.remaining,
                 started: s.started,
+                ended: false,
+                in_progress: s.started,
                 my_reservation_id: rec.already_reserved ? 'rec' : null,
-                conflicts_with: [],
+                conflicts_with: live?.conflicts_with ?? [],
+                tight_transfer_with: live?.tight_transfer_with ?? [],
                 attended: rec.already_attended ?? false,
               };
               return (
@@ -263,13 +273,14 @@ function RecommendedCard({
                   actionLabel="Reservar"
                   onAction={() => onAsk(boardSession)}
                   showLocation
+                  tightMinutes={hasTightTransfer(boardSession) ? board!.travel_buffer_minutes : null}
                 />
               );
             })}
           </ul>
         ) : (
           <p className="mt-3 text-sm text-ink-muted">
-            {rec.sessions.length > 0 ? 'Las sesiones de este taller ya iniciaron o están llenas.' : 'No hay sesiones disponibles en este momento.'}
+            {rec.sessions.length > 0 ? 'Las sesiones de este taller ya terminaron o están llenas.' : 'No hay sesiones disponibles en este momento.'}
           </p>
         )}
       </div>

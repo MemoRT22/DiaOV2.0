@@ -1,3 +1,7 @@
+-- AVISO (migración 20261007120000_student_operational_flexibility): este archivo todavía codifica reglas RETIRADAS: CHECKIN_TOO_EARLY / CHECKIN_TOO_LATE (pasos «CF temprano», «CL tarde»).
+-- Ya no son válidas: la hora programada no autoriza el check-in, una sesión en curso se puede reservar/cancelar/cambiar,
+-- y solo el solapamiento real bloquea (el traslado es advertencia). La cobertura vigente está en regression_student_flexibility.sql.
+-- (Esta suite histórica ya no se ejecutaba tal cual: usa columnas retiradas como participants.birth_date.)
 -- Pruebas de regresión de asistencia / check-in (QR y código manual).
 -- Se ejecuta como un solo bloque DO. Siempre termina con RAISE EXCEPTION que trae los resultados,
 -- así que todos los cambios se revierten. Cubre: autorización, credenciales, método real (QR vs

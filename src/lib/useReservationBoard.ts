@@ -13,15 +13,28 @@ import {
 const STALE_AFTER_HIDDEN_MS = 20_000;
 const CLOCK_TICK_MS = 30_000;
 
-function applyClock(board: Board, offsetMs: number): Board {
+export function applyClock(board: Board, offsetMs: number): Board {
   const now = Date.now() + offsetMs;
   let changed = false;
   const sessions = board.sessions.map((s) => {
-    if (s.started || new Date(s.starts_at).getTime() > now) return s;
+    const started = new Date(s.starts_at).getTime() <= now;
+    const ended = new Date(s.ends_at).getTime() <= now;
+    const inProgress = started && !ended;
+    if (s.started === started && s.ended === ended && s.in_progress === inProgress) return s;
     changed = true;
-    return { ...s, started: true };
+    return { ...s, started, ended, in_progress: inProgress };
   });
-  return changed ? { ...board, sessions } : board;
+  const sessionById = new Map(sessions.map((s) => [s.id, s]));
+  // A reservation moves active → in_progress → ended with the clock; completion/expiry only come from the server.
+  const reservations = board.reservations.map((r) => {
+    const s = sessionById.get(r.session_id);
+    if (!s || r.status !== 'vigente' || (r.derived_status !== 'active' && r.derived_status !== 'in_progress')) return r;
+    const next = s.ended ? 'ended' : s.in_progress ? 'in_progress' : 'active';
+    if (next === r.derived_status) return r;
+    changed = true;
+    return { ...r, derived_status: next };
+  });
+  return changed ? { ...board, sessions, reservations } : board;
 }
 
 /**

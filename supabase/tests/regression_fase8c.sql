@@ -1,3 +1,7 @@
+-- AVISO (migración 20261007120000_student_operational_flexibility): este archivo todavía codifica reglas RETIRADAS: CHECKIN_TOO_LATE, la ventana ends_at+checkin_close_after_minutes para SAME_WORKSHOP y el buffer de traslado como SCHEDULE_CONFLICT.
+-- Ya no son válidas: la hora programada no autoriza el check-in, una sesión en curso se puede reservar/cancelar/cambiar,
+-- y solo el solapamiento real bloquea (el traslado es advertencia). La cobertura vigente está en regression_student_flexibility.sql.
+-- (Esta suite histórica ya no se ejecutaba tal cual: usa columnas retiradas como participants.birth_date.)
 -- Fase 8C: Regresión de reservaciones progresivas, agenda vs. contador, histórico y ventana de check-in.
 -- Un solo bloque DO, autocontenido: todo el fixture (sesiones pasadas incluidas) se inserta directo con
 -- los tiempos finales, sin tocar triggers ni protecciones. Siempre termina con RAISE EXCEPTION (rollback)

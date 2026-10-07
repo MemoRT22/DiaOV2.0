@@ -1,3 +1,7 @@
+-- AVISO (migración 20261007120000_student_operational_flexibility): este archivo todavía codifica reglas RETIRADAS: SESSION_STARTED, CURRENT_SESSION_STARTED y el buffer de traslado como SCHEDULE_CONFLICT (pasos «horario: viola buffer…», «tiempo: …»).
+-- Ya no son válidas: la hora programada no autoriza el check-in, una sesión en curso se puede reservar/cancelar/cambiar,
+-- y solo el solapamiento real bloquea (el traslado es advertencia). La cobertura vigente está en regression_student_flexibility.sql.
+-- (Esta suite histórica ya no se ejecutaba tal cual: usa columnas retiradas como participants.birth_date.)
 -- Regression tests for the reservation engine (reserve / change / cancel, window, capacity, clashes,
 -- limits, administrative states, isolation). Run the whole file as one statement. It ALWAYS ends by raising
 -- an exception carrying the results, so every change it makes is rolled back.

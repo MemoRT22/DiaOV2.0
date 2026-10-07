@@ -12,7 +12,7 @@ export default function WindowNotice({ board }: { board: Board }) {
     );
   }
   if (board.window === 'closed') {
-    return <Alert tone="warning">Las reservaciones cerraron. Puedes cancelar una sesión que aún no inicie, pero ya no reservar ni cambiar.</Alert>;
+    return <Alert tone="warning">Las reservaciones cerraron. Puedes cancelar una sesión que aún no termine, pero ya no reservar ni cambiar.</Alert>;
   }
   if (board.closes_at) {
     return <Alert>Puedes reservar hasta el {formatDateTime(board.closes_at)}.</Alert>;
