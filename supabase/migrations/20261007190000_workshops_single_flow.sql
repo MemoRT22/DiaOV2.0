@@ -145,7 +145,7 @@ GRANT EXECUTE ON FUNCTION public.publish_workshop_submission_internal(uuid, uuid
 TO service_role;
 
 
--- Bandeja paginada por estados humanos. Nunca incorpora activities manuales.
+-- Bandeja paginada por estados humanos y filtros fisicos legacy durante el rollout.
 CREATE OR REPLACE FUNCTION public.workshop_admin_list_internal(
   p_status text DEFAULT NULL, p_type text DEFAULT NULL, p_search text DEFAULT NULL, p_page integer DEFAULT 1
 )
@@ -157,7 +157,8 @@ DECLARE
   v_items jsonb;
   v_counts jsonb;
 BEGIN
-  IF p_status IS NOT NULL AND p_status NOT IN ('pending', 'published', 'archived') THEN RAISE EXCEPTION 'INVALID_FILTER'; END IF;
+  IF p_status IS NOT NULL AND p_status NOT IN
+    ('pending', 'submitted', 'in_review', 'changes_requested', 'approved', 'published', 'archived') THEN RAISE EXCEPTION 'INVALID_FILTER'; END IF;
   IF p_type IS NOT NULL AND p_type NOT IN ('academica', 'vida_universitaria') THEN RAISE EXCEPTION 'INVALID_FILTER'; END IF;
   IF p_page IS NULL OR p_page < 1 OR p_page > 100000 OR length(coalesce(v_search, '')) > 120 THEN RAISE EXCEPTION 'INVALID_FILTER'; END IF;
   SELECT id INTO v_edition FROM public.editions WHERE is_active LIMIT 1;
@@ -192,6 +193,10 @@ BEGIN
 
   SELECT jsonb_build_object(
     'pending', count(*) FILTER (WHERE status IN ('submitted','in_review','changes_requested','approved')),
+    'submitted', count(*) FILTER (WHERE status = 'submitted'),
+    'in_review', count(*) FILTER (WHERE status = 'in_review'),
+    'changes_requested', count(*) FILTER (WHERE status = 'changes_requested'),
+    'approved', count(*) FILTER (WHERE status = 'approved'),
     'published', count(*) FILTER (WHERE status = 'published'),
     'archived', count(*) FILTER (WHERE status = 'archived')
   ) INTO v_counts FROM public.workshop_submissions WHERE edition_id = v_edition AND status <> 'draft';
@@ -208,6 +213,7 @@ DECLARE
   v_edition uuid;
   v_submission public.workshop_submissions%ROWTYPE;
   v_careers jsonb;
+  v_reviewer text;
   v_sessions jsonb := '[]'::jsonb;
 BEGIN
   SELECT id INTO v_edition FROM public.editions WHERE is_active LIMIT 1;
@@ -223,6 +229,7 @@ BEGIN
   JOIN public.careers c ON c.id = sc.career_id
   JOIN public.divisions d ON d.id = c.division_id
   WHERE sc.submission_id = v_submission.id;
+  SELECT full_name INTO v_reviewer FROM public.staff_members WHERE user_id = v_submission.reviewed_by;
   IF v_submission.published_activity_id IS NOT NULL THEN
     SELECT coalesce(jsonb_agg(jsonb_build_object(
       'id', s.id, 'starts_at', s.starts_at, 'ends_at', s.ends_at,
@@ -233,7 +240,7 @@ BEGIN
     JOIN public.activities a ON a.id = s.activity_id AND a.edition_id = v_edition
     WHERE s.activity_id = v_submission.published_activity_id;
   END IF;
-  RETURN to_jsonb(v_submission) || jsonb_build_object('careers', v_careers, 'sessions', v_sessions);
+  RETURN to_jsonb(v_submission) || jsonb_build_object('careers', v_careers, 'reviewer_name', v_reviewer, 'sessions', v_sessions);
 END;
 $$;
 REVOKE ALL ON FUNCTION public.workshop_admin_get_internal(uuid) FROM PUBLIC, anon, authenticated;

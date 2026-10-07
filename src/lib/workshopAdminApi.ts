@@ -75,5 +75,5 @@ export const workshopAdminApi = {
     (await call<{ submission: { id: string; status: ReviewStatus } }>({ action: 'edit', submission_id, payload })).submission,
   discard: async (submission_id: string) =>
     (await call<{ submission: { id: string; status: ReviewStatus } }>({ action: 'archive', submission_id })).submission,
-  approve: (submission_id: string) => call<PublishResult>({ action: 'approve', submission_id }),
+  approve: (submission_id: string) => call<PublishResult>({ action: 'approve_publish', submission_id }),
 };
