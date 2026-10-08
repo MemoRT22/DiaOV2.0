@@ -91,6 +91,7 @@ const MESSAGES: Record<string, string> = {
   RESERVATION_NOT_FOUND: 'Esa reservación ya no está vigente. Actualiza tu ruta.',
   SESSION_TIMES_LOCKED: 'Este horario ya tiene reservaciones: no se puede mover. Crea un horario nuevo y cancela este.',
   CAPACITY_BELOW_RESERVED: 'El cupo no puede ser menor que las reservaciones vigentes.',
+  SESSION_SCHEDULE_LOCKED: 'No puedes cambiar la duración porque este taller ya tiene reservaciones o asistencias.',
   LOCATION_CHANGE_NEEDS_CONFIRMATION: 'Este horario tiene reservaciones. Usa "Cambiar ubicación" para moverlo con aviso.',
   HAS_RESERVATIONS: 'Tiene reservaciones registradas. Cancélalo en lugar de eliminarlo.',
   INVALID_CREDITS: 'Los sellos deben estar entre 1 y 10.',

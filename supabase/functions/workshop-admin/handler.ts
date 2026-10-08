@@ -30,8 +30,11 @@ function dbFailure(error: DbError, deps: Deps): Response {
   if (message.includes('NOT_AUTHORIZED')) return json({ error: 'NOT_AUTHORIZED' }, 403);
   if (message.includes('INVALID_TRANSITION')) return json({ error: 'INVALID_TRANSITION' }, 409);
   if (message.includes('PUBLISH_STATE_INCONSISTENT')) return json({ error: 'PUBLISH_STATE_INCONSISTENT' }, 409);
+  for (const code of ['SESSION_SCHEDULE_LOCKED', 'CAPACITY_BELOW_RESERVED']) {
+    if (message.includes(code)) return json({ error: code }, 409);
+  }
   if (message.includes('NO_ACTIVE_EDITION')) return json({ error: 'NO_ACTIVE_EDITION' }, 503);
-  for (const code of ['INVALID_FILTER', 'INVALID_ACTION', 'NOTES_REQUIRED', 'FEEDBACK_REQUIRED', 'INVALID_PAYLOAD', 'INVALID_CAREER', 'DUPLICATE_CAREER', 'CAREERS_REQUIRED', 'TEXT_TOO_LONG']) {
+  for (const code of ['INVALID_FILTER', 'INVALID_ACTION', 'NOTES_REQUIRED', 'FEEDBACK_REQUIRED', 'INVALID_PAYLOAD', 'INVALID_DURATION', 'INVALID_CAREER', 'DUPLICATE_CAREER', 'CAREERS_REQUIRED', 'TEXT_TOO_LONG']) {
     if (message.includes(code)) return json({ error: code }, 422);
   }
   deps.log?.('db_error', error.code);

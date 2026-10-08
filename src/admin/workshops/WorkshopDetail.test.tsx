@@ -66,6 +66,7 @@ test('published workshop stays in its editorial detail with operational sessions
   show();
   expect(await screen.findByRole('heading', { name: 'Taller de medicina' })).toBeInTheDocument();
   expect(screen.getByText('Publicado')).toBeInTheDocument();
+  expect(screen.getByRole('link', { name: 'Editar' })).toHaveAttribute('href', `/coordinacion/talleres/${ID}/editar`);
   expect(screen.getByText(/Cupo 20 · Reservados 4/)).toBeInTheDocument();
   expect(screen.getByText('Medicina')).toBeInTheDocument();
 });

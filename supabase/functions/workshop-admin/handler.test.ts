@@ -63,6 +63,27 @@ test('edit validates the Forms payload and sends careers atomically', async () =
   assert.equal(calls.length, 1);
 });
 
+test('edit uses the same RPC for published workshops and permits 15 only for Vida Universitaria', async () => {
+  const { deps, calls } = fixture(undefined, async () => ({ data: { id: ID, status: 'published' }, error: null }));
+  const life = { ...payload, activity_type: 'vida_universitaria', experience_category: 'otra',
+    career_ids: [], session_duration_minutes: 15 };
+  assert.equal((await handleRequest(post({ action: 'edit', submission_id: ID, payload: life }), deps)).status, 200);
+  assert.equal(calls[0].name, 'workshop_admin_edit_internal');
+  assert.equal((calls[0].args.p_payload as typeof life).session_duration_minutes, 15);
+  assert.equal((await handleRequest(post({ action: 'edit', submission_id: ID,
+    payload: { ...payload, session_duration_minutes: 15 } }), deps)).status, 422);
+  assert.equal(calls.length, 1);
+});
+
+test('published edit domain errors are returned without exposing SQL details', async () => {
+  for (const code of ['SESSION_SCHEDULE_LOCKED', 'CAPACITY_BELOW_RESERVED']) {
+    const { deps } = fixture(undefined, async () => ({ data: null, error: { message: code } }));
+    const res = await handleRequest(post({ action: 'edit', submission_id: ID, payload }), deps);
+    assert.equal(res.status, 409);
+    assert.deepEqual(await body(res), { error: code });
+  }
+});
+
 test('legacy review actions keep their transition RPC and notes', async () => {
   const { deps, calls } = fixture();
   for (const action of ['start_review', 'save_notes', 'request_changes', 'resume_review', 'approve', 'archive']) {
