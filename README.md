@@ -85,14 +85,14 @@ La edición activa usa `privacy_notice_version = 'v1'` y el Aviso de Privacidad 
 
 - La base de datos es la única fuente de verdad. Reservar, cambiar y cancelar se hacen con `reserve_session`, `change_reservation` y `cancel_reservation`; cada una bloquea al aspirante y las sesiones involucradas en orden fijo, cuenta, valida y escribe en la misma transacción. Nunca hay sobrecupo.
 - **Recomendador de talleres («Para ti»)**: determinístico y basado en reglas (sin IA, embeddings ni servicios externos). `my_recommended_activities()` parte de `initial_interests` (carreras del prerregistro/autorregistro, con su `preference`; los intereses post-evento no se usan) y de las afinidades que ya salen de la propuesta del tallerista (`workshop_submission_careers` → `activity_careers` al publicar; `activity_divisions` derivada). Nivel 1 `exact_career`: la actividad académica está ligada a una carrera de interés (una sola entrada por taller, con todas las carreras coincidentes en `matched_careers`). Nivel 2 `same_division`: solo si hay menos de 4 exactas nuevas y utilizables, se completan hasta ~4 con talleres de la misma división (`matched_division`); nunca se presentan como coincidencia de carrera. Orden: no asistidas primero → exactas antes que división → preferencia del interés → disponibilidad (en curso con lugares, futura con lugares, ya en tu ruta, sin lugares) → inicio de la próxima sesión → título/id. Las asistidas se devuelven marcadas («Explorado») al final y no cuentan para el mínimo; las ya reservadas vienen con `already_reserved`; los talleres terminados sin reservación/asistencia se omiten. Misma edición e `is_demo`; solo `activity_type = 'academica'`. Una actividad creada a mano sin `activity_careers` no se recomienda por afinidad exacta hasta configurarlas. El motor solo describe y ordena: nunca crea ni cambia reservaciones (el tablero sigue siendo la autoridad de lo reservable).
-- Coordinación solo decide **cuándo abren y cierran** las reservaciones (Configuración → Reservaciones). El resto son reglas del sistema con valores por defecto en la edición (máximo 4 talleres activos, sin empalmes reales de horario, traslado recomendado de 10 minutos que solo advierte, check-in sin dependencia de la hora programada, cambio atómico, cupo nunca excedido); `update_reservation_settings` rechaza cualquier intento de cambiarlas (`SYSTEM_MANAGED_SETTING`).
+- La apertura y el cierre de reservaciones se guardan en la edición. El RPC `update_reservation_settings` se conserva temporalmente para esa operación, aunque su antigua pantalla de Configuración está retirada. Las demás reglas son del sistema: máximo 4 talleres activos por defecto, sin empalmes reales, traslado recomendado de 10 minutos que solo advierte, cambio atómico y cupo nunca excedido. El RPC rechaza cambios a estas reglas técnicas (`SYSTEM_MANAGED_SETTING`).
 - Tras el cierre solo se puede cancelar (mientras la sesión no termine). Una sesión en curso sigue aceptando reservaciones y se puede cancelar o cambiar mientras no haya terminado ni tenga asistencia; una sesión terminada ya no se reserva, cambia ni cancela.
 - Solo el **solapamiento real** de horarios bloquea (`SCHEDULE_CONFLICT`). Las sesiones consecutivas o con menos de `travel_buffer_minutes` entre sí se permiten; `my_reservation_board()` las marca en `tight_transfer_with` (advertencia «Traslado ajustado», nunca bloqueo) y los solapamientos reales en `conflicts_with`.
 - Un mismo taller sigue ocupado hasta que termina su sesión; después, sin asistencia, se puede reservar otro horario y la reservación anterior pasa a `expirada` (historial). Errores nuevos: `SESSION_ENDED`, `CURRENT_SESSION_ENDED`, `ALREADY_ATTENDED` (cancelar/cambiar con asistencia).
 - Con reservaciones vigentes no se mueven horarios ni se baja el cupo por debajo de lo reservado; la ubicación solo cambia con la operación explícita de Coordinación (con motivo y auditoría).
 - Cancelar una sesión marca sus reservaciones como `cancelada_sesion`; reactivarla no las revive. Ocultarla conserva las existentes.
 - La disponibilidad en vivo usa un canal privado por edición que solo emite conteos; la app funciona igual si no hay conexión en vivo.
-- La tabla `reservations` no tiene permisos para `anon` ni `authenticated` (RLS sigue activo como defensa en profundidad). El aspirante solo lee mediante `my_reservation_board()` (exige aviso aceptado) y Coordinación mediante `session_reservation_counts()`, que solo devuelve conteos.
+- La tabla `reservations` no tiene permisos para `anon` ni `authenticated` (RLS sigue activo como defensa en profundidad). El aspirante solo lee mediante `my_reservation_board()` (exige aviso aceptado); Operación obtiene los conteos agregados desde `event_operations_overview()`.
 
 ## Centro de Operación
 
@@ -109,9 +109,9 @@ El administrador se entiende con cinco áreas: **Inicio, Participantes, Talleres
 | Área | Qué contiene |
 |---|---|
 | Participantes | Buscar, consultar, importar el padrón (con la revisión de lo que requiere decisión), corregir datos, restablecer contraseñas y exportar. No hay alta manual: los participantes llegan por el Forms oficial o se registran solos. |
-| Talleres | Propuestas (revisión y publicación) y Programa publicado. |
+| Talleres | Bandeja única de propuestas pendientes, publicadas y descartadas; edición, aprobación/publicación atómica y descarte. |
 | Operación | Centro de Operación, Check-in y Sorteo final. |
-| Configuración | Personal, Experiencia pública (temática), Reservaciones (apertura y cierre), Preparación y puesta en marcha, Carreras y divisiones y Auditoría. |
+| Configuración | Personal, Experiencia del alumno y Catálogos académicos / Datos maestros. |
 
 `Mi cuenta` pertenece al perfil (pie de la barra lateral), no al producto.
 

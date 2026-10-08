@@ -60,8 +60,6 @@ BEGIN
     'building', 'Ed', 'room_space', 'Salón', 'career_ids', to_jsonb(v_careers_single)));
   v_id_single := (v_result->>'submission_id')::uuid;
 
-  PERFORM public.workshop_review_transition_internal(v_actor, v_id_single, 'start_review');
-  PERFORM public.workshop_review_transition_internal(v_actor, v_id_single, 'approve');
   v_result := public.publish_workshop_submission_internal(v_actor, v_id_single);
   v_act_single := (v_result->>'activity_id')::uuid;
 
@@ -77,21 +75,7 @@ BEGIN
     'building', 'Ed', 'room_space', 'Salón', 'career_ids', to_jsonb(v_careers)));
   v_id := (v_result->>'submission_id')::uuid;
 
-  PERFORM public.workshop_review_transition_internal(v_actor, v_id, 'start_review');
-  
-  -- Publish without approve rejected
-  BEGIN
-    PERFORM public.publish_workshop_submission_internal(v_actor, v_id);
-    RAISE EXCEPTION 'PUBLISH_WITHOUT_APPROVE_ACCEPTED';
-  EXCEPTION WHEN OTHERS THEN
-    IF SQLERRM <> 'INVALID_TRANSITION' THEN RAISE; END IF;
-  END;
-
-  -- Approve
-  v_result := public.workshop_review_transition_internal(v_actor, v_id, 'approve');
-  IF v_result->>'status' <> 'approved' THEN RAISE EXCEPTION 'APPROVE_FAILED'; END IF;
-  
-  -- Publish multi-division academic
+  -- One approval decision publishes the submitted proposal atomically.
   v_result := public.publish_workshop_submission_internal(v_actor, v_id);
   v_act := (v_result->>'activity_id')::uuid;
   
@@ -144,8 +128,6 @@ BEGIN
     'building', 'Ed', 'room_space', 'Salón', 'career_ids', '[]'::jsonb));
   v_id_vida := (v_result->>'submission_id')::uuid;
 
-  PERFORM public.workshop_review_transition_internal(v_actor, v_id_vida, 'start_review');
-  PERFORM public.workshop_review_transition_internal(v_actor, v_id_vida, 'approve');
   v_result := public.publish_workshop_submission_internal(v_actor, v_id_vida);
   v_act_vida := (v_result->>'activity_id')::uuid;
 
@@ -161,6 +143,7 @@ BEGIN
 
   -- Check operations overview with STAFF context
   PERFORM set_config('request.jwt.claims', json_build_object('sub', v_actor, 'role', 'authenticated')::text, true);
+  PERFORM set_config('request.jwt.claim.sub', v_actor::text, true);
   PERFORM set_config('role', 'authenticated', true);
 
   v_overview := public.event_operations_overview();
@@ -172,14 +155,15 @@ BEGIN
   -- Back to the privileged test context BEFORE creating any fixture
   PERFORM set_config('role', 'postgres', true);
   PERFORM set_config('request.jwt.claims', '', true);
+  PERFORM set_config('request.jwt.claim.sub', '', true);
 
   -- Participant fixtures (privileged context)
   v_pid_auth := gen_random_uuid();
   INSERT INTO auth.users (id, instance_id, email, role, aud, created_at, updated_at)
   VALUES (v_pid_auth, '00000000-0000-0000-0000-000000000000', 'test_part_9d@test.invalid', 'authenticated', 'authenticated', now(), now());
 
-  INSERT INTO public.participants (id, edition_id, email, is_demo, auth_user_id, full_name, birth_date, origin)
-  VALUES (gen_random_uuid(), v_edition, 'test_part_9d@test.invalid', false, v_pid_auth, 'Test Part', '2000-01-01', 'manual') RETURNING id INTO v_pid;
+  INSERT INTO public.participants (id, edition_id, email, is_demo, auth_user_id, full_name, origin)
+  VALUES (gen_random_uuid(), v_edition, 'test_part_9d@test.invalid', false, v_pid_auth, 'Test Part', 'manual') RETURNING id INTO v_pid;
 
   UPDATE public.participant_profiles SET platform_consent_at = now(), platform_consent_version = (SELECT privacy_notice_version FROM public.editions WHERE id = v_edition) WHERE participant_id = v_pid;
 
@@ -187,12 +171,14 @@ BEGIN
 
   -- Recommendations: only the participant (authenticated + participant JWT) context
   PERFORM set_config('request.jwt.claims', json_build_object('sub', v_pid_auth, 'role', 'authenticated')::text, true);
+  PERFORM set_config('request.jwt.claim.sub', v_pid_auth::text, true);
   PERFORM set_config('role', 'authenticated', true);
 
   v_rec := public.my_recommended_activities();
 
   PERFORM set_config('role', 'postgres', true);
   PERFORM set_config('request.jwt.claims', '', true);
+  PERFORM set_config('request.jwt.claim.sub', '', true);
 
   -- Recommendations should include academic multi-division (since they share v_careers[1])
   IF NOT EXISTS (

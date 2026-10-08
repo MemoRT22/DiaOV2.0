@@ -47,15 +47,3 @@ export interface RecommendationsResult {
 export function fetchRecommendedActivities(): Promise<RecommendationsResult> {
   return rpc<RecommendationsResult>('my_recommended_activities');
 }
-
-export function saveActivityCareers(activityId: string, careerIds: string[]): Promise<void> {
-  return rpc('save_activity_careers', { p_activity_id: activityId, p_career_ids: careerIds });
-}
-
-export async function fetchActivityCareers(activityId: string): Promise<string[]> {
-  const { data, error } = await import('./supabase').then((m) =>
-    m.supabase.from('activity_careers').select('career_id').eq('activity_id', activityId),
-  );
-  if (error) throw error;
-  return (data ?? []).map((r: { career_id: string }) => r.career_id);
-}

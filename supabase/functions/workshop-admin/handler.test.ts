@@ -31,7 +31,7 @@ const payload = {
 test('only active Coordinación can read or mutate', async () => {
   for (const kind of ['unauthorized', 'forbidden'] as const) {
     const { deps, calls } = fixture(async () => ({ kind }));
-    for (const action of ['list', 'get', 'edit', 'approve', 'approve_publish', 'archive']) {
+    for (const action of ['list', 'get', 'edit', 'approve_publish', 'archive']) {
       const res = await handleRequest(post({ action, submission_id: ID, payload }), deps);
       assert.equal(res.status, kind === 'forbidden' ? 403 : 401);
     }
@@ -39,15 +39,18 @@ test('only active Coordinación can read or mutate', async () => {
   }
 });
 
-test('human and legacy physical status filters reach SQL', async () => {
+test('current human status filters reach SQL; old physical filters are rejected', async () => {
   const { deps, calls } = fixture();
-  const statuses = ['pending', 'submitted', 'in_review', 'changes_requested', 'approved', 'published', 'archived'];
+  const statuses = ['pending', 'published', 'archived'];
   for (const status of statuses) {
     assert.equal((await handleRequest(post({ action: 'list', status, page: 2 }), deps)).status, 200);
   }
   assert.deepEqual(calls.map(({ name, args }) => [name, args.p_status]),
     statuses.map((status) => ['workshop_admin_list_internal', status]));
-  assert.equal((await handleRequest(post({ action: 'list', status: 'unknown' }), deps)).status, 400);
+  for (const status of ['submitted', 'in_review', 'changes_requested', 'approved', 'unknown']) {
+    assert.equal((await handleRequest(post({ action: 'list', status }), deps)).status, 400);
+  }
+  assert.equal(calls.length, statuses.length);
 });
 
 test('edit validates the Forms payload and sends careers atomically', async () => {
@@ -84,36 +87,30 @@ test('published edit domain errors are returned without exposing SQL details', a
   }
 });
 
-test('legacy review actions keep their transition RPC and notes', async () => {
+test('discard alone keeps the transition RPC with the current archive action', async () => {
   const { deps, calls } = fixture();
-  for (const action of ['start_review', 'save_notes', 'request_changes', 'resume_review', 'approve', 'archive']) {
-    const res = await handleRequest(post({ action, submission_id: ID,
-      admin_notes: 'Nota interna', review_feedback: 'Ajustar horario' }), deps);
-    assert.equal(res.status, 200);
-    assert.equal(calls.at(-1)?.name, 'workshop_review_transition_internal');
-    assert.deepEqual(calls.at(-1)?.args, {
-      p_actor: ACTOR, p_submission_id: ID, p_action: action,
-      p_admin_notes: 'Nota interna', p_review_feedback: 'Ajustar horario',
-    });
-  }
-  assert.equal(calls.length, 6);
+  const res = await handleRequest(post({ action: 'archive', submission_id: ID }), deps);
+  assert.equal(res.status, 200);
+  assert.deepEqual(calls, [{ name: 'workshop_review_transition_internal', args: {
+    p_actor: ACTOR, p_submission_id: ID, p_action: 'archive',
+    p_admin_notes: null, p_review_feedback: null,
+  } }]);
 });
 
-test('legacy notes and feedback validation stays in place', async () => {
+test('retired review and separate publish actions cannot reach SQL', async () => {
   const { deps, calls } = fixture();
-  assert.deepEqual(await body(await handleRequest(post({ action: 'save_notes', submission_id: ID }), deps)), { error: 'NOTES_REQUIRED' });
-  assert.deepEqual(await body(await handleRequest(post({ action: 'request_changes', submission_id: ID, review_feedback: '  ' }), deps)), { error: 'FEEDBACK_REQUIRED' });
-  assert.equal((await handleRequest(post({ action: 'approve', submission_id: ID, admin_notes: 123 }), deps)).status, 400);
+  for (const action of ['start_review', 'save_notes', 'request_changes', 'resume_review', 'approve', 'publish']) {
+    assert.deepEqual(await body(await handleRequest(post({ action, submission_id: ID }), deps)), { error: 'INVALID_ACTION' });
+  }
+  assert.equal((await handleRequest(post({ action: 'archive', submission_id: ID, admin_notes: 'old' }), deps)).status, 400);
   assert.equal(calls.length, 0);
 });
 
-test('new approval and legacy publish both call the publication RPC', async () => {
+test('approval calls the atomic publication RPC', async () => {
   const { deps, calls } = fixture();
-  const first = await body(await handleRequest(post({ action: 'approve_publish', submission_id: ID }), deps));
-  const second = await body(await handleRequest(post({ action: 'publish', submission_id: ID }), deps));
-  assert.deepEqual(first, second);
-  assert.equal(first.status, 'published');
-  assert.equal(calls.length, 2);
+  const result = await body(await handleRequest(post({ action: 'approve_publish', submission_id: ID }), deps));
+  assert.equal(result.status, 'published');
+  assert.equal(calls.length, 1);
   assert.ok(calls.every((call) => call.name === 'publish_workshop_submission_internal'));
   assert.deepEqual(calls[0].args, { p_actor: ACTOR, p_submission_id: ID });
 });

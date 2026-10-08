@@ -75,21 +75,6 @@ export function reservationWindow(openAt: string | null, closeAt: string | null,
   return 'open';
 }
 
-export type SessionCount = { session_id: string; capacity: number; reserved: number; remaining: number };
-
-export async function fetchSessionCounts(): Promise<Map<string, number>> {
-  const rows = await rpc<SessionCount[]>('session_reservation_counts');
-  return new Map((rows ?? []).map((r) => [r.session_id, r.reserved]));
-}
-
-/** Coordinación only decides when reservations open and close; every other rule is defined by the system. */
-export type ReservationSettings = {
-  reservations_open_at: string | null;
-  reservations_close_at: string | null;
-};
-
-export const updateReservationSettings = (p: ReservationSettings) => rpc('update_reservation_settings', { p });
-
 export type SessionState =
   | 'reserved'
   | 'cancelled'
