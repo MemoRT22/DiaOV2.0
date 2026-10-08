@@ -1,27 +1,26 @@
-import { ArrowLeftRight, Check, ChevronDown, MapPin, Sparkles, X } from 'lucide-react';
-import { useMemo, useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { ArrowLeftRight, Check, Clock3, MapPin, Sparkles, X } from 'lucide-react';
+import { useMemo } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Alert, LoadError, PageSkeleton } from '../components/ui';
 import { fetchDivisions, formatTime } from '../lib/catalog';
 import { recommendationReason } from '../lib/recommendationReason';
 import { fetchRecommendedActivities } from '../lib/recommendationsApi';
-import { belongsToDivision, hasTightTransfer, sessionState, type BoardSession } from '../lib/reservations';
+import { belongsToDivision, type BoardSession } from '../lib/reservations';
+import { workshopAvailability, workshopDivisionIds, workshopDuration, workshopLocation, workshopPersonalStatus } from '../lib/workshopDiscovery';
 import { useLoad } from '../lib/useLoad';
 import { useParticipantSync } from '../lib/useParticipantSync';
 import { useReservationBoard } from '../lib/useReservationBoard';
 import { useEdition } from '../edition/EditionProvider';
 import { usePublicTheme } from '../theme/PublicThemeProvider';
-import ConfirmSheet, { type ConfirmRequest } from './reservations/ConfirmSheet';
-import SessionRow from './reservations/SessionRow';
 import WindowNotice from './reservations/WindowNotice';
 
 type Filter = { kind: 'all' } | { kind: 'foryou' } | { kind: 'live' } | { kind: 'division'; id: string };
 
-/** Talleres: explore, see at a glance what has room / is live / clashes, and book in two taps. */
+/** Compact catalogue: one activity per card; the detail owns every session and booking action. */
 export default function Missions() {
   const { theme, term, text } = usePublicTheme();
   const { edition } = useEdition();
-  const { board, error, loading, reload, reserve, change } = useReservationBoard(edition?.id);
+  const { board, error, loading, reload } = useReservationBoard(edition?.id);
   const divisions = useLoad(fetchDivisions, []);
   // The personalised ranking is an enhancement: if it fails the catalogue keeps working, and `useLoad` keeps the last good
   // snapshot when a re-query fails (it only replaces `data` on success).
@@ -29,11 +28,19 @@ export default function Missions() {
   // Personal changes announced by OTHER tabs (reserve / change / cancel / check-in) and a long time hidden re-query the ranking.
   // Seat counts are NOT part of this: they keep arriving through the board's availability broadcast, never re-ranking per movement.
   useParticipantSync(recs.reload);
-  const [filter, setFilter] = useState<Filter>({ kind: 'all' });
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const [confirm, setConfirm] = useState<ConfirmRequest | null>(null);
   const [params, setParams] = useSearchParams();
-  const navigate = useNavigate();
+  const filter: Filter = params.get('f') === 'foryou' ? { kind: 'foryou' }
+    : params.get('f') === 'live' ? { kind: 'live' }
+    : params.get('f') === 'division' && params.get('d') ? { kind: 'division', id: params.get('d')! }
+    : { kind: 'all' };
+  const setFilter = (next: Filter) => {
+    const updated = new URLSearchParams(params);
+    updated.delete('f');
+    updated.delete('d');
+    if (next.kind !== 'all') updated.set('f', next.kind);
+    if (next.kind === 'division') updated.set('d', next.id);
+    setParams(updated);
+  };
 
   const replacing = useMemo(() => {
     const id = params.get('cambiar');
@@ -78,53 +85,11 @@ export default function Missions() {
   const active = board.active_reservation_count;
   const full = active >= board.max_reservations;
 
-  const ask = (s: BoardSession) => {
-    const when = `${formatTime(s.starts_at)}–${formatTime(s.ends_at)}`;
-    const warning = hasTightTransfer(s, replacing)
-      ? `Traslado ajustado: tienes menos de ${board.travel_buffer_minutes} min entre este taller y otro de tu ruta. Puedes continuar.`
-      : undefined;
-    const summary = { title: s.title, when: s.in_progress ? `${when} · En curso, puedes entrar` : when, where: s.location || undefined };
-    if (replacing && replacingSession) {
-      setConfirm({
-        title: 'Cambiar horario',
-        body: `Cambiarás ${replacingSession.title} (${formatTime(replacingSession.starts_at)}) por ${s.title} (${when}). Si el nuevo lugar ya no está disponible, conservas tu reservación actual.`,
-        confirmLabel: 'Confirmar cambio',
-        summary,
-        warning,
-        action: async () => {
-          await change(replacing.id, s.id);
-          navigate('/ruta');
-        },
-      });
-    } else {
-      setConfirm({
-        title: 'Reservar lugar',
-        body: s.in_progress ? 'Ya está en curso: puedes entrar ahora.' : '',
-        confirmLabel: 'Reservar',
-        summary,
-        warning,
-        success: { title: 'Listo. Lo agregamos a tu ruta.', body: `${s.title} · ${when}`, link: { to: '/ruta', label: 'Ver mi ruta' } },
-        action: async () => {
-          await reserve(s.id);
-          // The tab that made the change is never notified by participantSync, so refresh its own ranking (→ «En tu ruta»).
-          // `useLoad.reload` never throws: a failed refresh cannot turn an already confirmed reservation into an error.
-          void recs.reload();
-        },
-      });
-    }
-  };
-
   const chip = (on: boolean) =>
     `min-h-11 shrink-0 rounded-full border px-4 text-sm font-semibold transition-colors ${
       on ? 'border-primary-500 bg-primary-500 text-on-primary' : 'border-line bg-surface text-ink-muted hover:text-ink'
     }`;
   const isFilter = (f: Filter) => JSON.stringify(f) === JSON.stringify(current);
-  const toggleExpanded = (id: string) =>
-    setExpanded((cur) => {
-      const next = new Set(cur);
-      if (!next.delete(id)) next.add(id);
-      return next;
-    });
 
   return (
     <div className="space-y-4">
@@ -152,7 +117,7 @@ export default function Missions() {
             Elige el nuevo horario para <strong>{replacingSession.title}</strong> ({formatTime(replacingSession.starts_at)}).
           </p>
           <button
-            onClick={() => setParams({}, { replace: true })}
+            onClick={() => { const updated = new URLSearchParams(params); updated.delete('cambiar'); setParams(updated, { replace: true }); }}
             className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-full text-ink-muted hover:bg-surface-raised hover:text-ink"
             aria-label="Cancelar cambio"
           >
@@ -207,13 +172,13 @@ export default function Missions() {
         <ul className="space-y-3">
           {visible.map((sessions, i) => {
             const first = sessions[0];
-            const division = divisionById.get(first.division_id ?? '');
-            const color = (division && theme.divisions[division.code]?.color) || theme.colors.secondary;
-            const sharedLocation = sessions.every((s) => s.location === first.location) ? first.location : '';
+            const divisionNames = workshopDivisionIds(first).map((id) => divisionById.get(id)?.name).filter((name): name is string => !!name);
+            const onlyDivision = workshopDivisionIds(first).length === 1 ? divisionById.get(workshopDivisionIds(first)[0]) : null;
+            const color = (onlyDivision && theme.divisions[onlyDivision.code]?.color) || theme.colors.secondary;
+            const location = workshopLocation(sessions);
             const rec = recommendations.find((r) => r.activity_id === first.activity_id);
             const why = rec ? recommendationReason(rec) : null;
-            const open = expanded.has(first.activity_id);
-            const longDescription = (first.description?.length ?? 0) > 90;
+            const status = workshopPersonalStatus(sessions, rec?.already_attended, rec?.already_reserved);
             return (
               <li key={first.activity_id} className="card animate-fade-up overflow-hidden" style={{ animationDelay: `${Math.min(i, 8) * 40}ms` }}>
                 <div className="h-1" style={{ background: color }} />
@@ -221,62 +186,34 @@ export default function Missions() {
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0 flex-1">
                       <p className="text-[11px] font-bold uppercase tracking-wide" style={{ color }}>
-                        {division?.name}
+                        {divisionNames.join(' · ')}
                       </p>
                       <h2 className="mt-0.5 text-base font-extrabold leading-snug">{first.title}</h2>
                     </div>
-                    {rec?.already_attended ? (
+                    {status ? (
                       <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-success-500/15 px-2.5 py-1 text-xs font-bold text-fg-success">
                         <Check className="h-3 w-3" aria-hidden />
-                        Explorado
-                      </span>
-                    ) : rec?.already_reserved ? (
-                      <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-success-500/15 px-2.5 py-1 text-xs font-bold text-fg-success">
-                        <Check className="h-3 w-3" aria-hidden />
-                        En tu ruta
+                        {status}
                       </span>
                     ) : null}
                   </div>
-                  {sharedLocation && (
-                    <p className="mt-1 flex items-start gap-1 text-xs text-ink-muted">
-                      <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
-                      <span className="min-w-0 break-words">{sharedLocation}</span>
-                    </p>
-                  )}
-                  {why?.reason && !rec?.already_attended && (
+                  {first.description && <p className="mt-2 line-clamp-3 text-sm text-ink-muted">{first.description}</p>}
+                  {why?.reason && status !== 'Explorado' && (
                     <p className="mt-1.5 flex items-start gap-1.5 text-xs text-ink-muted">
-                      <Sparkles className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${rec?.already_reserved ? 'text-ink-muted' : 'text-fg-brand'}`} aria-hidden />
+                      <Sparkles className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${status === 'En tu ruta' ? 'text-ink-muted' : 'text-fg-brand'}`} aria-hidden />
                       <span className="line-clamp-2 min-w-0 break-words">{why.reason}</span>
                     </p>
                   )}
-                  {first.description && (
-                    <div className="mt-2">
-                      <p className={`text-sm text-ink-muted ${open ? '' : 'line-clamp-2'}`}>{first.description}</p>
-                      {longDescription && (
-                        <button
-                          onClick={() => toggleExpanded(first.activity_id)}
-                          aria-expanded={open}
-                          className="mt-1 inline-flex min-h-11 items-center gap-1 text-xs font-semibold text-fg-brand"
-                        >
-                          {open ? 'Ver menos' : 'Ver más'}
-                          <ChevronDown className={`h-4 w-4 transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden />
-                        </button>
-                      )}
-                    </div>
-                  )}
-                  <ul className="mt-3 space-y-2">
-                    {sessions.map((s) => (
-                      <SessionRow
-                        key={s.id}
-                        session={s}
-                        state={sessionState(board, s, replacing)}
-                        actionLabel={replacing ? 'Cambiar aquí' : 'Reservar'}
-                        onAction={() => ask(s)}
-                        showLocation={!sharedLocation}
-                        tightMinutes={hasTightTransfer(s, replacing) ? board.travel_buffer_minutes : null}
-                      />
-                    ))}
-                  </ul>
+                  <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-ink-muted">
+                    <span className="inline-flex items-center gap-1"><Clock3 className="h-3.5 w-3.5" aria-hidden />{workshopDuration(sessions)}</span>
+                    {location && <span className="inline-flex items-center gap-1"><MapPin className="h-3.5 w-3.5" aria-hidden />{location}</span>}
+                  </div>
+                  <div className="mt-3 flex items-center justify-between gap-3 border-t border-line pt-3">
+                    <span className="text-xs font-semibold text-ink-muted">{workshopAvailability(board, sessions, replacing)}</span>
+                    <Link to={`/misiones/${first.activity_id}${params.toString() ? `?${params.toString()}` : ''}`} className="inline-flex min-h-11 shrink-0 items-center rounded-full bg-primary-500 px-4 text-sm font-bold text-on-primary">
+                      Ver taller
+                    </Link>
+                  </div>
                 </div>
               </li>
             );
@@ -284,7 +221,6 @@ export default function Missions() {
         </ul>
       )}
 
-      {confirm && <ConfirmSheet request={confirm} onClose={() => setConfirm(null)} />}
     </div>
   );
 }

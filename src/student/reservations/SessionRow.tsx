@@ -1,6 +1,6 @@
-import { MapPin, Users } from 'lucide-react';
+import { Clock3, MapPin, Users } from 'lucide-react';
 import { Badge } from '../../components/ui';
-import { formatTime } from '../../lib/catalog';
+import { formatDateTime, formatTime } from '../../lib/catalog';
 import { durationMinutes, isSelectable, type BoardSession, type SessionState } from '../../lib/reservations';
 import { STATE_LABELS } from './sessionPresentation';
 
@@ -12,6 +12,7 @@ export default function SessionRow({
   onAction,
   showLocation,
   tightMinutes = null,
+  hideAction = false,
 }: {
   session: BoardSession;
   state: SessionState;
@@ -20,6 +21,7 @@ export default function SessionRow({
   showLocation: boolean;
   /** Recommended minutes between talleres when this session leaves less than that (advice only). */
   tightMinutes?: number | null;
+  hideAction?: boolean;
 }) {
   const { label, tone } = STATE_LABELS[state];
   const selectable = isSelectable(state);
@@ -30,7 +32,7 @@ export default function SessionRow({
 
   return (
     <li
-      className={`flex items-center gap-3 rounded-theme border p-3 ${
+      className={`flex flex-wrap items-center gap-3 rounded-theme border p-3 ${
         live ? 'border-primary-500/60 bg-primary-500/10' : 'border-line bg-surface-sunken/40'
       } ${dim ? 'opacity-70' : ''}`}
     >
@@ -40,7 +42,6 @@ export default function SessionRow({
           <span className="sr-only">a </span>
           {formatTime(session.ends_at)}
         </p>
-        <span className="sr-only"> · {durationMinutes(session)} min</span>
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-1.5">
@@ -48,6 +49,7 @@ export default function SessionRow({
           {tightMinutes != null && selectable && <Badge tone="warning">Traslado ajustado · menos de {tightMinutes} min</Badge>}
         </div>
         <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-muted">
+          <span className="inline-flex items-center gap-1"><Clock3 className="h-3.5 w-3.5" aria-hidden />{formatDateTime(session.starts_at)} · {durationMinutes(session)} min</span>
           {showCount && (
             <span className="inline-flex items-center gap-1">
               <Users className="h-3.5 w-3.5" aria-hidden />
@@ -62,10 +64,10 @@ export default function SessionRow({
           )}
         </div>
       </div>
-      {selectable && (
+      {selectable && !hideAction && (
         <button
           onClick={onAction}
-          className="min-h-11 shrink-0 rounded-full bg-primary-500 px-5 text-sm font-bold text-on-primary transition-all hover:bg-primary-400 active:scale-[0.97]"
+          className="min-h-11 w-full shrink-0 rounded-full bg-primary-500 px-5 text-sm font-bold text-on-primary transition-all hover:bg-primary-400 active:scale-[0.97] sm:w-auto"
         >
           {actionLabel}
         </button>

@@ -131,14 +131,14 @@ test('several matched careers appear once, in one natural sentence', async () =>
   expect(within(card('Nutrición clínica')).getByText('Por tus intereses en Médico Cirujano y Nutrición')).toBeInTheDocument();
 });
 
-test('an attended recommendation shows «Explorado» and no pitch; a booked one shows «En tu ruta»', async () => {
+test('an attended recommendation shows «Explorado» without a recommendation reason; a booked one shows «En tu ruta»', async () => {
   await renderMissions();
   const done = card('Anatomía aplicada');
   expect(within(done).getByText('Explorado')).toBeInTheDocument();
-  expect(within(done).queryByText(/Por tu interés|Por tus intereses|Relacionado con/)).not.toBeInTheDocument(); // no promotional pitch
+  expect(within(done).queryByText(/Por tu interés|Por tus intereses|Relacionado con/)).not.toBeInTheDocument();
   const mine = card('Urgencias');
   expect(within(mine).getByText('En tu ruta')).toBeInTheDocument();
-  expect(within(mine).getByText('Reservada')).toBeInTheDocument(); // the reservation state itself is untouched
+  expect(within(mine).getByRole('link', { name: 'Ver taller' })).toBeInTheDocument();
 });
 
 test('in «Todos» the recommendations come first in the order the server ranked them, attended ones go with the rest', async () => {
@@ -199,7 +199,7 @@ test('«Para ti» adds one short, discreet introduction (no modal, no banner, no
   expect(screen.getByText('Sugerencias basadas en las carreras que elegiste. Tú decides qué agregar a tu ruta.')).toBeInTheDocument();
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   // the very same cards as in «Todos»: one component, learnt once
-  expect(within(card('Simulación clínica')).getByRole('button', { name: 'Reservar' })).toBeInTheDocument();
+  expect(within(card('Simulación clínica')).getByRole('link', { name: 'Ver taller' })).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Todos' }));
   expect(screen.queryByText('Talleres para ti')).not.toBeInTheDocument();
   expect(titles()).toHaveLength(6);
@@ -223,11 +223,11 @@ test('a booked suggestion leads with «En tu ruta»; its reason stays but is qui
   expect(plain.parentElement?.querySelector('svg')?.getAttribute('class')).toMatch(/text-fg-brand/);
 });
 
-test('suggesting never hides or blocks the catalogue: an unrelated division is still fully bookable', async () => {
+test('suggesting never hides an unrelated workshop from the catalogue', async () => {
   await renderMissions();
   const c = card('Mercados financieros');
   expect(within(c).queryByText(/Por tu interés|Por tus intereses|Relacionado con/)).not.toBeInTheDocument();
-  expect(within(c).getByRole('button', { name: 'Reservar' })).toBeInTheDocument();
+  expect(within(c).getByRole('link', { name: 'Ver taller' })).toBeInTheDocument();
 });
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -253,45 +253,6 @@ async function otherTabAnnounces(kind: 'reservation' | 'attendance') {
   await act(async () => { await vi.advanceTimersByTimeAsync(400); });
   vi.useRealTimers();
 }
-
-test('A. booking from this screen re-queries the ranking: the card turns into «En tu ruta» without reloading the page', async () => {
-  await mountWith(reservedSnapshot([]), reservedSnapshot(['exact']));
-  const c = card('Simulación clínica');
-  expect(within(c).queryByText('En tu ruta')).not.toBeInTheDocument();
-  expect(within(c).getByText('Por tu interés en Médico Cirujano')).toBeInTheDocument();
-
-  fireEvent.click(within(c).getByRole('button', { name: 'Reservar' }));
-  const dialog = await screen.findByRole('dialog', { name: 'Reservar lugar' });
-  fireEvent.click(within(dialog).getByRole('button', { name: 'Reservar' }));
-  await screen.findByRole('dialog', { name: 'Listo. Lo agregamos a tu ruta.' });
-
-  expect(m.reserve).toHaveBeenCalledWith('s-exact');
-  await waitFor(() => expect(m.recs).toHaveBeenCalledTimes(2));
-  expect(await within(card('Simulación clínica')).findByText('En tu ruta')).toBeInTheDocument();
-  expect(m.announce).not.toHaveBeenCalled(); // announcing is the board's job on a successful action, never the reload's
-});
-
-test('B. a failed booking is not treated as success: no re-query, the reason is shown', async () => {
-  m.reserve.mockRejectedValue(new Error('SESSION_FULL'));
-  await mountWith(reservedSnapshot([]));
-  fireEvent.click(within(card('Simulación clínica')).getByRole('button', { name: 'Reservar' }));
-  const dialog = await screen.findByRole('dialog', { name: 'Reservar lugar' });
-  fireEvent.click(within(dialog).getByRole('button', { name: 'Reservar' }));
-  expect(await within(dialog).findByRole('alert')).toHaveTextContent(/llenarse/);
-  expect(m.recs).toHaveBeenCalledTimes(1);
-  expect(screen.queryByText('Listo. Lo agregamos a tu ruta.')).not.toBeInTheDocument();
-});
-
-test('a failing re-query after a CONFIRMED booking does not turn it into a failed booking', async () => {
-  await mountWith(reservedSnapshot([]), new Error('offline'));
-  fireEvent.click(within(card('Simulación clínica')).getByRole('button', { name: 'Reservar' }));
-  fireEvent.click(within(await screen.findByRole('dialog', { name: 'Reservar lugar' })).getByRole('button', { name: 'Reservar' }));
-  expect(await screen.findByRole('dialog', { name: 'Listo. Lo agregamos a tu ruta.' })).toBeInTheDocument();
-  await waitFor(() => expect(m.recs).toHaveBeenCalledTimes(2));
-  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-  // and the last good ranking is still on screen
-  expect(within(card('Simulación clínica')).getByText('Por tu interés en Médico Cirujano')).toBeInTheDocument();
-});
 
 test('C. another tab reserves or cancels → the ranking is re-queried', async () => {
   await mountWith(reservedSnapshot([]), reservedSnapshot(['exact']));
