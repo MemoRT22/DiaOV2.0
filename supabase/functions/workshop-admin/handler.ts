@@ -16,9 +16,9 @@ const CORS = {
   'X-Content-Type-Options': 'nosniff',
 };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const STATUSES = new Set(['pending', 'submitted', 'in_review', 'changes_requested', 'approved', 'published', 'archived']);
+const STATUSES = new Set(['pending', 'published', 'archived']);
 const TYPES = new Set(['academica', 'vida_universitaria']);
-const MUTATIONS = new Set(['start_review', 'save_notes', 'request_changes', 'resume_review', 'archive', 'approve', 'publish', 'edit', 'approve_publish']);
+const MUTATIONS = new Set(['archive', 'edit', 'approve_publish']);
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { ...CORS, 'Content-Type': 'application/json; charset=utf-8' } });
@@ -34,7 +34,7 @@ function dbFailure(error: DbError, deps: Deps): Response {
     if (message.includes(code)) return json({ error: code }, 409);
   }
   if (message.includes('NO_ACTIVE_EDITION')) return json({ error: 'NO_ACTIVE_EDITION' }, 503);
-  for (const code of ['INVALID_FILTER', 'INVALID_ACTION', 'NOTES_REQUIRED', 'FEEDBACK_REQUIRED', 'INVALID_PAYLOAD', 'INVALID_DURATION', 'INVALID_CAREER', 'DUPLICATE_CAREER', 'CAREERS_REQUIRED', 'TEXT_TOO_LONG']) {
+  for (const code of ['INVALID_FILTER', 'INVALID_ACTION', 'INVALID_PAYLOAD', 'INVALID_DURATION', 'INVALID_CAREER', 'DUPLICATE_CAREER', 'CAREERS_REQUIRED', 'TEXT_TOO_LONG']) {
     if (message.includes(code)) return json({ error: code }, 422);
   }
   deps.log?.('db_error', error.code);
@@ -95,25 +95,16 @@ export async function handleRequest(req: Request, deps: Deps): Promise<Response>
       });
       return error ? dbFailure(error, deps) : json({ submission: data });
     }
-    if (body.action === 'approve_publish' || body.action === 'publish') {
+    if (body.action === 'approve_publish') {
       const { data, error } = await deps.rpc('publish_workshop_submission_internal', {
         p_actor: caller.userId, p_submission_id: id
       });
       return error ? dbFailure(error, deps) : json(data);
     }
-    const notes = body.admin_notes;
-    const feedback = body.review_feedback;
-    if (notes !== undefined && (typeof notes !== 'string' || notes.length > 5000)
-      || feedback !== undefined && (typeof feedback !== 'string' || feedback.length > 5000)) {
-      return json({ error: 'INVALID_INPUT' }, 400);
-    }
-    if (body.action === 'save_notes' && typeof notes !== 'string') return json({ error: 'NOTES_REQUIRED' }, 422);
-    if (body.action === 'request_changes' && (typeof feedback !== 'string' || !feedback.trim())) {
-      return json({ error: 'FEEDBACK_REQUIRED' }, 422);
-    }
+    if (body.admin_notes !== undefined || body.review_feedback !== undefined) return json({ error: 'INVALID_INPUT' }, 400);
     const { data, error } = await deps.rpc('workshop_review_transition_internal', {
-      p_actor: caller.userId, p_submission_id: id, p_action: body.action,
-      p_admin_notes: notes ?? null, p_review_feedback: feedback ?? null,
+      p_actor: caller.userId, p_submission_id: id, p_action: 'archive',
+      p_admin_notes: null, p_review_feedback: null,
     });
     return error ? dbFailure(error, deps) : json({ submission: data });
   } catch (cause) {

@@ -9,6 +9,7 @@ DECLARE v text;
 BEGIN
   IF who IS NOT NULL AND who <> 'postgres' THEN
     PERFORM set_config('request.jwt.claims', json_build_object('sub', who, 'role', 'authenticated')::text, true);
+    PERFORM set_config('request.jwt.claim.sub', who, true);
     PERFORM set_config('role', 'authenticated', true);
   END IF;
   BEGIN
@@ -17,6 +18,7 @@ BEGIN
   END;
   PERFORM set_config('role', 'postgres', true);
   PERFORM set_config('request.jwt.claims', '', true);
+  PERFORM set_config('request.jwt.claim.sub', '', true);
   RETURN v;
 END
 $f$;
