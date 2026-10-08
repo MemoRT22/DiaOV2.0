@@ -276,6 +276,7 @@ describe('tipo de taller y logística simplificada', () => {
     expect(heading('Logística')).toBeInTheDocument();
     const group = screen.getByRole('group', { name: /Duración del taller/ });
     expect(within(group).getAllByRole('radio').map((r) => (r as HTMLInputElement).value)).toEqual(['30', '60']);
+    expect(within(group).queryByRole('radio', { name: '15 minutos' })).not.toBeInTheDocument();
     expect(within(group).getByRole('radio', { name: '30 minutos' })).toBeInTheDocument();
     expect(within(group).getByRole('radio', { name: '1 hora' })).toBeInTheDocument();
     expect(screen.getByText(/entre las 10:00 a\. m\. y las 12:00 p\. m\./)).toBeInTheDocument();
@@ -375,6 +376,29 @@ describe('Vida Universitaria: copy y campos propios', () => {
 });
 
 describe('cambio de tipo durante el llenado', () => {
+  it('Vida Universitaria permite 15 y al cambiar a académico normaliza a 30 antes de enviar', async () => {
+    const user = await open();
+    await toReviewVida(user, 'Integración y convivencia');
+    await user.click(screen.getByRole('button', { name: 'Editar Logística' }));
+    const duration = screen.getByRole('group', { name: /Duración del taller/ });
+    expect(within(duration).getAllByRole('radio').map((r) => (r as HTMLInputElement).value)).toEqual(['15', '30', '60']);
+    await user.click(within(duration).getByRole('radio', { name: '15 minutos' }));
+    await next(user);
+    await user.click(screen.getByRole('button', { name: 'Editar Tu actividad' }));
+    await user.click(screen.getByRole('radio', { name: /Taller académico/ }));
+    await next(user);
+    await user.click(screen.getByRole('button', { name: 'Editar Logística' }));
+    const academicDuration = screen.getByRole('group', { name: /Duración del taller/ });
+    expect(within(academicDuration).getAllByRole('radio').map((r) => (r as HTMLInputElement).value)).toEqual(['30', '60']);
+    expect(within(academicDuration).getByRole('radio', { name: '30 minutos' })).toBeChecked();
+    await next(user);
+    await user.click(screen.getByRole('button', { name: 'Enviar propuesta' }));
+    await fillCarreras(user);
+    await next(user);
+    await user.click(screen.getByRole('button', { name: 'Enviar propuesta' }));
+    await screen.findByRole('heading', { name: '¡Recibimos tu propuesta!' });
+    expect(JSON.parse((posts()[0][1] as RequestInit).body as string)).toMatchObject({ activity_type: 'academica', session_duration_minutes: 30 });
+  });
   it('Vida Universitaria → académico: limpia la categoría, conserva lo escrito y nunca la envía', async () => {
     const user = await open();
     fillResponsable();

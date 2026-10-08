@@ -105,10 +105,12 @@ export default function WorkshopDetail() {
         <p className="mt-1 text-sm text-ink-muted">{careers.join(', ')}</p></div>)}</Section>}
 
     {group === 'published' && <Operational detail={data} />}
-    {pending && <div className="card flex flex-wrap gap-3 p-5" aria-label="Acciones del taller">
+    {(pending || group === 'published') && <div className="card flex flex-wrap gap-3 p-5" aria-label="Acciones del taller">
       <Link to={`/coordinacion/talleres/${id}/editar`} className="inline-flex min-h-11 items-center rounded-full border border-line px-5 text-sm font-semibold hover:border-secondary-400">Editar</Link>
-      <Button loading={busy === 'approve'} disabled={!!busy} onClick={() => void run('approve')}>Aprobar</Button>
-      <Button variant="danger" disabled={!!busy} onClick={() => setConfirmDiscard(true)}>Descartar</Button>
+      {pending && <>
+        <Button loading={busy === 'approve'} disabled={!!busy} onClick={() => void run('approve')}>Aprobar</Button>
+        <Button variant="danger" disabled={!!busy} onClick={() => setConfirmDiscard(true)}>Descartar</Button>
+      </>}
     </div>}
     {confirmDiscard && <Modal title="Descartar taller" onClose={() => { if (!busyRef.current) setConfirmDiscard(false); }}>
       <p className="mb-5 text-sm text-ink-muted">El taller se conservará en Descartados y no estará disponible para alumnos.</p>

@@ -6,6 +6,7 @@ import {
   EXPERIENCE_CATEGORIES,
   LIMITS,
   SESSION_DURATIONS,
+  durationsFor,
   normalizeLine,
   validateSubmission,
   type FieldError,
@@ -13,7 +14,7 @@ import {
 } from '../../supabase/functions/workshop-intake/validation.ts';
 import { IntakeError } from './workshopIntakeApi';
 
-export { ACTIVITY_TYPES, EXPERIENCE_CATEGORIES, LIMITS, SESSION_DURATIONS };
+export { ACTIVITY_TYPES, EXPERIENCE_CATEGORIES, LIMITS, SESSION_DURATIONS, durationsFor };
 
 export const ROOM_TBD = 'Por confirmar';
 
@@ -28,7 +29,7 @@ export type FormState = {
   objective: string;
   takeaway: string;
   keywords: string[];
-  /** '30' | '60' (se elige con tarjetas; el horario 10:00–12:00 y el descanso los fija el servidor). */
+  /** '15' solo para Vida Universitaria; el horario 10:00–12:00 lo fija el servidor. */
   session_duration_minutes: string;
   capacity_per_session: string;
   building: string;
@@ -188,7 +189,7 @@ export function messageFor(field: string, code: string): string {
     case 'NOT_ALLOWED':
       return 'Este dato no aplica para este tipo de taller.';
     case 'INVALID_DURATION':
-      return 'Elige 30 minutos o 1 hora.';
+      return 'Elige una duración válida para este tipo de taller.';
     case 'TOO_FEW_KEYWORDS':
       return `Agrega al menos ${LIMITS.keywords.minCount} palabras clave.`;
     case 'TOO_MANY_KEYWORDS':

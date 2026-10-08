@@ -39,9 +39,27 @@ test('loads Forms fields, edits content and persists the selected careers in one
   expect(await screen.findByText('Detalle del taller')).toBeInTheDocument();
 });
 
-test('published proposals cannot be edited', async () => {
-  vi.mocked(workshopAdminApi.get).mockResolvedValue({ ...academic(), status: 'published' });
+test('published workshop opens the Forms editor and saves through the existing RPC action', async () => {
+  vi.mocked(workshopAdminApi.get).mockResolvedValue({ ...academic(), status: 'published', published_activity_id: 'activity-1',
+    student_pitch: 'Una experiencia médica para conocer la profesión.', objective: 'Conocer el trabajo médico en un hospital.',
+    takeaway: 'Conocer la medicina y sus retos.' });
+  vi.mocked(workshopAdminApi.edit).mockResolvedValue({ id: ID, status: 'published' });
   show();
-  expect(await screen.findByText(/ya no está pendiente/)).toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: 'Guardar cambios' })).not.toBeInTheDocument();
+  expect(await screen.findByDisplayValue('Ana Ruiz')).toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText(/Nombre completo/), { target: { value: 'Ana Rodríguez' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Guardar cambios' }));
+  await waitFor(() => expect(workshopAdminApi.edit).toHaveBeenCalledWith(ID, expect.objectContaining({ facilitator_name: 'Ana Rodríguez' })));
+  expect(await screen.findByText('Detalle del taller')).toBeInTheDocument();
+});
+
+test('published edit explains a duration lock and leaves the form editable', async () => {
+  vi.mocked(workshopAdminApi.get).mockResolvedValue({ ...academic(), status: 'published', published_activity_id: 'activity-1',
+    student_pitch: 'Una experiencia médica para conocer la profesión.', objective: 'Conocer el trabajo médico en un hospital.',
+    takeaway: 'Conocer la medicina y sus retos.' });
+  vi.mocked(workshopAdminApi.edit).mockRejectedValue(new Error('SESSION_SCHEDULE_LOCKED'));
+  show();
+  await screen.findByDisplayValue('Ana Ruiz');
+  fireEvent.click(screen.getByRole('button', { name: 'Guardar cambios' }));
+  expect(await screen.findByText('No puedes cambiar la duración porque este taller ya tiene reservaciones o asistencias.')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Guardar cambios' })).toBeEnabled();
 });

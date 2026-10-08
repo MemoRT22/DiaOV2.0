@@ -38,11 +38,13 @@ export const EXPERIENCE_CATEGORIES = [
   { value: 'otra', label: 'Otra' },
 ] as const;
 
-/** Única duración permitida: 30 minutos o 1 hora. */
 export const SESSION_DURATIONS = [
+  { value: 15, label: '15 minutos' },
   { value: 30, label: '30 minutos' },
   { value: 60, label: '1 hora' },
 ] as const;
+export const durationsFor = (type: unknown) =>
+  type === 'vida_universitaria' ? SESSION_DURATIONS : SESSION_DURATIONS.filter((d) => d.value !== 15);
 
 /** Todos los talleres operan en esta ventana. La fija el servidor; el formulario no la pregunta ni la envía. */
 export const FIXED_SCHEDULE = { start: '10:00', end: '12:00', breakMinutes: 0 } as const;
@@ -272,7 +274,7 @@ export function validateSubmission(input: unknown): ValidationResult {
     const raw = input.session_duration_minutes;
     if (raw === undefined || raw === null) err('session_duration_minutes', 'REQUIRED');
     else if (typeof raw !== 'number' || !Number.isInteger(raw)) err('session_duration_minutes', 'INVALID_TYPE');
-    else if (!SESSION_DURATIONS.some((d) => d.value === raw)) err('session_duration_minutes', 'INVALID_DURATION');
+    else if (!durationsFor(input.activity_type).some((d) => d.value === raw)) err('session_duration_minutes', 'INVALID_DURATION');
     else session_duration_minutes = raw;
   }
   const capacity_per_session = int('capacity_per_session', LIMITS.capacityPerSession.min, LIMITS.capacityPerSession.max);
