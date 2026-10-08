@@ -11,7 +11,7 @@ import {
   ACTIVITY_TYPES,
   EXPERIENCE_CATEGORIES,
   LIMITS,
-  SESSION_DURATIONS,
+  durationsFor,
   copyFor,
   describeSubmitError,
   emptyForm,
@@ -284,7 +284,10 @@ export default function WorkshopWizard({
               value={form.activity_type}
               onChange={(v) => {
                 set('activity_type', v);
-                if (v === 'academica') set('experience_category', ''); // la categoría solo existe para Vida Universitaria
+                if (v === 'academica') {
+                  set('experience_category', ''); // la categoría solo existe para Vida Universitaria
+                  if (form.session_duration_minutes === '15') set('session_duration_minutes', '30');
+                }
               }}
               options={ACTIVITY_TYPES.map((t) => ({ value: t.value, label: t.label, description: t.description }))}
               error={errors.activity_type}
@@ -343,7 +346,7 @@ export default function WorkshopWizard({
               required
               value={form.session_duration_minutes}
               onChange={(v) => set('session_duration_minutes', v)}
-              options={SESSION_DURATIONS.map((d) => ({ value: String(d.value), label: d.label }))}
+              options={durationsFor(form.activity_type).map((d) => ({ value: String(d.value), label: d.label }))}
               error={errors.session_duration_minutes}
             />
             <TextField

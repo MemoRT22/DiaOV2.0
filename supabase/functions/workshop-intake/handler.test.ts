@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { handleRequest, type Deps, type RpcResult } from './handler.ts';
-import { LIMITS, SESSION_DURATIONS } from './validation.ts';
+import { LIMITS } from './validation.ts';
 
 const URL_ = 'https://example.test/functions/v1/workshop-intake';
 const DIV = '11111111-1111-4111-8111-111111111111';
@@ -159,12 +159,23 @@ test('POST: acepta correo no institucional y varias carreras (de divisiones dist
 });
 
 test('POST: duración 30 y 60 son válidas', async () => {
-  for (const d of SESSION_DURATIONS.map((x) => x.value)) {
+  for (const d of [30, 60]) {
     const { deps, calls } = makeDeps();
     const res = await handleRequest(post({ ...valid(), session_duration_minutes: d }), deps);
     assert.equal(res.status, 201, String(d));
     assert.equal((calls[0].args!.p_payload as Record<string, any>).session_duration_minutes, d);
   }
+});
+
+test('POST: Vida Universitaria acepta 15, 30 y 60; académico rechaza 15', async () => {
+  for (const d of [15, 30, 60]) {
+    const { deps, calls } = makeDeps();
+    const p = { ...valid(), activity_type: 'vida_universitaria', experience_category: 'otra', career_ids: [], session_duration_minutes: d };
+    const res = await handleRequest(post(p), deps);
+    assert.equal(res.status, 201, String(d));
+    assert.equal((calls[0].args!.p_payload as Record<string, any>).session_duration_minutes, d);
+  }
+  await expectInvalid((p) => { p.session_duration_minutes = 15; }, 'session_duration_minutes:INVALID_DURATION');
 });
 
 test('Vida Universitaria: sin carreras (vacías o ausentes) es válido y viaja con el tipo correcto', async () => {
@@ -294,7 +305,7 @@ test('campos retirados del formulario (teléfono, división, horario, descanso, 
   }
 });
 
-test('duración: solo 30 o 60 minutos; capacidad dentro de límites', async () => {
+test('duración académica: solo 30 o 60 minutos; capacidad dentro de límites', async () => {
   for (const bad of [0, -5, 5, 15, 29, 31, 45, 59, 61, 90, 120, 480]) {
     await expectInvalid((p) => { p.session_duration_minutes = bad; }, 'session_duration_minutes:INVALID_DURATION');
   }

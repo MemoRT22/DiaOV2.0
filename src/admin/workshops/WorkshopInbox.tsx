@@ -68,7 +68,7 @@ export default function WorkshopInbox() {
           <dl className="mt-4 grid gap-x-4 gap-y-2 text-sm sm:grid-cols-2 xl:grid-cols-4">
             <div><dt className="text-ink-muted">Responsable</dt><dd>{item.facilitator_name}</dd></div>
             <div><dt className="text-ink-muted">Carreras o área</dt><dd className="line-clamp-1">{item.activity_type === 'vida_universitaria' ? CATEGORY_LABELS[item.experience_category ?? ''] ?? 'Vida Universitaria' : item.career_names?.join(', ') || `${item.career_count} carreras`}</dd></div>
-            <div><dt className="text-ink-muted">Duración · cupo</dt><dd>{item.session_duration_minutes === 60 ? '1 hora' : '30 min'} · {item.capacity_per_session}</dd></div>
+            <div><dt className="text-ink-muted">Duración · cupo</dt><dd>{item.session_duration_minutes === 60 ? '1 hora' : `${item.session_duration_minutes} min`} · {item.capacity_per_session}</dd></div>
             <div><dt className="text-ink-muted">Ubicación</dt><dd>{item.building} · {item.room_space}</dd></div>
           </dl>
         </Link>)}

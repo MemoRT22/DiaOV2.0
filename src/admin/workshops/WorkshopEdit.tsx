@@ -4,7 +4,7 @@ import { Alert, Button, Spinner } from '../../components/ui';
 import { friendlyError } from '../../lib/errors';
 import { fetchWorkshopIntakeCatalog } from '../../lib/workshopIntakeApi';
 import {
-  ACTIVITY_TYPES, EXPERIENCE_CATEGORIES, LIMITS, SESSION_DURATIONS, ROOM_TBD,
+  ACTIVITY_TYPES, EXPERIENCE_CATEGORIES, LIMITS, durationsFor, ROOM_TBD,
   copyFor, validateForm, type FieldErrors, type FormState,
 } from '../../lib/workshopForm';
 import { useLoad } from '../../lib/useLoad';
@@ -52,7 +52,7 @@ function Editor({ detail, catalog }: { detail: WorkshopDetail; catalog: Awaited<
   const copy = copyFor(form.activity_type);
   return <div className="space-y-6">
     <Link to={`/coordinacion/talleres/${detail.id}`} className="text-sm font-semibold underline">Volver al taller</Link>
-    <header><h1 className="text-2xl font-extrabold">Editar taller</h1><p className="mt-1 text-sm text-ink-muted">Los cambios se guardan en el taller pendiente.</p></header>
+    <header><h1 className="text-2xl font-extrabold">Editar taller</h1><p className="mt-1 text-sm text-ink-muted">Los cambios se guardan en el taller.</p></header>
     {failure && <Alert tone="error">{failure}</Alert>}
     {Object.keys(errors).length > 0 && <Alert tone="error">Revisa los campos marcados antes de guardar.</Alert>}
     <form onSubmit={(event) => void submit(event)} noValidate className="space-y-6">
@@ -62,7 +62,7 @@ function Editor({ detail, catalog }: { detail: WorkshopDetail; catalog: Awaited<
       </section>
       <section className="card space-y-4 p-5"><h2 className="text-lg font-bold">Sobre el taller</h2>
         <RadioCards field="activity_type" legend="Tipo de taller" required value={form.activity_type}
-          onChange={(v) => { set('activity_type', v); if (v === 'academica') set('experience_category', ''); else set('career_ids', []); }}
+          onChange={(v) => { set('activity_type', v); if (v === 'academica') { set('experience_category', ''); if (form.session_duration_minutes === '15') set('session_duration_minutes', '30'); } else set('career_ids', []); }}
           options={ACTIVITY_TYPES.map((t) => ({ value: t.value, label: t.label, description: t.description }))} error={errors.activity_type} />
         {form.activity_type === 'vida_universitaria' && <RadioCards field="experience_category" legend="Categoría de la experiencia" required value={form.experience_category}
           onChange={(v) => set('experience_category', v)} options={EXPERIENCE_CATEGORIES.map((c) => ({ value: c.value, label: c.label }))} error={errors.experience_category} />}
@@ -76,7 +76,7 @@ function Editor({ detail, catalog }: { detail: WorkshopDetail; catalog: Awaited<
       </section>
       <section className="card space-y-4 p-5"><h2 className="text-lg font-bold">Logística</h2>
         <RadioCards field="session_duration_minutes" legend="Duración" required value={form.session_duration_minutes} onChange={(v) => set('session_duration_minutes', v)}
-          options={SESSION_DURATIONS.map((d) => ({ value: String(d.value), label: d.label }))} error={errors.session_duration_minutes} />
+          options={durationsFor(form.activity_type).map((d) => ({ value: String(d.value), label: d.label }))} error={errors.session_duration_minutes} />
         <TextField field="capacity_per_session" label="Cupo por sesión" required inputMode="numeric" value={form.capacity_per_session} onChange={(v) => set('capacity_per_session', v)} error={errors.capacity_per_session} />
         <TextField field="building" label="Edificio" required value={form.building} onChange={(v) => set('building', v)} error={errors.building} />
         <TextField field="room_space" label="Salón o espacio" required disabled={form.room_tbd} value={form.room_tbd ? ROOM_TBD : form.room_space} onChange={(v) => set('room_space', v)} error={errors.room_space} />
@@ -101,6 +101,6 @@ export default function WorkshopEdit() {
   }, [id]);
   if (loading && !data) return <Spinner label="Cargando edición" />;
   if (!data) return <Alert tone="error">{friendlyError(error)} <button onClick={reload} className="underline">Reintentar</button></Alert>;
-  if (groupForStatus(data.detail.status) !== 'pending') return <Alert tone="warning">Este taller ya no está pendiente. <Link to={`/coordinacion/talleres/${id}`} className="underline">Ver taller</Link></Alert>;
+  if (groupForStatus(data.detail.status) === 'archived') return <Alert tone="warning">Este taller está descartado. <Link to={`/coordinacion/talleres/${id}`} className="underline">Ver taller</Link></Alert>;
   return <Editor key={id} detail={data.detail} catalog={data.catalog} />;
 }

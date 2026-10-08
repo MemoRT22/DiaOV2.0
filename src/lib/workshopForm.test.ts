@@ -74,13 +74,17 @@ describe('validateForm (misma validación que la Edge Function)', () => {
     expect(validateForm(valid({ capacity_per_session: 'abc' })).errors.capacity_per_session).toMatch(/número entero/);
   });
 
-  it('la duración solo admite 30 minutos o 1 hora', () => {
-    expect(validateForm(valid({ session_duration_minutes: '30' })).errors.session_duration_minutes).toBeUndefined();
-    expect(validateForm(valid({ session_duration_minutes: '60' })).errors.session_duration_minutes).toBeUndefined();
+  it('académico admite 30/60 y rechaza 15; Vida Universitaria admite 15/30/60', () => {
+    for (const duration of ['30', '60']) {
+      expect(validateForm(valid({ session_duration_minutes: duration })).errors.session_duration_minutes).toBeUndefined();
+    }
+    for (const duration of ['15', '30', '60']) {
+      expect(validateForm(valid({ activity_type: 'vida_universitaria', experience_category: 'otra', career_ids: [], session_duration_minutes: duration })).errors.session_duration_minutes).toBeUndefined();
+    }
     for (const bad of ['', '0', '15', '45', '90', '120', 'abc', '60.5']) {
       expect(validateForm(valid({ session_duration_minutes: bad })).errors.session_duration_minutes, bad).toBeTruthy();
     }
-    expect(validateForm(valid({ session_duration_minutes: '45' })).errors.session_duration_minutes).toBe('Elige 30 minutos o 1 hora.');
+    expect(validateForm(valid({ session_duration_minutes: '45' })).errors.session_duration_minutes).toBe('Elige una duración válida para este tipo de taller.');
   });
 
   it('el espacio puede quedar «Por confirmar»; sin marcar, es obligatorio', () => {
@@ -173,7 +177,7 @@ describe('mensajes y errores del backend', () => {
   it('mapea códigos a mensajes humanos', () => {
     expect(messageFor('title', 'TOO_SHORT')).toMatch(/mínimo 5/);
     expect(messageFor('notes', 'TOO_LONG')).toMatch(/máximo 1500/);
-    expect(messageFor('session_duration_minutes', 'INVALID_DURATION')).toBe('Elige 30 minutos o 1 hora.');
+    expect(messageFor('session_duration_minutes', 'INVALID_DURATION')).toBe('Elige una duración válida para este tipo de taller.');
   });
 
   it('describeSubmitError no filtra detalles internos', () => {
@@ -189,7 +193,7 @@ describe('mensajes y errores del backend', () => {
     ];
     for (const [err, re] of cases) expect(describeSubmitError(err).message).toMatch(re);
     expect(describeSubmitError(new IntakeError('http', 422, 'VALIDATION_FAILED', [{ field: 'keywords[1]', code: 'DUPLICATE_KEYWORD' }])).fieldErrors.keywords).toMatch(/repetidas/);
-    expect(describeSubmitError(new IntakeError('http', 422, 'VALIDATION_FAILED', [{ field: 'session_duration_minutes', code: 'INVALID_DURATION' }])).fieldErrors.session_duration_minutes).toBe('Elige 30 minutos o 1 hora.');
+    expect(describeSubmitError(new IntakeError('http', 422, 'VALIDATION_FAILED', [{ field: 'session_duration_minutes', code: 'INVALID_DURATION' }])).fieldErrors.session_duration_minutes).toBe('Elige una duración válida para este tipo de taller.');
     expect(describeSubmitError(new IntakeError('http', 422, 'INVALID_CAREER')).reloadCatalog).toBe(true);
     expect(describeSubmitError(new IntakeError('http', 503, 'NO_ACTIVE_EDITION')).unavailable).toBe(true);
     const generic = describeSubmitError(new Error('relation "secret" does not exist: SELECT * FROM x')).message;
