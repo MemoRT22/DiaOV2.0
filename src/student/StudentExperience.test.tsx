@@ -85,6 +85,11 @@ test('the bottom navigation always offers Escanear, one tap away, and marks the 
   expect(within(nav).getByRole('link', { name: /Inicio/ })).not.toHaveAttribute('aria-current');
 });
 
+test('the student workshop detail keeps Talleres selected in the bottom navigation', () => {
+  renderAt('/misiones/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', <BottomNav />);
+  expect(screen.getByRole('link', { name: /Talleres/ })).toHaveAttribute('aria-current', 'page');
+});
+
 test('Escanear is available from every student screen', () => {
   for (const path of ['/bitacora', '/misiones', '/ruta', '/pasaporte', '/destinos', '/escanear']) {
     const { unmount } = renderAt(path, <BottomNav />);

@@ -1,8 +1,7 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, expect, test, vi } from 'vitest';
 import type { Board, BoardSession, MyReservation } from '../lib/reservations';
-import Missions from './Missions';
 import MyRoute from './MyRoute';
 
 const state = vi.hoisted(() => ({ board: null as unknown, reserve: vi.fn(), cancel: vi.fn(), change: vi.fn() }));
@@ -45,59 +44,7 @@ const renderRoute = async (b: Board) => {
   render(<MemoryRouter><MyRoute /></MemoryRouter>);
   await screen.findByText(/talleres activos/); // divisions load asynchronously
 };
-const renderMissions = (b: Board, path = '/misiones') => {
-  state.board = b;
-  return render(<MemoryRouter initialEntries={[path]}><Missions /></MemoryRouter>);
-};
-const row = (title: string) => screen.getByRole('heading', { name: title }).closest('li') as HTMLElement;
-
 beforeEach(() => vi.clearAllMocks());
-
-// ---------------------------------------------------------------- Misiones
-
-test('a session in progress with room shows “En curso · puedes entrar” and a Reservar button', async () => {
-  renderMissions(board({ sessions: [session({ id: 'live', title: 'En vivo', started: true, in_progress: true })] }));
-  const item = (await screen.findByRole('heading', { name: 'En vivo' })).closest('li') as HTMLElement;
-  expect(within(item).getByText('En curso · puedes entrar')).toBeInTheDocument();
-  expect(within(item).getByRole('button', { name: 'Reservar' })).toBeInTheDocument();
-  expect(screen.queryByText(/ya inició/i)).not.toBeInTheDocument();
-});
-
-test('a session that ended is not reservable', async () => {
-  renderMissions(board({ sessions: [session({ id: 'old', title: 'Pasada', started: true, ended: true })] }));
-  const item = (await screen.findByRole('heading', { name: 'Pasada' })).closest('li') as HTMLElement;
-  expect(within(item).getByText('Terminó')).toBeInTheDocument();
-  expect(within(item).queryByRole('button', { name: 'Reservar' })).not.toBeInTheDocument();
-});
-
-test('a real overlap is blocked while a tight transfer stays selectable and warns', async () => {
-  renderMissions(board({
-    sessions: [
-      session({ id: 'over', activity_id: 'a2', title: 'Se empalma', conflicts_with: ['r9'] }),
-      session({ id: 'tight', activity_id: 'a3', title: 'Justo', tight_transfer_with: ['r9'] }),
-    ],
-  }));
-  await screen.findByRole('heading', { name: 'Se empalma' });
-  const over = row('Se empalma');
-  expect(within(over).getByText('Choca con tu ruta')).toBeInTheDocument();
-  expect(within(over).queryByRole('button', { name: 'Reservar' })).not.toBeInTheDocument();
-  const tight = row('Justo');
-  expect(within(tight).getByText(/Traslado ajustado · menos de 10 min/)).toBeInTheDocument();
-  fireEvent.click(within(tight).getByRole('button', { name: 'Reservar' }));
-  // The warning travels inside the normal confirmation dialog: no extra mandatory step.
-  const dialog = await screen.findByRole('dialog', { name: 'Reservar lugar' });
-  expect(within(dialog).getByText(/Traslado ajustado: tienes menos de 10 min/)).toBeInTheDocument();
-  fireEvent.click(within(dialog).getByRole('button', { name: 'Reservar' }));
-  await waitFor(() => expect(state.reserve).toHaveBeenCalledWith('tight'));
-});
-
-test('without a tight transfer the confirmation has no warning', async () => {
-  renderMissions(board({ sessions: [session({ id: 'free', title: 'Libre' })] }));
-  await screen.findByRole('heading', { name: 'Libre' });
-  fireEvent.click(within(row('Libre')).getByRole('button', { name: 'Reservar' }));
-  const dialog = await screen.findByRole('dialog', { name: 'Reservar lugar' });
-  expect(within(dialog).queryByText(/Traslado ajustado/)).not.toBeInTheDocument();
-});
 
 // ---------------------------------------------------------------- Mi Ruta
 

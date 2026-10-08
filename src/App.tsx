@@ -14,6 +14,7 @@ const Welcome = lazy(() => import('./student/Welcome'));
 const Home = lazy(() => import('./student/Home'));
 const PassportPage = lazy(() => import('./student/PassportPage'));
 const Missions = lazy(() => import('./student/Missions'));
+const StudentWorkshopDetail = lazy(() => import('./student/StudentWorkshopDetail'));
 const MyRoute = lazy(() => import('./student/MyRoute'));
 const Interests = lazy(() => import('./student/Interests'));
 const WorkshopRegistration = lazy(() => import('./public/WorkshopRegistration'));
@@ -85,6 +86,7 @@ export default function App() {
               <Route path="/bitacora" element={<Home />} />
               <Route path="/pasaporte" element={<PassportPage />} />
               <Route path="/misiones" element={<Missions />} />
+              <Route path="/misiones/:activityId" element={<StudentWorkshopDetail />} />
               <Route path="/ruta" element={<MyRoute />} />
               <Route path="/escanear" element={<Scanner />} />
               <Route path="/destinos" element={<Interests />} />

@@ -24,7 +24,7 @@ export default function BottomNav() {
   const scanActive = pathname === '/escanear';
 
   const renderTab = ({ to, label, icon: Icon, also = [] }: Tab) => {
-    const active = pathname === to || also.includes(pathname);
+    const active = pathname === to || (to === '/misiones' && pathname.startsWith('/misiones/')) || also.includes(pathname);
     return (
       <Link
         key={to}
