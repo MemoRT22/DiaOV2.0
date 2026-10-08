@@ -2,32 +2,29 @@
 // mixing QR token and manual code. Expected: 1 attendance, credits granted exactly once,
 // all other responses idempotent, and the stored method = the request that won the race.
 // 1) run concurrency_checkin_setup.sql
-// 2) Get the credential token and code from the DB:
+// 2) Get the activity credential token and code from the local DB:
 //    select pgp_sym_decrypt(qr_token_encrypted, credential_encryption_key()) as token,
 //           pgp_sym_decrypt(manual_code_encrypted, credential_encryption_key()) as code
-//    from session_credentials sc join activity_sessions s on s.id=sc.session_id
-//    join activities a on a.id=s.activity_id where a.title='CC CHK' and a.is_demo;
-// 3) QR_TOKEN=... MANUAL_CODE=... node supabase/tests/concurrency_checkin.mjs
+//    from activity_credentials ac join activities a on a.id=ac.activity_id
+//    where a.title='CC CHK' and a.is_demo;
+// 3) CONCURRENCY_TEST_SUPABASE_URL=http://127.0.0.1:54321 CONCURRENCY_TEST_SUPABASE_ANON_KEY=...
+//    CONCURRENCY_TEST_PASSWORD=... QR_TOKEN=... MANUAL_CODE=... node supabase/tests/concurrency_checkin.mjs
 // 4) Verify in the DB (WINNER_METHOD printed by this script):
 //    select count(*), min(method), sum(credits_granted) from attendances at
 //    join participants p on p.id = at.participant_id where p.email = 'cc.check@test.invalid';
 // 5) run concurrency_checkin_cleanup.sql
-import { readFileSync } from 'node:fs';
 import { createClient } from '@supabase/supabase-js';
 
-const env = Object.fromEntries(
-  readFileSync(new URL('../../.env', import.meta.url), 'utf8')
-    .split('\n').filter((l) => l.includes('=')).map((l) => [l.slice(0, l.indexOf('=')).trim(), l.slice(l.indexOf('=') + 1).trim()]),
-);
-const URL_ = env.VITE_SUPABASE_URL;
-const ANON = env.VITE_SUPABASE_ANON_KEY;
-const BIRTH = '2008-03-03';
+const URL_ = process.env.CONCURRENCY_TEST_SUPABASE_URL;
+const ANON = process.env.CONCURRENCY_TEST_SUPABASE_ANON_KEY;
+const PASSWORD = process.env.CONCURRENCY_TEST_PASSWORD;
 const N = 20;
 const QR_TOKEN = process.env.QR_TOKEN;
 const MANUAL_CODE = process.env.MANUAL_CODE;
 
-if (!QR_TOKEN || !MANUAL_CODE) {
-  console.error('Falta QR_TOKEN o MANUAL_CODE. Obtenlos de la BD con la query del header.');
+if (!URL_ || !ANON || !PASSWORD || !['localhost', '127.0.0.1'].includes(new URL(URL_).hostname)
+  || !QR_TOKEN || !MANUAL_CODE) {
+  console.error('Configura URL local, anon key, contraseña DEMO, QR_TOKEN y MANUAL_CODE; producción está bloqueada.');
   process.exit(1);
 }
 
@@ -38,21 +35,33 @@ function check(name, ok, detail = '') {
 }
 
 async function login() {
-  const res = await fetch(`${URL_}/functions/v1/student-access`, {
+  const email = 'cc.check@test.invalid';
+  const identify = await fetch(`${URL_}/functions/v1/student-access`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ANON}`, apikey: ANON },
-    body: JSON.stringify({ email: 'cc.check@test.invalid', birth_date: BIRTH }),
+    body: JSON.stringify({ action: 'identify', email }),
   });
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok || !body.access_token) throw new Error(`login: ${res.status} ${body.error ?? ''}`);
-  return body.access_token;
+  const state = await identify.json().catch(() => ({}));
+  if (!identify.ok || !['password_setup', 'password_login'].includes(state.state)) {
+    throw new Error(`identify: ${identify.status} ${state.error ?? state.state ?? ''}`);
+  }
+  if (state.state === 'password_setup') {
+    const setup = await fetch(`${URL_}/functions/v1/student-access`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ANON}`, apikey: ANON },
+      body: JSON.stringify({ action: 'setup_password', email, password: PASSWORD }),
+    });
+    const body = await setup.json().catch(() => ({}));
+    if (!setup.ok || !body.ok) throw new Error(`setup: ${setup.status} ${body.error ?? ''}`);
+  }
+  const client = createClient(URL_, ANON, { auth: { persistSession: false, autoRefreshToken: false } });
+  const { error } = await client.auth.signInWithPassword({ email, password: PASSWORD });
+  if (error) throw error;
+  return client;
 }
 
 async function main() {
-  const token = await login();
-  const supabase = createClient(URL_, ANON, {
-    global: { headers: { Authorization: `Bearer ${token}` } },
-  });
+  const supabase = await login();
 
   console.log(`Lanzando ${N} requests simultaneos (mezcla QR y codigo)...`);
 

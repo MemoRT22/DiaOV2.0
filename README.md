@@ -2,16 +2,15 @@
 
 Plataforma del Día de Orientación Vocacional de la Universidad Anáhuac Cancún (React + Vite + TypeScript + Tailwind + Supabase).
 
-## Padrón oficial de aspirantes
+## Importación de aspirantes
 
-Forms solo alimenta la plataforma **antes del corte**. Después, la plataforma es la fuente de verdad del evento.
+Coordinación puede repetir la carga del CSV de Forms durante la preparación y la operación, incluso si `editions.roster_status = 'oficial'`. La pantalla está en *Participantes → Importar*. `roster_status` sigue existiendo para otros contratos, pero no bloquea `preview_participant_import` ni `commit_participant_import` tras aplicar la migración `allow_official_participant_import` de Fase 6B.
 
-1. **Preparación** (`editions.roster_status = 'preparacion'`): Coordinación carga el CSV de Forms desde *Participantes → Importar padrón*, revisa la vista previa y puede volver a cargarlo las veces necesarias. Una recarga reconoce a los aspirantes por correo (o correo anterior), no los duplica y respeta las correcciones manuales: un dato corregido a mano nunca se reemplaza en silencio, queda como registro por revisar (`1,842 actualizados · 17 nuevos · 3 requieren revisión`) y se resuelve ahí mismo o en el expediente del participante (`list_import_conflicts` / `resolve_import_conflict`, auditado).
+1. **Conciliación**: una recarga reconoce a los aspirantes por correo (o correo anterior), no los duplica y respeta las correcciones manuales: un dato corregido a mano nunca se reemplaza en silencio, queda como registro por revisar (`1,842 actualizados · 17 nuevos · 3 requieren revisión`) y se resuelve ahí mismo o en el expediente del participante (`list_import_conflicts` / `resolve_import_conflict`, auditado).
 2. **Carreras no reconocidas**: la vista previa agrupa cada valor distinto (sin importar mayúsculas, acentos o espacios). Coordinación lo relaciona una sola vez con una carrera oficial activa o con "Sin carrera". La carga se bloquea (`UNRESOLVED_CAREERS`) hasta resolverlos todos. El texto original se guarda en `participants.initial_career_raw`, se muestra en el expediente y se exporta. Cada mapeo queda auditado (`participants.career_mapped`).
 3. **Preparatorias no reconocidas**: la vista previa agrupa solo coincidencias normalizadas exactas contra `high_schools` (sin fuzzy matching). Coordinación las relaciona con una preparatoria activa o la agrega en *Configuración → Catálogos académicos → Preparatorias* y vuelve a generar la vista previa. Commit se bloquea con `UNRESOLVED_HIGH_SCHOOLS` mientras haya pendientes. El participante guarda `high_school_id` y el nombre canónico en `high_school` para compatibilidad.
 4. **Columnas adicionales**: las claves se asignan con todo el esquema del CSV (`Pregunta`, `Pregunta (2)`…), aunque haya celdas vacías, así cada respuesta queda siempre en su columna. Las respuestas vacías no se guardan. Solo Coordinación las ve; se incluyen en la exportación.
-4. **Declarar padrón oficial** (`declare_official_roster`, solo Coordinación, frase `DECLARAR PADRÓN OFICIAL`, auditado): bloquea en el servidor cualquier vista previa o carga del CSV (`ROSTER_OFFICIAL`), incluso llamando directo a la función.
-5. **Reapertura excepcional** (`reopen_roster_import`, solo Coordinación): exige motivo (mínimo 10 caracteres) y la frase `REABRIR IMPORTACIÓN`; queda auditada con quién, cuándo y por qué (`roster.reopened`).
+5. **Estado heredado**: la UI actual no ofrece Declarar padrón oficial ni Reabrir importación. Esas RPC heredadas permanecen en backend; esta fase solo elimina el bloqueo del procesamiento del CSV.
 
 ## Catálogos académicos
 
@@ -123,22 +122,18 @@ El administrador se entiende con cinco áreas: **Inicio, Participantes, Talleres
 
 ## Pruebas de regresión
 
-`supabase/tests/regression_correcciones.sql` se ejecuta completo como un solo bloque. Siempre termina con un error que trae los resultados, así que **todos los cambios se revierten**. Cubre roles, carga y recarga del CSV, columnas adicionales, mapeo de carreras, padrón oficial y reapertura, exportación, aviso de privacidad y sesiones.
-
-`supabase/tests/regression_admin_simplification.sql` funciona igual (todo se revierte, fixtures propios) y cubre las reglas de rangos del producto, el conteo de divisiones del progreso, el diagnóstico de acceso desde Participantes, la resolución de conflictos de importación (incluido el flujo importar → conflicto → revisar) y el contrato de reservaciones.
-
-`supabase/tests/regression_reservaciones.sql` funciona igual (todo se revierte) y cubre autorización, ventana, cupo, duplicados, choques y traslado, límite, tiempo, cambios atómicos, cierre, ediciones administrativas, sesiones ocultas y canceladas, lectura directa bloqueada para todos los roles, aislamiento y sellos.
+La batería vigente está inventariada en [`supabase/tests/README.md`](supabase/tests/README.md). `regression_official_participant_import.sql` usa `BEGIN`/`ROLLBACK` y prueba preview y commit en preparación y oficial, conciliación, alias, overrides, intereses y permisos. `regression_participant_access.sql`, `regression_asistencia.sql`, `regression_student_flexibility.sql`, `regression_recommender.sql` y `regression_sorteo.sql` cubren los contratos actuales. Algunas suites históricas terminan deliberadamente con una excepción `*_OK` que revierte sus fixtures; ese mensaje, con cero fallos, indica éxito.
 
 `supabase/tests/concurrency_reservations.mjs` lanza clientes reales simultáneos (solo con la clave pública) contra las funciones de reservación. Pasos:
 
-1. Ejecutar `supabase/tests/concurrency_fixture_setup.sql` (SQL editor). Crea solo aspirantes demo `cc.01`…`cc.30` y `cc.max@test.invalid` y talleres/sesiones demo `CC …`, guarda la configuración de reservaciones vigente y abre la ventana. Se niega a correr si ya hay datos CC.
-2. `node supabase/tests/concurrency_reservations.mjs`
-3. Ejecutar `supabase/tests/concurrency_fixture_cleanup.sql`. Borra solo esos datos (incluye sus usuarios de acceso, intentos de acceso y reservaciones) y restaura la configuración guardada. Puede repetirse sin efecto.
+1. Usar **solo un proyecto Supabase local/descartable** con Auth, Edge Functions y migraciones actuales. Ejecutar `supabase/tests/concurrency_fixture_setup.sql`; crea aspirantes y sesiones DEMO `cc.*` / `CC …` y guarda la configuración anterior.
+2. Ejecutar `CONCURRENCY_TEST_SUPABASE_URL=http://127.0.0.1:54321 CONCURRENCY_TEST_SUPABASE_ANON_KEY=<clave pública local> CONCURRENCY_TEST_PASSWORD=<contraseña DEMO> node supabase/tests/concurrency_reservations.mjs`. Usa `identify`/`setup_password` y `signInWithPassword`; el script rechaza URLs que no sean localhost.
+3. Ejecutar `supabase/tests/concurrency_fixture_cleanup.sql` en ese mismo proyecto. Retira solo el fixture CC y restaura la configuración guardada.
 
 ## Check-in (asistencia con QR y código manual)
 
-- Al final de cada taller, el facilitador muestra un QR y un código manual de 6 letras. El aspirante escanea o escribe el código desde su Pasaporte; el servidor valida identidad, Aviso, credencial, sesión, ventana de tiempo, reservación y duplicados en una sola transacción.
-- La credencial de cada sesión es impredecible y se guarda cifrada (pgcrypto `pgp_sym_encrypt`). La clave de cifrado vive en Supabase Vault (`diaov_checkin_credential_key`), se generó dentro de la base de datos y no está en el repositorio ni llega al frontend; solo la lee la función interna `credential_encryption_key()` (sin permisos para anon/authenticated). La clave literal de migraciones anteriores se considera comprometida y ya no se usa: las credenciales existentes se volvieron a cifrar con la clave de Vault.
+- Cada taller tiene un QR y un código manual de 6 caracteres. El aspirante escanea o escribe el código desde su Pasaporte; el servidor valida identidad, Aviso, credencial de actividad, reservación y duplicados en una transacción.
+- La credencial de cada actividad es impredecible y se guarda cifrada (pgcrypto `pgp_sym_encrypt`). La clave de cifrado vive en Supabase Vault (`diaov_checkin_credential_key`), no está en el repositorio ni llega al frontend; solo la lee la función interna `credential_encryption_key()` (sin permisos para anon/authenticated).
 - El token QR (32 bytes) y el código manual (6 caracteres) se generan con `gen_random_bytes`. Ambos hashes son UNIQUE en base de datos; si un código nuevo choca con uno existente, se reintenta con valores nuevos (máximo 10, si no `CREDENTIAL_GENERATION_FAILED`).
 - Nadie lee la tabla de credenciales directamente; solo Coordinación y Staff pueden mostrarla mediante una función auditada. Regenerar la credencial invalida la anterior (QR y código) al instante.
 - El método de la asistencia (`qr` o `codigo_manual`) lo infiere el servidor según la credencial que coincidió; el navegador no lo envía. Se guarda en la asistencia y en la auditoría, y un reintento posterior no lo cambia.
@@ -146,15 +141,15 @@ El administrador se entiende con cinco áreas: **Inicio, Participantes, Talleres
 - El check-in ya no depende de la hora programada: quien dirige el taller decide cuándo muestra el QR. Basta una reservación vigente o expirada (no cancelada) de la actividad, credencial válida y no tener ya asistencia (`CHECKIN_TOO_EARLY` y `CHECKIN_TOO_LATE` fueron retirados). Como la credencial es por actividad, la sesión se elige de forma determinista: en curso, si no la pasada más reciente, si no la futura más cercana. `checkin_open_before_minutes` y `checkin_close_after_minutes` se conservan en la edición pero ya no autorizan; `checkin_close_after_minutes` solo la lee el Centro de Operación.
 - Una asistencia por persona y sesión, con un snapshot de los créditos otorgados. Los rangos avanzan por sellos acumulados (suma de créditos), no por número de asistencias. El recordatorio de intereses sigue basado en talleres asistidos.
 - Sesión oculta con reservación sigue permitiendo check-in. Sesión cancelada no valida. Reactivar no revive asistencias.
-- `attendances` y `session_credentials` no tienen permisos para anon ni authenticated (RLS como defensa en profundidad).
+- `attendances` y `activity_credentials` no tienen lectura directa para anon ni authenticated (RLS como defensa en profundidad); `session_credentials` quedó como tabla heredada vacía.
 - Coordinación y Staff tienen un módulo "Check-in" con lista de sesiones, conteos, QR en pantalla completa, vista imprimible y regeneración (solo Coordinación). Sorteo no tiene acceso.
 
-`supabase/tests/regression_asistencia.sql` funciona igual que las demás (todo se revierte) y cubre autorización, clave en Vault, credenciales válidas e inválidas, método real QR/código (primer check-in e idempotencia), rango, regeneración (QR y código anteriores fallan), unicidad y reintento por colisión, reservación vigente/cambiada/cancelada por sesión y reactivación, sesión oculta, ventana temprana y tardía, idempotencia, créditos/snapshot, progreso y seguridad de datos.
+`supabase/tests/regression_asistencia.sql` cubre QR, código, idempotencia, permisos, sesión cancelada, progreso y regeneración de credenciales de actividad. `regression_student_flexibility.sql` cubre además tiempos, cambios de ruta, sesiones ocultas y Realtime. Ambas revierten sus fixtures.
 
 `supabase/tests/concurrency_checkin.mjs` lanza 20 requests simultáneos del mismo aspirante mezclando QR y código. Verifica una sola asistencia nueva, 19 idempotentes, créditos una sola vez y que el método reportado sea el de la credencial que ganó la carrera. Pasos:
 
-1. Ejecutar `supabase/tests/concurrency_checkin_setup.sql` (SQL editor).
-2. Obtener credenciales de la BD y exportarlas: `QR_TOKEN=... MANUAL_CODE=... node supabase/tests/concurrency_checkin.mjs`.
+1. Ejecutar `supabase/tests/concurrency_checkin_setup.sql` solo en el proyecto local/descartable.
+2. Obtener la credencial DEMO de `activity_credentials` (consulta en el encabezado del script) y ejecutar el harness con las mismas variables `CONCURRENCY_TEST_SUPABASE_URL`, `CONCURRENCY_TEST_SUPABASE_ANON_KEY` y `CONCURRENCY_TEST_PASSWORD`, además de `QR_TOKEN` y `MANUAL_CODE`.
 3. Confirmar en la BD que hay 1 asistencia con el `WINNER_METHOD` impreso (query en el encabezado del script).
 4. Ejecutar `supabase/tests/concurrency_checkin_cleanup.sql`.
 

@@ -42,10 +42,10 @@ BEGIN
   INSERT INTO careers (code, name, division_id, is_demo, is_active)
   VALUES ('RO-REAL', 'RO Carrera', v_div1, false, true) RETURNING id INTO v_career;
 
-  INSERT INTO participants (edition_id, email, full_name, birth_date, origin, auth_user_id, initial_career_id)
-  VALUES (ed, 'ro.a@test.invalid', 'Ana RO', '2008-01-01', 'forms', pa, v_career),
-         (ed, 'ro.b@test.invalid', 'Beto RO', '2008-01-02', 'forms', pb, v_career),
-         (ed, 'ro.c@test.invalid', 'Carla RO', '2008-01-03', 'forms', pc, v_career);
+  INSERT INTO participants (edition_id, email, full_name, origin, auth_user_id, initial_career_id)
+  VALUES (ed, 'ro.a@test.invalid', 'Ana RO', 'forms', pa, v_career),
+         (ed, 'ro.b@test.invalid', 'Beto RO', 'forms', pb, v_career),
+         (ed, 'ro.c@test.invalid', 'Carla RO', 'forms', pc, v_career);
   SELECT id INTO v_pa FROM participants WHERE email = 'ro.a@test.invalid';
   SELECT id INTO v_pb FROM participants WHERE email = 'ro.b@test.invalid';
   SELECT id INTO v_pc FROM participants WHERE email = 'ro.c@test.invalid';
@@ -192,7 +192,7 @@ BEGIN
         PERFORM set_config('request.jwt.claims', '{"role":"anon"}', true);
         PERFORM set_config('role', 'anon', true);
       ELSIF v_uid IS NOT NULL THEN
-        PERFORM set_config('request.jwt.claims', json_build_object('sub', v_uid, 'role', 'authenticated')::text, true);
+        PERFORM set_config('request.jwt.claims', json_build_object('sub', v_uid, 'role', 'authenticated')::text, true); PERFORM set_config('request.jwt.claim.sub', (v_uid)::text, true);
         PERFORM set_config('role', 'authenticated', true);
       END IF;
       IF v_q ~* '^(update|insert|create|delete)' THEN
@@ -204,7 +204,7 @@ BEGIN
       v_err := SQLERRM;
     END;
     PERFORM set_config('role', 'postgres', true);
-    PERFORM set_config('request.jwt.claims', '', true);
+    PERFORM set_config('request.jwt.claims', '', true); PERFORM set_config('request.jwt.claim.sub', '', true);
 
     v_ok := CASE
       WHEN v_st.expect = 'OK' THEN v_err IS NULL

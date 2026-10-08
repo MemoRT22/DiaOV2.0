@@ -1,17 +1,16 @@
 // Concurrency test for the reservation engine: N real clients call the reservation RPCs at the same instant.
-// Uses only the public anon key; each client signs in through the real `student-access` login.
+// Uses only the public anon key; each DEMO client signs in with email + password.
 // 1) run concurrency_fixture_setup.sql  2) node supabase/tests/concurrency_reservations.mjs  3) run concurrency_fixture_cleanup.sql
-import { readFileSync } from 'node:fs';
 import { createClient } from '@supabase/supabase-js';
 
-const env = Object.fromEntries(
-  readFileSync(new URL('../../.env', import.meta.url), 'utf8')
-    .split('\n').filter((l) => l.includes('=')).map((l) => [l.slice(0, l.indexOf('=')).trim(), l.slice(l.indexOf('=') + 1).trim()]),
-);
-const URL_ = env.VITE_SUPABASE_URL;
-const ANON = env.VITE_SUPABASE_ANON_KEY;
-const BIRTH = '2008-03-03';
+const URL_ = process.env.CONCURRENCY_TEST_SUPABASE_URL;
+const ANON = process.env.CONCURRENCY_TEST_SUPABASE_ANON_KEY;
+const PASSWORD = process.env.CONCURRENCY_TEST_PASSWORD;
 const N = 30;
+
+if (!URL_ || !ANON || !PASSWORD || !['localhost', '127.0.0.1'].includes(new URL(URL_).hostname)) {
+  throw new Error('Configura CONCURRENCY_TEST_SUPABASE_URL (localhost), CONCURRENCY_TEST_SUPABASE_ANON_KEY y CONCURRENCY_TEST_PASSWORD. No se permite apuntar a producción.');
+}
 
 let failures = 0;
 function check(name, ok, detail = '') {
@@ -20,16 +19,27 @@ function check(name, ok, detail = '') {
 }
 
 async function login(email) {
-  const res = await fetch(`${URL_}/functions/v1/student-access`, {
+  const identify = await fetch(`${URL_}/functions/v1/student-access`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ANON}`, apikey: ANON },
-    body: JSON.stringify({ email, birth_date: BIRTH }),
+    body: JSON.stringify({ action: 'identify', email }),
   });
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok || !body.access_token) throw new Error(`login ${email}: ${res.status} ${body.error ?? ''}`);
+  const state = await identify.json().catch(() => ({}));
+  if (!identify.ok || !['password_setup', 'password_login'].includes(state.state)) {
+    throw new Error(`identify ${email}: ${identify.status} ${state.error ?? state.state ?? ''}`);
+  }
+  if (state.state === 'password_setup') {
+    const setup = await fetch(`${URL_}/functions/v1/student-access`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ANON}`, apikey: ANON },
+      body: JSON.stringify({ action: 'setup_password', email, password: PASSWORD }),
+    });
+    const body = await setup.json().catch(() => ({}));
+    if (!setup.ok || !body.ok) throw new Error(`setup ${email}: ${setup.status} ${body.error ?? ''}`);
+  }
   const client = createClient(URL_, ANON, { auth: { persistSession: false, autoRefreshToken: false } });
-  const { error } = await client.auth.setSession({ access_token: body.access_token, refresh_token: body.refresh_token });
-  if (error) throw error;
+  const { error } = await client.auth.signInWithPassword({ email, password: PASSWORD });
+  if (error) throw new Error(`password login ${email}: ${error.message}`);
   return client;
 }
 
