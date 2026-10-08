@@ -24,6 +24,7 @@ DECLARE
   real_activity uuid := 'a0000000-0000-4000-8000-000000000001';
   demo_activity uuid := 'a0000000-0000-4000-8000-000000000002';
   legacy_activity uuid := 'a0000000-0000-4000-8000-000000000003';
+  life_activity uuid := 'a0000000-0000-4000-8000-000000000006';
   detail jsonb;
 BEGIN
   IF has_function_privilege('anon', 'public.my_workshop_detail(uuid)', 'EXECUTE')
@@ -39,6 +40,22 @@ BEGIN
   THEN RAISE EXCEPTION 'DETAIL_FAIL[editorial allowlist]'; END IF;
   IF detail ?| ARRAY['facilitator_email', 'admin_notes', 'review_feedback', 'status', 'sessions', 'reviewed_at']
   THEN RAISE EXCEPTION 'DETAIL_FAIL[private fields]'; END IF;
+
+  detail := pg_temp.read_detail(valid, life_activity)::jsonb;
+  IF detail->>'activity_type' <> 'vida_universitaria' OR detail->>'experience_category' <> 'deportiva'
+    OR detail->>'objective' <> 'Moverte y convivir' OR detail->'careers' <> '[]'::jsonb
+    OR detail->'divisions' <> '[]'::jsonb
+  THEN RAISE EXCEPTION 'DETAIL_FAIL[life without division]'; END IF;
+
+  -- Admin edits after publication are read from the current activity and submission, without republishing.
+  UPDATE public.activities SET title = 'Publicado editado', description = 'Pitch actualizado'
+    WHERE id = real_activity;
+  UPDATE public.workshop_submissions SET objective = 'Objetivo actualizado', takeaway = 'Resultado actualizado'
+    WHERE published_activity_id = real_activity;
+  detail := pg_temp.read_detail(valid, real_activity)::jsonb;
+  IF detail->>'title' <> 'Publicado editado' OR detail->>'student_pitch' <> 'Pitch actualizado'
+    OR detail->>'objective' <> 'Objetivo actualizado' OR detail->>'takeaway' <> 'Resultado actualizado'
+  THEN RAISE EXCEPTION 'DETAIL_FAIL[post-publication edits]'; END IF;
 
   detail := pg_temp.read_detail(valid, legacy_activity)::jsonb;
   IF detail->>'title' <> 'Legacy' OR detail->'objective' <> 'null'::jsonb

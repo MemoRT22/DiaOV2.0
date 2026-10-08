@@ -186,7 +186,7 @@ export default function Missions() {
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0 flex-1">
                       <p className="text-[11px] font-bold uppercase tracking-wide" style={{ color }}>
-                        {divisionNames.join(' · ')}
+                        {divisionNames.length ? divisionNames.join(' · ') : 'Vida Universitaria'}
                       </p>
                       <h2 className="mt-0.5 text-base font-extrabold leading-snug">{first.title}</h2>
                     </div>

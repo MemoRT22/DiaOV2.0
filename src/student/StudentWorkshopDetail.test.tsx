@@ -93,8 +93,16 @@ test('a large catalogue does not request editorial detail for its cards', async 
   expect(m.fetchDetail).not.toHaveBeenCalled();
 });
 
+test('a Vida Universitaria card without academic divisions has a useful label and no per-card detail request', async () => {
+  mount('/misiones', board([slot('life', { title: 'Yoga en campus', division_id: null, division_ids: [] })]));
+  const card = (await screen.findByRole('heading', { name: 'Yoga en campus' })).closest('li') as HTMLElement;
+  expect(within(card).getByText('Vida Universitaria')).toBeInTheDocument();
+  expect(within(card).queryByText(/Ingenierías|Negocios/)).not.toBeInTheDocument();
+  expect(m.fetchDetail).not.toHaveBeenCalled();
+});
+
 test('catalogue preserves division and change context on the way to the detail and back', async () => {
-  mount('/misiones?f=division&d=d2&cambiar=r1', board([slot('one'), slot('old', { activity_id: B, title: 'Otro', division_id: 'd1', division_ids: ['d1'] })], {
+  mount('/misiones?f=division&d=d2&cambiar=r1', board([slot('one', { ends_at: '2026-10-15T15:15:00Z' }), slot('old', { activity_id: B, title: 'Otro', division_id: 'd1', division_ids: ['d1'] })], {
     reservations: [reservation('r1', 'old')],
   }));
   const card = (await screen.findByRole('heading', { name: 'Taller de prototipos' })).closest('li') as HTMLElement;
@@ -103,6 +111,10 @@ test('catalogue preserves division and change context on the way to the detail a
   const back = await screen.findByRole('link', { name: 'Volver a Talleres' });
   expect(back).toHaveAttribute('href', '/misiones?f=division&d=d2&cambiar=r1');
   expect(screen.getByRole('button', { name: 'Cambiar aquí' })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Cambiar aquí' }));
+  const dialog = await screen.findByRole('dialog', { name: 'Cambiar horario' });
+  expect(within(dialog).getByText('10:00–10:15 · 15 min')).toBeInTheDocument();
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Volver' }));
   fireEvent.click(back);
   expect(await screen.findByRole('button', { name: 'Negocios' })).toHaveAttribute('aria-pressed', 'true');
 });
@@ -135,6 +147,37 @@ test('detail loads editorial fields and the board sessions, with visible time, d
   expect(screen.getByText('Laboratorio 2')).toBeInTheDocument();
 });
 
+test('Vida Universitaria 10:00–10:15 appears in card and detail, then enters the normal booking flow', async () => {
+  m.fetchDetail.mockResolvedValue({ ...metadata, title: 'Yoga en campus', student_pitch: 'Relájate con una sesión breve.',
+    activity_type: 'vida_universitaria', experience_category: 'deportiva', careers: [], divisions: [] });
+  mount('/misiones', board([slot('life', { title: 'Yoga en campus', description: 'Relájate con una sesión breve.',
+    division_id: null, division_ids: [], starts_at: '2026-10-15T15:00:00Z', ends_at: '2026-10-15T15:15:00Z',
+    location: 'Terraza', capacity: 20, reserved: 5, remaining: 15 })]));
+  const card = (await screen.findByRole('heading', { name: 'Yoga en campus' })).closest('li') as HTMLElement;
+  expect(within(card).getByText('Vida Universitaria')).toBeInTheDocument();
+  expect(within(card).getByText('15 min')).toBeInTheDocument();
+  expect(within(card).getByText('1 horario disponible')).toBeInTheDocument();
+  fireEvent.click(within(card).getByRole('link', { name: 'Ver taller' }));
+  expect(await screen.findByText('Vida Universitaria · Deportiva')).toBeInTheDocument();
+  expect(screen.getByText(/10:00.*15 min/)).toBeInTheDocument();
+  expect(screen.getByText('15 de 20 lugares')).toBeInTheDocument();
+  expect(screen.getAllByText('Terraza').length).toBeGreaterThan(0);
+  fireEvent.click(screen.getByRole('button', { name: 'Reservar' }));
+  const dialog = await screen.findByRole('dialog', { name: 'Reservar lugar' });
+  expect(within(dialog).getByText('10:00–10:15 · 15 min')).toBeInTheDocument();
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Reservar' }));
+  await waitFor(() => expect(m.reserve).toHaveBeenCalledWith('life'));
+});
+
+test.each([[30, '2026-10-15T15:30:00Z'], [60, '2026-10-15T16:00:00Z']])('academic %i-minute session keeps its actual duration', async (minutes, endsAt) => {
+  mount(detailPath, board([slot('academic', { ends_at: endsAt })]));
+  await screen.findByRole('heading', { name: 'Taller de prototipos' });
+  expect(screen.getByText(new RegExp(`${minutes} min`))).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Reservar' }));
+  const dialog = await screen.findByRole('dialog', { name: 'Reservar lugar' });
+  expect(within(dialog).getByText(new RegExp(`${minutes} min`))).toBeInTheDocument();
+});
+
 test('legacy detail omits absent editorial sections and a failed editorial RPC leaves operational sessions usable', async () => {
   m.fetchDetail.mockRejectedValueOnce(new Error('RPC unavailable'));
   mount(detailPath, board([slot('one')]));
@@ -159,7 +202,27 @@ test('experience type and category are shown only when the editorial projection 
   m.fetchDetail.mockResolvedValue({ ...metadata, activity_type: 'vida_universitaria', experience_category: 'deportiva' });
   mount(detailPath, board([slot('one')]));
   await screen.findByRole('heading', { name: 'Taller de prototipos' });
-  expect(screen.getByText('Vida universitaria · Deporte')).toBeInTheDocument();
+  expect(screen.getByText('Vida Universitaria · Deportiva')).toBeInTheDocument();
+});
+
+test('the general Vida Universitaria category is not repeated beside its type', async () => {
+  m.fetchDetail.mockResolvedValue({ ...metadata, activity_type: 'vida_universitaria', experience_category: 'vida_universitaria' });
+  mount(detailPath, board([slot('one')]));
+  await screen.findByRole('heading', { name: 'Taller de prototipos' });
+  expect(screen.getByText('Vida Universitaria')).toBeInTheDocument();
+  expect(screen.queryByText(/Vida Universitaria · Vida universitaria/i)).not.toBeInTheDocument();
+});
+
+test('a fresh detail read reflects post-publication edits from the activity and editorial submission', async () => {
+  m.fetchDetail.mockResolvedValue({ ...metadata, title: 'Título editado', student_pitch: 'Descripción editada',
+    objective: 'Objetivo editado', takeaway: 'Aprendizaje editado', requirements: 'Equipo editado' });
+  mount(detailPath, board([slot('edited', { title: 'Título editado', description: 'Descripción editada', location: 'Aula nueva' })]));
+  expect(await screen.findByRole('heading', { name: 'Título editado' })).toBeInTheDocument();
+  expect(screen.getByText('Descripción editada')).toBeInTheDocument();
+  expect(screen.getByText('Objetivo editado')).toBeInTheDocument();
+  expect(screen.getByText(/Aprendizaje editado/)).toBeInTheDocument();
+  expect(screen.getByText('Equipo editado')).toBeInTheDocument();
+  expect(screen.getAllByText('Aula nueva').length).toBeGreaterThan(0);
 });
 
 test('missing activity shows a useful return path', async () => {

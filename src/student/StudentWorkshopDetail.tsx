@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Alert, LoadError, PageSkeleton } from '../components/ui';
 import { formatTime } from '../lib/catalog';
-import { hasTightTransfer, sessionState, type BoardSession } from '../lib/reservations';
+import { durationMinutes, hasTightTransfer, sessionState, type BoardSession } from '../lib/reservations';
 import { useLoad } from '../lib/useLoad';
 import { useReservationBoard } from '../lib/useReservationBoard';
 import { fetchWorkshopDetail } from '../lib/workshopDetailApi';
@@ -12,9 +12,10 @@ import { useEdition } from '../edition/EditionProvider';
 import ConfirmSheet, { type ConfirmRequest } from './reservations/ConfirmSheet';
 import SessionRow from './reservations/SessionRow';
 
-const TYPE_LABELS: Record<string, string> = { academica: 'Académico', liderazgo: 'Liderazgo', vida_universitaria: 'Vida universitaria' };
+// The historical liderazgo activity type is displayed as itself for legacy manual activities.
+const TYPE_LABELS: Record<string, string> = { academica: 'Académico', liderazgo: 'Liderazgo', vida_universitaria: 'Vida Universitaria' };
 const CATEGORY_LABELS: Record<string, string> = {
-  liderazgo: 'Liderazgo', deportiva: 'Deporte', artistica_cultural: 'Arte y cultura', vida_universitaria: 'Vida universitaria', otra: 'Otra experiencia',
+  liderazgo: 'Liderazgo', deportiva: 'Deportiva', artistica_cultural: 'Artística / cultural', vida_universitaria: 'Vida universitaria', otra: 'Otra',
 };
 
 /** Student editorial detail; the board remains the only source for sessions and booking state. */
@@ -48,14 +49,15 @@ export default function StudentWorkshopDetail() {
 
   const ask = (s: BoardSession) => {
     const when = `${formatTime(s.starts_at)}–${formatTime(s.ends_at)}`;
+    const whenWithDuration = `${when} · ${durationMinutes(s)} min`;
     const warning = hasTightTransfer(s, replacing)
       ? `Traslado ajustado: tienes menos de ${board.travel_buffer_minutes} min entre este taller y otro de tu ruta. Puedes continuar.`
       : undefined;
-    const summary = { title: s.title, when: s.in_progress ? `${when} · En curso, puedes entrar` : when, where: s.location || undefined };
+    const summary = { title: s.title, when: s.in_progress ? `${whenWithDuration} · En curso, puedes entrar` : whenWithDuration, where: s.location || undefined };
     if (changing && replacing && replacingSession) {
       setConfirm({
         title: 'Cambiar horario',
-        body: `Cambiarás ${replacingSession.title} (${formatTime(replacingSession.starts_at)}) por ${s.title} (${when}). Si el nuevo lugar ya no está disponible, conservas tu reservación actual.`,
+        body: `Cambiarás ${replacingSession.title} (${formatTime(replacingSession.starts_at)}) por ${s.title} (${whenWithDuration}). Si el nuevo lugar ya no está disponible, conservas tu reservación actual.`,
         confirmLabel: 'Confirmar cambio', summary, warning,
         action: async () => { await change(replacing.id, s.id); navigate('/ruta'); },
       });
@@ -63,7 +65,7 @@ export default function StudentWorkshopDetail() {
       setConfirm({
         title: 'Reservar lugar', body: s.in_progress ? 'Ya está en curso: puedes entrar ahora.' : '',
         confirmLabel: 'Reservar', summary, warning,
-        success: { title: 'Listo. Lo agregamos a tu ruta.', body: `${s.title} · ${when}`, link: { to: '/ruta', label: 'Ver mi ruta' } },
+        success: { title: 'Listo. Lo agregamos a tu ruta.', body: `${s.title} · ${whenWithDuration}`, link: { to: '/ruta', label: 'Ver mi ruta' } },
         action: async () => { await reserve(s.id); },
       });
     }
@@ -71,6 +73,7 @@ export default function StudentWorkshopDetail() {
 
   const type = metadata?.activity_type && TYPE_LABELS[metadata.activity_type];
   const category = metadata?.experience_category && CATEGORY_LABELS[metadata.experience_category];
+  const categoryLabel = category && category.toLocaleLowerCase('es') !== type?.toLocaleLowerCase('es') ? category : null;
   return (
     <div className="space-y-5">
       {back}
@@ -78,7 +81,7 @@ export default function StudentWorkshopDetail() {
         <div className="h-1 bg-primary-500" />
         <div className="space-y-4 p-4 sm:p-5">
           <div>
-            {(type || category) && <p className="text-xs font-bold uppercase tracking-wide text-fg-brand">{[type, category !== type ? category : null].filter(Boolean).join(' · ')}</p>}
+            {(type || categoryLabel) && <p className="text-xs font-bold uppercase tracking-wide text-fg-brand">{[type, categoryLabel].filter(Boolean).join(' · ')}</p>}
             <div className="mt-1 flex flex-wrap items-start justify-between gap-2">
               <h1 className="min-w-0 flex-1 font-display text-2xl font-extrabold leading-tight">{metadata?.title || first.title}</h1>
               {status && <span className="inline-flex items-center gap-1 rounded-full bg-success-500/15 px-2.5 py-1 text-xs font-bold text-fg-success"><Check className="h-3 w-3" aria-hidden />{status}</span>}
