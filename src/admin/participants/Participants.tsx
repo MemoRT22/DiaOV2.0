@@ -1,4 +1,3 @@
-import { FileSpreadsheet, Search, Upload } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Alert, Badge, buttonClasses, Spinner } from '../../components/ui';
@@ -58,9 +57,9 @@ export default function Participants() {
   return (
     <div className="space-y-6">
       <header className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-extrabold">Participantes</h1>
-          <p className="mt-1 text-sm text-ink-muted">
+        <div className="max-w-3xl">
+          <h1>Participantes</h1>
+          <p className="mt-2 text-sm text-ink-muted">
             Aquí aparecen los registros más recientes; busca por nombre, correo o teléfono. Desde su expediente puedes corregir sus datos y restablecer su contraseña.
           </p>
         </div>
@@ -68,11 +67,9 @@ export default function Participants() {
           {coordinacion && (
             <>
               <Link to="importar" className={buttonClasses('secondary')}>
-                <Upload className="h-4 w-4" aria-hidden />
                 Importar participantes
               </Link>
               <Link to="exportar" className={buttonClasses('secondary')}>
-                <FileSpreadsheet className="h-4 w-4" aria-hidden />
                 Exportar
               </Link>
             </>
@@ -80,15 +77,14 @@ export default function Participants() {
         </div>
       </header>
 
-      <label className="relative block">
-        <span className="sr-only">Buscar participante</span>
-        <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-ink-muted" aria-hidden />
+      <label className="block max-w-3xl">
+        <span className="mb-2 block text-sm font-semibold text-ink">Buscar participante</span>
         <input
           autoFocus
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Ej. ana.lopez@correo.com, López o 998123"
-          className="h-14 w-full rounded-theme border border-line bg-surface-raised pl-12 pr-4 text-base text-ink placeholder:text-ink-muted/70 focus:border-secondary-400 focus:outline-none focus:ring-2 focus:ring-secondary-500/30"
+          className="h-11 w-full rounded-theme border border-line bg-surface px-3 text-sm text-ink placeholder:text-ink-muted/70 focus:border-secondary-400 focus:outline-none focus:ring-2 focus:ring-secondary-500/30"
         />
       </label>
 

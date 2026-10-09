@@ -1,5 +1,5 @@
 import { LogOut, Menu, X } from 'lucide-react';
-import { Suspense, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useEdition } from '../edition/EditionProvider';
 import { BootSpinner } from '../components/BootSpinner';
@@ -11,11 +11,6 @@ import AdminLogin from './AdminLogin';
 import { ADMIN_LOGO, ADMIN_PRODUCT_NAME } from './adminTheme';
 import { COORD_NAV, isNavActive, SORTEO_NAV, STAFF_NAV, type AdminNavItem } from './navigation';
 
-const navClass = (active: boolean) =>
-  `admin-nav-link group flex min-h-12 items-center gap-3 rounded-xl px-2.5 py-2 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400/70 ${
-    active ? 'text-ink' : 'text-ink-muted'
-  }`;
-
 const initials = (name: string) =>
   name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join('') || '·';
 
@@ -24,6 +19,14 @@ export default function AdminLayout() {
   const { edition, loading } = useEdition();
   const [open, setOpen] = useState(false);
   const { pathname } = useLocation();
+
+  useEffect(() => setOpen(false), [pathname]);
+  useEffect(() => {
+    if (!open) return;
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === 'Escape') setOpen(false); };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [open]);
 
   if (!ready || loading) return <BootSpinner restartTo="/coordinacion" />;
   if (!staff || profile) return <AdminLogin />;
@@ -45,94 +48,81 @@ export default function AdminLayout() {
   const roleLabel = staff.roles.map((r) => ROLE_LABELS[r]).join(' · ');
   const items: AdminNavItem[] = coord ? COORD_NAV : isStaff ? STAFF_NAV : SORTEO_NAV;
   const navLabel = coord ? 'Navegación de Coordinación' : isStaff ? 'Navegación de staff' : 'Navegación de sorteo';
+  const current = items.find((item) => isNavActive(item, pathname));
+  const currentLabel = pathname.startsWith('/coordinacion/cuenta') ? 'Mi cuenta' : current?.label ?? 'Panel';
   const close = () => setOpen(false);
 
   return (
-    <div className="min-h-dvh lg:flex">
+    <div className="admin-shell min-h-dvh lg:flex">
       <aside
-        className={`admin-sidebar fixed inset-y-0 left-0 z-40 flex w-72 flex-col overflow-y-auto border-r border-line p-5 shadow-2xl transition-transform duration-300 lg:sticky lg:top-0 lg:h-dvh lg:translate-x-0 lg:shadow-none ${
+        className={`admin-sidebar fixed inset-y-0 left-0 z-40 flex w-[15.5rem] flex-col overflow-y-auto border-r border-line px-4 py-6 transition-transform duration-200 lg:sticky lg:top-0 lg:h-dvh lg:translate-x-0 ${
           open ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
-        <div className="mb-6 flex items-start justify-between">
-          <div className="flex items-center gap-3">
-            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white p-1.5 shadow-[0_8px_20px_-10px_rgba(28,25,23,0.35)] ring-1 ring-line">
+        <div className="mb-9 flex items-start justify-between gap-2 px-2">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="admin-brand-mark flex h-10 w-10 shrink-0 items-center justify-center rounded-lg p-1.5">
               <img src={ADMIN_LOGO} alt="" className="h-full w-full object-contain" />
             </span>
             <div className="min-w-0">
-              <p className="truncate font-display text-[0.95rem] font-extrabold leading-tight text-ink">{edition?.name ?? ADMIN_PRODUCT_NAME}</p>
-              <p className="text-xs text-ink-muted">Panel del personal</p>
+              <p className="truncate text-sm font-bold leading-tight text-ink">{ADMIN_PRODUCT_NAME}</p>
+              <p className="mt-0.5 text-xs text-ink-muted">Administración</p>
             </div>
           </div>
-          <button className="rounded-full p-1 text-ink-muted hover:text-ink lg:hidden" onClick={close} aria-label="Cerrar menú">
+          <button className="admin-icon-button lg:hidden" onClick={close} aria-label="Cerrar menú">
             <X className="h-5 w-5" />
           </button>
         </div>
-        <p aria-hidden className="mb-2 px-2.5 text-[0.65rem] font-bold uppercase tracking-[0.2em] text-ink-muted/70">Menú</p>
-        <nav aria-label={navLabel} className="flex-1 space-y-1.5">
+
+        <p className="admin-nav-heading px-3">Espacio de trabajo</p>
+        <nav aria-label={navLabel} className="mt-3 flex-1 space-y-1">
           {items.map((item) => {
-            const { to, label, icon: Icon, end } = item;
             const active = isNavActive(item, pathname);
             return (
-              <NavLink key={to} to={to} end={end} onClick={close} data-active={active} className={() => navClass(active)}>
-                <span
-                  className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors ${
-                    active
-                      ? 'bg-gradient-to-br from-primary-400 to-primary-600 text-white shadow-[0_6px_14px_-6px_rgba(242,92,5,0.75)]'
-                      : 'bg-neutral-500/10 text-ink-muted group-hover:bg-neutral-500/15 group-hover:text-ink'
-                  }`}
-                >
-                  <Icon className="h-[1.15rem] w-[1.15rem]" aria-hidden />
-                </span>
-                {label}
+              <NavLink key={item.to} to={item.to} end={item.end} onClick={close} data-active={active}
+                aria-current={active ? 'page' : undefined} className="admin-nav-link">
+                <span className="admin-nav-marker" aria-hidden />
+                {item.label}
               </NavLink>
             );
           })}
         </nav>
 
-        <div className="mt-6 space-y-1.5 border-t border-line pt-4">
-          <NavLink
-            to="/coordinacion/cuenta"
-            onClick={close}
-            data-active={pathname.startsWith('/coordinacion/cuenta')}
-            className={({ isActive }) => navClass(isActive)}
-            aria-label={`Mi cuenta · ${staff.full_name}`}
-          >
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-neutral-600 to-neutral-900 text-xs font-extrabold text-white shadow-md ring-2 ring-white">
+        <div className="admin-sidebar-footer mt-6 border-t border-line pt-5">
+          <p className="admin-nav-heading px-3">Edición actual</p>
+          <p className="mt-2 truncate px-3 text-sm font-medium text-ink" title={edition?.name ?? ADMIN_PRODUCT_NAME}>
+            {edition?.name ?? ADMIN_PRODUCT_NAME}
+          </p>
+          <NavLink to="/coordinacion/cuenta" onClick={close} data-active={pathname.startsWith('/coordinacion/cuenta')}
+            className="admin-account-link mt-5 flex items-center gap-3" aria-label={`Mi cuenta · ${staff.full_name}`}>
+            <span className="admin-avatar flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold" aria-hidden>
               {initials(staff.full_name)}
             </span>
             <span className="min-w-0">
-              <span className="block truncate text-ink">{staff.full_name}</span>
-              <span className="block truncate text-xs font-normal text-ink-muted">{roleLabel}</span>
+              <span className="block truncate text-sm font-semibold text-ink">{staff.full_name}</span>
+              <span className="block truncate text-xs text-ink-muted">{roleLabel}</span>
             </span>
           </NavLink>
-          <button
-            onClick={signOut}
-            className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-ink-muted transition-colors hover:bg-neutral-500/10 hover:text-ink"
-          >
+          <button onClick={signOut} className="admin-signout mt-2 flex w-full items-center gap-2 text-sm">
             <LogOut className="h-4 w-4" aria-hidden />
             Cerrar sesión
           </button>
         </div>
       </aside>
-      {open && <div className="fixed inset-0 z-30 bg-stone-950/40 backdrop-blur-sm lg:hidden" onClick={close} />}
+      {open && <button className="fixed inset-0 z-30 bg-ink/30 lg:hidden" onClick={close} aria-label="Cerrar menú" />}
 
-      <div className="min-w-0 flex-1">
-        <header className="sticky top-0 z-20 flex h-16 items-center gap-3 border-b border-line/70 bg-surface/80 px-4 backdrop-blur-xl lg:hidden">
-          <button onClick={() => setOpen(true)} className="rounded-xl p-2 text-ink hover:bg-surface-raised" aria-label="Abrir menú">
+      <div className="admin-workspace min-w-0 flex-1">
+        <header className="admin-topbar sticky top-0 z-20 flex h-16 items-center gap-3 border-b border-line px-4 sm:px-8 lg:px-10">
+          <button onClick={() => setOpen(true)} className="admin-icon-button lg:hidden" aria-label="Abrir menú">
             <Menu className="h-5 w-5" />
           </button>
-          <span className="flex min-w-0 items-center gap-2.5">
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white p-1 shadow-sm ring-1 ring-line">
-              <img src={ADMIN_LOGO} alt="" className="h-full w-full object-contain" />
-            </span>
-            <span className="min-w-0">
-              <span className="block truncate text-sm font-extrabold leading-tight">{ADMIN_PRODUCT_NAME}</span>
-              <span className="block truncate text-[0.7rem] leading-tight text-ink-muted">{roleLabel}</span>
-            </span>
-          </span>
+          <div className="min-w-0">
+            <p className="text-[0.7rem] font-semibold uppercase tracking-[0.13em] text-ink-muted">{coord ? 'Coordinación' : 'Personal'}</p>
+            <p className="truncate text-sm font-semibold text-ink">{currentLabel}</p>
+          </div>
+          <span className="ml-auto hidden text-xs text-ink-muted sm:block">Panel del personal</span>
         </header>
-        <main className={`admin-rise mx-auto p-4 sm:p-8 lg:p-10 ${pathname.startsWith('/coordinacion/operacion-en-vivo') ? 'max-w-7xl' : 'max-w-6xl'}`}>
+        <main className={`admin-content mx-auto p-4 sm:p-7 lg:p-9 ${pathname.startsWith('/coordinacion/operacion-en-vivo') ? 'max-w-[90rem]' : 'max-w-[82rem]'}`}>
           <RouteErrorBoundary resetKey={pathname} home="/coordinacion">
             <Suspense fallback={<BootSpinner restartTo="/coordinacion" />}>
               <Outlet />

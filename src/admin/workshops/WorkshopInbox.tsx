@@ -1,4 +1,3 @@
-import { Search } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { Alert, Badge, Button, SelectField, Spinner } from '../../components/ui';
@@ -23,25 +22,25 @@ export default function WorkshopInbox() {
 
   return <div className="space-y-6">
     <header>
-      <h1 className="text-2xl font-extrabold">Talleres</h1>
-      <p className="mt-1 text-sm text-ink-muted">Revisa los talleres recibidos y consulta los publicados.</p>
+      <h1>Talleres</h1>
+      <p className="mt-2 text-sm text-ink-muted">Revisa los talleres recibidos y consulta los publicados.</p>
     </header>
     <div className="grid grid-cols-3 gap-2" aria-label="Estados de talleres">
       {GROUPS.map((group) => <button key={group} type="button" onClick={() => { setStatus(group); setPage(1); }}
         aria-pressed={status === group}
-        className={`rounded-theme border p-3 text-left transition-colors ${status === group ? 'border-primary-500 bg-primary-500/10' : 'border-line bg-surface hover:border-secondary-400'}`}>
-        <span className="block text-2xl font-bold tabular-nums">{data?.counts[group] ?? '—'}</span>
+        className="admin-filter-choice text-left">
+        <span className="block text-xl font-semibold tabular-nums">{data?.counts[group] ?? '—'}</span>
         <span className="text-xs text-ink-muted">{group === 'pending' ? 'Pendientes' : group === 'published' ? 'Publicados' : 'Descartados'}</span>
       </button>)}
     </div>
-    <div className="grid gap-3 rounded-theme border border-line bg-surface p-4 md:grid-cols-[1fr_13rem]">
+    <div className="card grid gap-3 p-4 md:grid-cols-[1fr_13rem]">
       <form onSubmit={submitSearch} className="flex gap-2">
         <label className="min-w-0 flex-1"><span className="sr-only">Buscar talleres</span>
           <input value={searchDraft} onChange={(e) => setSearchDraft(e.target.value)} maxLength={120}
             placeholder="Título, responsable o correo"
             className="h-12 w-full rounded-theme border border-line bg-surface-raised px-4 text-ink placeholder:text-ink-muted" />
         </label>
-        <Button type="submit" variant="secondary" aria-label="Buscar"><Search className="h-4 w-4" /></Button>
+        <Button type="submit" variant="secondary">Buscar</Button>
       </form>
       <SelectField label="Tipo" value={type} onChange={(e) => { setType(e.target.value as WorkshopType | ''); setPage(1); }}>
         <option value="">Todos los tipos</option>
