@@ -1,43 +1,44 @@
-import { BookMarked, Home, QrCode, Route, Sparkles, type LucideIcon } from 'lucide-react';
+import { BookUser, House, Rocket, ScanQrCode, Waypoints, type LucideIcon } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
-import { usePublicTheme } from '../theme/PublicThemeProvider';
+import { NAV } from './copy';
 
-type Tab = { to: string; label: string; icon: LucideIcon; also?: string[] };
+type Tab = { to: string; label: string; icon: LucideIcon; also?: (path: string) => boolean };
 
 /**
- * Bottom navigation, always visible while the student is signed in. «Escanear» is the centre action:
- * larger, raised and in the brand colour, one tap away from anywhere.
- * Inicio · Talleres · [Escanear] · Mi ruta · Pasaporte  (Intereses is contextual and lives under Pasaporte).
+ * Bottom navigation, always visible while the student is signed in. Five fixed, short labels:
+ * Inicio · Misiones · [Escanear] · Mi ruta · Bitácora. «Escanear» is the centre action — the one physical gesture of
+ * the event — raised above the bar inside a glowing ring, so «cuando termino una misión, escaneo» is impossible to miss.
+ * Intereses is contextual and lives under Bitácora.
  */
 export default function BottomNav() {
-  const { text } = usePublicTheme();
   const { pathname } = useLocation();
 
   const left: Tab[] = [
-    { to: '/bitacora', label: 'Inicio', icon: Home },
-    { to: '/misiones', label: text('navActivities'), icon: Sparkles },
+    { to: '/bitacora', label: NAV.home, icon: House },
+    { to: '/misiones', label: NAV.missions, icon: Rocket, also: (p) => p.startsWith('/misiones/') },
   ];
   const right: Tab[] = [
-    { to: '/ruta', label: 'Mi ruta', icon: Route },
-    { to: '/pasaporte', label: text('navPassport'), icon: BookMarked, also: ['/destinos'] },
+    { to: '/ruta', label: NAV.route, icon: Waypoints },
+    { to: '/pasaporte', label: NAV.passport, icon: BookUser, also: (p) => p === '/destinos' },
   ];
   const scanActive = pathname === '/escanear';
 
-  const renderTab = ({ to, label, icon: Icon, also = [] }: Tab) => {
-    const active = pathname === to || (to === '/misiones' && pathname.startsWith('/misiones/')) || also.includes(pathname);
+  const renderTab = ({ to, label, icon: Icon, also }: Tab) => {
+    const active = pathname === to || !!also?.(pathname);
     return (
       <Link
         key={to}
         to={to}
         aria-current={active ? 'page' : undefined}
-        className="group flex min-h-16 flex-col items-center justify-end gap-1 pb-2 text-[11px] font-semibold leading-none"
+        className="group relative flex min-h-[4.25rem] flex-col items-center justify-end gap-1 pb-2 text-[11px] font-semibold leading-none"
       >
+        {active && <span className="anim-nav-pop absolute top-0 h-1 w-8 rounded-b-full bg-primary-500 shadow-[0_0_10px_rgb(var(--c-primary-500)/0.9)]" aria-hidden />}
         <span
-          className={`flex h-8 w-14 items-center justify-center rounded-full transition-colors ${
+          className={`flex h-8 w-14 items-center justify-center rounded-full transition-colors duration-200 ${
             active ? 'bg-primary-500/20 text-fg-brand' : 'text-ink-muted group-hover:text-ink'
           }`}
         >
-          <Icon className="h-5 w-5" aria-hidden />
+          <Icon className="h-[1.35rem] w-[1.35rem]" strokeWidth={active ? 2.4 : 2} aria-hidden />
         </span>
         <span className={`max-w-full truncate px-1 ${active ? 'font-extrabold text-ink' : 'text-ink-muted'}`}>{label}</span>
       </Link>
@@ -47,7 +48,7 @@ export default function BottomNav() {
   return (
     <nav
       aria-label="Navegación principal"
-      className="fixed inset-x-0 bottom-0 z-30 border-t border-line/60 bg-surface-sunken/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-md"
+      className="fixed inset-x-0 bottom-0 z-30 border-t border-line/70 bg-surface-sunken/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-md"
     >
       <div className="mx-auto grid max-w-2xl grid-cols-5 items-end px-1">
         {left.map(renderTab)}
@@ -55,16 +56,18 @@ export default function BottomNav() {
           to="/escanear"
           aria-label="Escanear asistencia"
           aria-current={scanActive ? 'page' : undefined}
-          className="group flex min-h-16 flex-col items-center justify-end gap-1 pb-2 text-[11px] font-extrabold leading-none"
+          className="group flex min-h-[4.25rem] flex-col items-center justify-end gap-1 pb-2 text-[11px] font-extrabold leading-none"
         >
           <span
-            className={`-mt-7 flex h-16 w-16 items-center justify-center rounded-full bg-primary-500 text-on-primary shadow-[0_10px_28px_-8px_rgb(var(--c-primary-500)/0.8)] ring-4 ring-surface-sunken transition-transform active:scale-95 ${
+            className={`relative -mt-8 flex h-[4.25rem] w-[4.25rem] items-center justify-center rounded-full bg-gradient-to-b from-primary-400 to-primary-600 text-on-primary shadow-[0_10px_28px_-6px_rgb(var(--c-primary-500)/0.85)] ring-4 ring-surface-sunken transition-transform duration-200 active:scale-95 ${
               scanActive ? 'scale-105' : ''
             }`}
           >
-            <QrCode className="h-7 w-7" aria-hidden />
+            {/* orbit ring around the scan button */}
+            <span className="pointer-events-none absolute -inset-[7px] rounded-full border border-dashed border-primary-400/70" aria-hidden />
+            <ScanQrCode className="h-8 w-8" strokeWidth={2.2} aria-hidden />
           </span>
-          <span className="text-ink">Escanear</span>
+          <span className={scanActive ? 'text-fg-brand' : 'text-ink'}>{NAV.scan}</span>
         </Link>
         {right.map(renderTab)}
       </div>

@@ -9,6 +9,7 @@ import { studentAccess, type AccessState } from '../lib/studentAccess';
 import { useEdition } from '../edition/EditionProvider';
 import { usePublicTheme } from '../theme/PublicThemeProvider';
 import { EmailStep, LoginStep, RegisterStep, SetupStep } from './StudentAccessSteps';
+import { PlanetHorizon } from './ui/SpaceDecor';
 
 type Step = { kind: 'email' | AccessState; email: string };
 
@@ -30,6 +31,7 @@ export default function StudentLogin() {
   return (
     <div className="relative min-h-dvh overflow-hidden">
       <Backdrop />
+      <PlanetHorizon className="!h-40 opacity-80" />
       <main className="relative mx-auto flex min-h-dvh w-full max-w-md flex-col px-6 pb-8 pt-6 sm:pt-10">
         <div className="flex flex-col items-center text-center animate-fade-up">
           <div className="relative flex h-40 w-40 items-center justify-center sm:h-56 sm:w-56">

@@ -109,11 +109,11 @@ test('an exact match is explained with one discreet line: «Por tu interés en M
   await renderMissions();
   const c = card('Simulación clínica');
   const line = within(c).getByText('Por tu interés en Médico Cirujano');
-  // secondary to the title, time, place and availability: small muted text, no badge or banner
+  // secondary to the title: one small line in the «Para ti» accent, plus the «Para ti» badge (no banner, no modal)
   expect(line.className).toMatch(/line-clamp-2/);
   expect(line.parentElement?.className).toMatch(/text-xs/);
-  expect(line.parentElement?.className).toMatch(/text-ink-muted/);
-  expect(within(c).queryByText('Para ti')).not.toBeInTheDocument();
+  expect(line.parentElement?.className).toMatch(/text-fg-accent/);
+  expect(within(c).getByText('Para ti')).toBeInTheDocument();
   expect(within(c).queryByText(/Porque te interesa/)).not.toBeInTheDocument();
 });
 
@@ -122,7 +122,6 @@ test('a same-division suggestion is NOT presented as a match for the career', as
   const c = card('Odontología digital');
   expect(within(c).getByText('Relacionado con Ciencias de la Salud')).toBeInTheDocument();
   expect(within(c).queryByText(/Porque te interesa|Por tu interés|Por tus intereses/)).not.toBeInTheDocument();
-  expect(within(c).queryByText('Para ti')).not.toBeInTheDocument();
 });
 
 test('several matched careers appear once, in one natural sentence', async () => {
@@ -131,14 +130,14 @@ test('several matched careers appear once, in one natural sentence', async () =>
   expect(within(card('Nutrición clínica')).getByText('Por tus intereses en Médico Cirujano y Nutrición')).toBeInTheDocument();
 });
 
-test('an attended recommendation shows «Explorado» without a recommendation reason; a booked one shows «En tu ruta»', async () => {
+test('an attended recommendation shows «Completada» without a recommendation reason; a booked one shows «En tu ruta»', async () => {
   await renderMissions();
   const done = card('Anatomía aplicada');
-  expect(within(done).getByText('Explorado')).toBeInTheDocument();
+  expect(within(done).getByText('Completada')).toBeInTheDocument();
   expect(within(done).queryByText(/Por tu interés|Por tus intereses|Relacionado con/)).not.toBeInTheDocument();
   const mine = card('Urgencias');
   expect(within(mine).getByText('En tu ruta')).toBeInTheDocument();
-  expect(within(mine).getByRole('link', { name: 'Ver taller' })).toBeInTheDocument();
+  expect(within(mine).getByRole('link', { name: 'Ver misión' })).toBeInTheDocument();
 });
 
 test('in «Todos» the recommendations come first in the order the server ranked them, attended ones go with the rest', async () => {
@@ -188,20 +187,20 @@ test('«Todos» is the starting filter: the student is never moved to «Para ti�
   await renderMissions();
   expect(screen.getByRole('button', { name: 'Todos' })).toHaveAttribute('aria-pressed', 'true');
   expect(screen.getByRole('button', { name: 'Para ti' })).toHaveAttribute('aria-pressed', 'false');
-  expect(screen.queryByText('Talleres para ti')).not.toBeInTheDocument();
+  expect(screen.queryByText('Misiones para ti')).not.toBeInTheDocument();
   expect(titles()).toHaveLength(6);
 });
 
-test('«Para ti» adds one short, discreet introduction (no modal, no banner, no onboarding) and «Todos» removes it', async () => {
+test('«Para ti» adds one short introduction (no modal, no onboarding) and «Todos» removes it', async () => {
   await renderMissions();
   fireEvent.click(screen.getByRole('button', { name: 'Para ti' }));
-  expect(screen.getByText('Talleres para ti')).toBeInTheDocument();
-  expect(screen.getByText('Sugerencias basadas en las carreras que elegiste. Tú decides qué agregar a tu ruta.')).toBeInTheDocument();
+  expect(screen.getByText('Misiones para ti')).toBeInTheDocument();
+  expect(screen.getByText('Relacionadas con las carreras que elegiste. Tú decides cuáles agregar a tu ruta.')).toBeInTheDocument();
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   // the very same cards as in «Todos»: one component, learnt once
-  expect(within(card('Simulación clínica')).getByRole('link', { name: 'Ver taller' })).toBeInTheDocument();
+  expect(within(card('Simulación clínica')).getByRole('link', { name: 'Ver misión' })).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Todos' }));
-  expect(screen.queryByText('Talleres para ti')).not.toBeInTheDocument();
+  expect(screen.queryByText('Misiones para ti')).not.toBeInTheDocument();
   expect(titles()).toHaveLength(6);
 });
 
@@ -209,7 +208,7 @@ test('without recommendations there is no chip, no error and no recommendation e
   await renderMissions(result([]));
   expect(screen.queryByRole('button', { name: 'Para ti' })).not.toBeInTheDocument();
   expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-  expect(screen.queryByText(/Sugerencias|Talleres para ti|Recomendad/i)).not.toBeInTheDocument();
+  expect(screen.queryByText(/Sugerencias|Misiones para ti|Recomendad/i)).not.toBeInTheDocument();
 });
 
 test('a booked suggestion leads with «En tu ruta»; its reason stays but is quieter and there is no «Para ti» badge', async () => {
@@ -218,16 +217,16 @@ test('a booked suggestion leads with «En tu ruta»; its reason stays but is qui
   expect(within(mine).getByText('En tu ruta')).toBeInTheDocument();
   expect(within(mine).queryByText('Para ti')).not.toBeInTheDocument();
   const reason = within(mine).getByText('Por tu interés en Médico Cirujano');
-  expect(reason.parentElement?.querySelector('svg')?.getAttribute('class')).toMatch(/text-ink-muted/); // no brand-coloured sparkle
+  expect(reason.parentElement?.querySelector('svg')?.getAttribute('class')).toMatch(/text-ink-muted/); // no accent sparkle
   const plain = within(card('Simulación clínica')).getByText('Por tu interés en Médico Cirujano');
-  expect(plain.parentElement?.querySelector('svg')?.getAttribute('class')).toMatch(/text-fg-brand/);
+  expect(plain.parentElement?.querySelector('svg')?.getAttribute('class')).toMatch(/text-fg-accent/);
 });
 
 test('suggesting never hides an unrelated workshop from the catalogue', async () => {
   await renderMissions();
   const c = card('Mercados financieros');
   expect(within(c).queryByText(/Por tu interés|Por tus intereses|Relacionado con/)).not.toBeInTheDocument();
-  expect(within(c).getByRole('link', { name: 'Ver taller' })).toBeInTheDocument();
+  expect(within(c).getByRole('link', { name: 'Ver misión' })).toBeInTheDocument();
 });
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -262,12 +261,12 @@ test('C. another tab reserves or cancels → the ranking is re-queried', async (
   expect(await within(card('Simulación clínica')).findByText('En tu ruta')).toBeInTheDocument();
 });
 
-test('D. another tab registers attendance → the ranking is re-queried and the card becomes «Explorado» without a manual refresh', async () => {
+test('D. another tab registers attendance → the ranking is re-queried and the card becomes «Completada» without a manual refresh', async () => {
   await mountWith(reservedSnapshot([]), reservedSnapshot([], ['exact']));
-  expect(within(card('Simulación clínica')).queryByText('Explorado')).not.toBeInTheDocument();
+  expect(within(card('Simulación clínica')).queryByText('Completada')).not.toBeInTheDocument();
   await otherTabAnnounces('attendance');
   await waitFor(() => expect(m.recs).toHaveBeenCalledTimes(2));
-  expect(await within(card('Simulación clínica')).findByText('Explorado')).toBeInTheDocument();
+  expect(await within(card('Simulación clínica')).findByText('Completada')).toBeInTheDocument();
 });
 
 test('E. a failing re-query keeps the last good snapshot: the personalisation does not vanish and Talleres keeps working', async () => {

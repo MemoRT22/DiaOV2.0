@@ -1,4 +1,4 @@
-import { ShieldCheck } from 'lucide-react';
+import { Rocket, ShieldCheck } from 'lucide-react';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Alert, Button } from '../components/ui';
@@ -6,11 +6,15 @@ import { useAuth } from '../lib/auth';
 import { friendlyError } from '../lib/errors';
 import { supabase } from '../lib/supabase';
 import { useEdition } from '../edition/EditionProvider';
+import { firstName } from '../lib/studentJourney';
 import { usePublicTheme } from '../theme/PublicThemeProvider';
+import { GuideAvatar } from './ui/Guide';
+import { HowItWorks } from './ui/HowItWorks';
+import { PlanetHorizon } from './ui/SpaceDecor';
 
-/** Primer ingreso: one short greeting, the privacy notice in plain words, and one big button. */
+/** Primer ingreso: the guide introduces itself, the day in three steps, the privacy notice in plain words, one big button. */
 export default function Welcome() {
-  const { theme, text } = usePublicTheme();
+  const { text } = usePublicTheme();
   const { edition } = useEdition();
   const { profile, refreshIdentity } = useAuth();
   const navigate = useNavigate();
@@ -34,20 +38,24 @@ export default function Welcome() {
 
   return (
     <div className="animate-fade-up space-y-5">
-      <div className="flex items-end gap-4">
-        {theme.assets.mascot && (
-          <img src={theme.assets.mascot} alt={theme.meta.guideName} className="h-32 w-auto shrink-0 drop-shadow-[0_8px_24px_rgba(0,0,0,0.5)]" />
-        )}
-        <div className="min-w-0 pb-1">
-          <h1 className="text-2xl font-extrabold leading-tight">{text('welcomeTitle', { name: profile?.display_name ?? '' })}</h1>
-          <p className="mt-1 text-sm text-ink-muted">{text('welcomeBody')}</p>
+      <section className="hero-next relative overflow-hidden rounded-theme border border-line p-5 pb-9">
+        <PlanetHorizon />
+        <div className="relative flex flex-col items-center text-center">
+          <GuideAvatar size={112} />
+          <h1 className="mt-4 text-2xl font-extrabold leading-tight">{text('welcomeTitle', { name: firstName(profile?.display_name) || profile?.display_name || '' })}</h1>
+          <p className="mt-1 max-w-sm text-sm text-ink-muted">{text('welcomeBody')}</p>
         </div>
-      </div>
+      </section>
 
-      <section className="card p-5" aria-label="Aviso de Privacidad">
+      <section className="space-card p-4" aria-label="Así funciona tu día">
+        <h2 className="mb-3 text-xs font-extrabold uppercase tracking-[0.18em] text-ink-muted">Así funciona tu día</h2>
+        <HowItWorks compact />
+      </section>
+
+      <section className="space-card p-5" aria-label="Aviso de Privacidad">
         <div className="mb-3 flex items-center gap-2">
           <ShieldCheck className="h-5 w-5 text-fg-info" aria-hidden />
-          <h2 className="font-semibold">Aviso de Privacidad</h2>
+          <h2 className="font-extrabold">Aviso de Privacidad</h2>
         </div>
         <p className="text-sm text-ink-muted">{edition?.privacy_notice_summary}</p>
         {edition?.privacy_notice_url && (
@@ -73,6 +81,7 @@ export default function Welcome() {
 
       {error && <Alert tone="error">{error}</Alert>}
       <Button className="w-full" disabled={!accepted} loading={saving} onClick={onAccept}>
+        <Rocket className="h-4 w-4" aria-hidden />
         Comenzar
       </Button>
     </div>
