@@ -4,7 +4,7 @@ import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-do
 import { buttonClasses, PageSkeleton } from '../components/ui';
 import { formatTime } from '../lib/catalog';
 import type { BoardSession } from '../lib/reservations';
-import { buildJourney, timingLabel, type Stop } from '../lib/studentJourney';
+import { buildJourney, focusStop, timingLabel, type Stop } from '../lib/studentJourney';
 import { useNow } from '../lib/useNow';
 import { useReservationBoard } from '../lib/useReservationBoard';
 import { useEdition } from '../edition/EditionProvider';
@@ -16,7 +16,11 @@ import { MISSION } from './copy';
 import { GuideAvatar } from './ui/Guide';
 import { ErrorState } from './ui/States';
 
-type RouteStop = Stop & { n: number; place: CampusPlace };
+/**
+ * `role` comes straight from the journey buckets (never from the position): `now` = in progress («Ahora»),
+ * `next` = the first upcoming one («Siguiente»). `focus` = what the student should head to (`focusStop`).
+ */
+type RouteStop = Stop & { n: number; place: CampusPlace; role: 'now' | 'next' | 'later'; focus: boolean };
 
 /**
  * Mapa del campus. Three faces of the same map, all read-only (it never reserves, cancels or checks in):
@@ -42,10 +46,18 @@ export default function MapPage() {
 
   const journey = useMemo(() => (board ? buildJourney(board) : null), [board]);
   // «Misiones vigentes»: what is happening now and what is still ahead, in time order.
-  const routeStops: RouteStop[] = useMemo(
-    () => (journey ? [...journey.now, ...journey.upcoming].map((stop, i) => ({ ...stop, n: i + 1, place: resolveCampusLocation(stop.session.location) })) : []),
-    [journey],
-  );
+  const routeStops: RouteStop[] = useMemo(() => {
+    if (!journey) return [];
+    const focusId = focusStop(journey)?.stop.reservation.id;
+    const nextId = journey.upcoming[0]?.reservation.id;
+    return [...journey.now, ...journey.upcoming].map((stop, i) => ({
+      ...stop,
+      n: i + 1,
+      place: resolveCampusLocation(stop.session.location),
+      role: journey.now.includes(stop) ? 'now' : stop.reservation.id === nextId ? 'next' : 'later',
+      focus: stop.reservation.id === focusId,
+    }));
+  }, [journey]);
   const withMissions = useMemo(() => new Set(routeStops.map((s) => s.place.zoneId).filter((z): z is CampusZoneId => !!z)), [routeStops]);
 
   const [selected, setSelected] = useState<CampusZoneId | null>(null);
@@ -93,12 +105,12 @@ export default function MapPage() {
   const byZone = new Map<CampusZoneId, number[]>();
   for (const stop of routeStops) if (stop.place.zoneId) byZone.set(stop.place.zoneId, [...(byZone.get(stop.place.zoneId) ?? []), stop.n]);
   const markers: MapMarker[] = routeView
-    ? [...byZone.entries()].map(([zoneId, ns]) => ({ zoneId, label: ns.join('·'), next: ns.includes(1) }))
+    ? [...byZone.entries()].map(([zoneId, ns]) => ({ zoneId, label: ns.join('·'), next: routeStops.some((s) => s.focus && s.place.zoneId === zoneId) }))
     : [];
   const trail = routeView
     ? routeStops.map((s) => s.place.zoneId).filter((z, i, all): z is CampusZoneId => !!z && z !== all[i - 1])
     : [];
-  const nextZone = routeStops[0]?.place.zoneId ?? null;
+  const focusRoute = routeStops.find((s) => s.focus) ?? null;
   const unresolvedDestination = !!session && !!destination && !destination.resolved;
   const missingSession = !!sessionId && !session;
 
@@ -117,7 +129,7 @@ export default function MapPage() {
           <div className="flex items-start gap-3">
             <GuideAvatar size={52} />
             <div className="min-w-0">
-              <p className="font-extrabold">No tenemos el punto exacto de esta ubicación</p>
+              <p className="font-extrabold">{destination?.pendingConfirmation ? 'El punto exacto de esta ubicación está por confirmar' : 'No tenemos el punto exacto de esta ubicación'}</p>
               <p className="mt-1 text-sm">
                 <strong>{session.title}</strong> · {formatTime(session.starts_at)}–{formatTime(session.ends_at)}
               </p>
@@ -161,7 +173,7 @@ export default function MapPage() {
 
         {routeView && <RouteList stops={routeStops} now={now} selected={selected} onSelect={select} />}
 
-        {selected && selected !== destinationZone && <ZoneCard zoneId={selected} stops={routeStops} highlightNext={selected === nextZone} />}
+        {selected && selected !== destinationZone && <ZoneCard zoneId={selected} stops={routeStops} focus={focusRoute && focusRoute.place.zoneId === selected ? focusRoute.role : null} />}
         {!selected && !routeView && !session && (
           <p className="text-sm text-ink-muted">Toca un edificio del mapa para ver qué hay ahí. Los números y letras son los mismos del mapa impreso del campus.</p>
         )}
@@ -255,7 +267,7 @@ function RouteList({ stops, now, selected, onSelect }: { stops: RouteStop[]; now
       <ol className="grid gap-1.5">
         {stops.map((stop) => {
           const { place, session, n } = stop;
-          const isNext = n === 1;
+          const label = stop.role === 'now' ? 'Ahora' : stop.role === 'next' ? 'Siguiente' : null;
           const active = !!place.zoneId && place.zoneId === selected;
           const detail = placeDetailLine(place);
           return (
@@ -268,7 +280,7 @@ function RouteList({ stops, now, selected, onSelect }: { stops: RouteStop[]; now
               >
                 <span
                   className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full font-display text-sm font-extrabold ${
-                    isNext ? 'bg-primary-500 text-on-primary' : 'border-2 border-ink/60 text-ink'
+                    stop.focus ? 'bg-primary-500 text-on-primary' : stop.role === 'next' ? 'border-2 border-primary-500 text-fg-brand' : 'border-2 border-ink/60 text-ink'
                   }`}
                   aria-hidden
                 >
@@ -276,13 +288,18 @@ function RouteList({ stops, now, selected, onSelect }: { stops: RouteStop[]; now
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="block text-xs font-bold text-ink-muted">
-                    {isNext ? 'Siguiente · ' : ''}
+                    {label && (
+                      <span className={stop.role === 'now' ? 'mr-1 inline-flex items-center gap-1 text-fg-brand' : 'mr-1 text-fg-brand'}>
+                        {stop.role === 'now' && <span className="anim-blink h-1.5 w-1.5 rounded-full bg-current" aria-hidden />}
+                        {label} ·
+                      </span>
+                    )}
                     {formatTime(session.starts_at)} · {timingLabel(session, now)}
                   </span>
                   <span className="block font-bold leading-snug">{session.title}</span>
                   <span className="block text-sm text-ink-muted">
                     {place.resolved ? [place.building, detail].filter(Boolean).join(' · ') : session.location || 'Sin ubicación'}
-                    {!place.resolved && session.location && ' · sin punto exacto en el mapa'}
+                    {!place.resolved && session.location && (place.pendingConfirmation ? ' · punto por confirmar' : ' · sin punto exacto en el mapa')}
                   </span>
                 </span>
                 {place.zoneId && <MapPinned className="mt-1 h-4 w-4 shrink-0 text-fg-brand" aria-hidden />}
@@ -295,7 +312,7 @@ function RouteList({ stops, now, selected, onSelect }: { stops: RouteStop[]; now
   );
 }
 
-function ZoneCard({ zoneId, stops, highlightNext }: { zoneId: CampusZoneId; stops: RouteStop[]; highlightNext: boolean }) {
+function ZoneCard({ zoneId, stops, focus }: { zoneId: CampusZoneId; stops: RouteStop[]; focus: RouteStop['role'] | null }) {
   const zone = ZONE_BY_ID.get(zoneId)!;
   const here = stops.filter((s) => s.place.zoneId === zoneId);
   const together = CAMPUS_ZONES.filter((z) => z.sharesFootprintWith === zoneId || (zone.sharesFootprintWith && z.id === zone.sharesFootprintWith));
@@ -313,7 +330,7 @@ function ZoneCard({ zoneId, stops, highlightNext }: { zoneId: CampusZoneId; stop
       </div>
       {here.length > 0 && (
         <div className="mt-3 border-t border-line pt-3">
-          <p className="text-xs font-extrabold uppercase tracking-[0.16em] text-fg-brand">{highlightNext ? 'Tu siguiente misión está aquí' : 'Tus misiones aquí'}</p>
+          <p className="text-xs font-extrabold uppercase tracking-[0.16em] text-fg-brand">{focus === 'now' ? 'Tu misión en curso está aquí' : focus ? 'Tu siguiente misión está aquí' : 'Tus misiones aquí'}</p>
           <ul className="mt-1.5 grid gap-1.5">
             {here.map(({ reservation, session, place, n }) => (
               <li key={reservation.id} className="flex items-start gap-2 text-sm">

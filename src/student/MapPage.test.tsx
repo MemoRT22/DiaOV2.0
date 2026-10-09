@@ -4,6 +4,7 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import type { Board, BoardSession, MyReservation } from '../lib/reservations';
 import { neutralTheme } from '../theme/neutralTheme';
 import Home from './Home';
+import { markerMetrics } from './campus/CampusMap';
 import MapPage from './MapPage';
 import MyRoute from './MyRoute';
 
@@ -178,4 +179,77 @@ test('the map is read-only: browsing it never reserves, changes or cancels', asy
   expect(m.reserve).not.toHaveBeenCalled();
   expect(m.change).not.toHaveBeenCalled();
   expect(m.cancel).not.toHaveBeenCalled();
+});
+
+// ---------------------------------------------------------------- Ahora / Siguiente (from the journey, not from position)
+
+const rowsOf = () => within(screen.getByRole('region', { name: 'Tu ruta en orden' })).getAllByRole('button').map((b) => b.textContent ?? '');
+
+test('without a mission in progress the first upcoming one is «Siguiente» and gets the map emphasis', async () => {
+  const a = session('a', HOUR, 'Negocios 3304, Tercer piso');
+  const b = session('b', 2 * HOUR, 'Le Cordon Bleu Cocina 1, Planta baja');
+  m.board = board([a, b]);
+  const { container } = app('/mapa?vista=ruta');
+  await screen.findByRole('heading', { name: 'Tu ruta en el mapa' });
+  const [first, second] = rowsOf();
+  expect(first).toMatch(/^1Siguiente ·/);
+  expect(second).not.toMatch(/Siguiente|Ahora/);
+  expect(container.querySelector('.campus-marker.is-next')?.textContent).toBe('1');
+});
+
+test('with a mission in progress it is «Ahora» (never «Siguiente»), keeps its place, and the next future one is «Siguiente»', async () => {
+  const live = session('live', -10 * 60_000, 'Media Center VFX Lab', { title: 'En vivo' });
+  const later = session('later', HOUR, 'Negocios 3304, Tercer piso', { title: 'Después' });
+  m.board = board([later, live], [reservation(live, 'in_progress'), reservation(later)]);
+  const { container } = app('/mapa?vista=ruta');
+  await screen.findByRole('heading', { name: 'Tu ruta en el mapa' });
+  const [first, second] = rowsOf();
+  expect(first).toMatch(/^1Ahora ·.*En vivo/);
+  expect(first).not.toMatch(/Siguiente/);
+  expect(second).toMatch(/^2Siguiente ·.*Después/);
+  // the active mission carries the emphasis on the map; numbering stays chronological
+  const markers = [...container.querySelectorAll('.campus-marker')].map((g) => ({ label: g.textContent, next: g.classList.contains('is-next') }));
+  expect(markers).toEqual(expect.arrayContaining([{ label: '1', next: true }, { label: '2', next: false }]));
+  fireEvent.click(zoneButton(/Centro de Medios/));
+  expect(screen.getByText('Tu misión en curso está aquí')).toBeInTheDocument();
+});
+
+test('four missions in the same building share one marker «1·2·3·4» that grows to fit its label', async () => {
+  const stops = [1, 2, 3, 4].map((h) => session(`s${h}`, h * HOUR, `Negocios 310${h}, Primer piso`));
+  m.board = board(stops);
+  const { container } = app('/mapa?vista=ruta');
+  await screen.findByRole('heading', { name: 'Tu ruta en el mapa' });
+  const marker = container.querySelectorAll('.campus-marker');
+  expect(marker).toHaveLength(1);
+  expect(marker[0].textContent).toBe('1·2·3·4');
+  const rect = marker[0].querySelector('rect')!;
+  const text = marker[0].querySelector('text')!;
+  const { width, fontSize } = markerMetrics('1·2·3·4');
+  expect(Number(rect.getAttribute('width'))).toBe(width);
+  expect(Number(text.getAttribute('font-size'))).toBe(fontSize);
+  // the estimated text (4 digits + 3 dots) fits inside with padding, and the type shrinks only for long groups
+  expect(width).toBeGreaterThanOrEqual(4 * 0.64 * fontSize + 3 * 0.34 * fontSize + 40);
+  expect(fontSize).toBeLessThan(markerMetrics('2').fontSize);
+  expect(markerMetrics('2').width).toBe(markerMetrics('2').height); // single numbers stay round
+});
+
+// ---------------------------------------------------------------- space rules on the map
+
+test('«Negocios Arts Lab, Primer piso» points to the 2nd-stage building with «Arts Lab · Primer piso»', async () => {
+  m.board = board([session('dance', HOUR, 'Negocios Arts Lab, Primer piso', { title: 'Danza Urbana' })]);
+  app('/mapa?sesion=dance');
+  const card = await screen.findByRole('region', { name: 'Tu misión es aquí' });
+  expect(within(card).getByText('Edificio de Negocios 2da Etapa')).toBeInTheDocument();
+  expect(within(card).getByText('Arts Lab · Primer piso')).toBeInTheDocument();
+  expect(zoneButton('Edificio de Negocios 2da Etapa')).toHaveAttribute('aria-pressed', 'true');
+  expect(zoneButton('Escuela Internacional de Negocios')).toHaveAttribute('aria-pressed', 'false');
+});
+
+test('«Zona de descanso» is shown as «por confirmar»: original text, whole campus, no building pinned', async () => {
+  m.board = board([session('rest', HOUR, 'Negocios Planta baja - Zona de descanso', { title: 'Pausa activa' })]);
+  app('/mapa?sesion=rest');
+  const notice = await screen.findByRole('region', { name: 'Ubicación sin punto en el mapa' });
+  expect(within(notice).getByText('El punto exacto de esta ubicación está por confirmar')).toBeInTheDocument();
+  expect(within(notice).getByText(/Negocios Planta baja - Zona de descanso/)).toBeInTheDocument();
+  expect(screen.queryAllByRole('button', { pressed: true }).filter((b) => b.tagName.toLowerCase() === 'g')).toHaveLength(0);
 });

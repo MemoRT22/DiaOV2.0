@@ -183,6 +183,27 @@ export const CAMPUS_ZONES: CampusZone[] = [
   },
 ];
 
+/**
+ * Space rules: more specific than a zone alias, checked first. Each one names the building word(s) written in the
+ * location («Negocios») and the space that follows it; only the building word is consumed, so the space stays as the
+ * detail («Arts Lab · Primer piso»).
+ * - `zoneId` set   → the official map places that space in another building than the general alias says.
+ * - `zoneId: null` → evidence is not conclusive: the place is shown as «por confirmar» (whole campus, no pin) instead
+ *                    of guessing a building.
+ */
+export type SpaceRule = { building: string; space: string; zoneId: CampusZoneId | null; evidence: string };
+
+export const SPACE_RULES: SpaceRule[] = [
+  {
+    building: 'Negocios', space: 'Arts Lab', zoneId: 'negocios2',
+    evidence: 'Plano oficial 2026: «Laboratorio de Artes Escénicas» pertenece al Edificio de Negocios 2da Etapa (4).',
+  },
+  {
+    building: 'Negocios', space: 'Planta baja - Zona de descanso', zoneId: null,
+    evidence: 'El plano muestra una «Zona de Convivencia» en el edificio 4, pero no prueba que sea la misma «Zona de descanso».',
+  },
+];
+
 export const ZONE_BY_ID = new Map(CAMPUS_ZONES.map((z) => [z.id, z])) as Map<CampusZoneId, CampusZone>;
 
 /** The footprint a zone is drawn with (its own, or the one it shares). */

@@ -1,4 +1,4 @@
-import { CAMPUS_ZONES, type CampusZone, type CampusZoneId } from './campusZones';
+import { CAMPUS_ZONES, SPACE_RULES, ZONE_BY_ID, type CampusZone, type CampusZoneId } from './campusZones';
 
 /**
  * THE single place that turns a session location string (what the board already sends, e.g. «Negocios 3304, Tercer
@@ -7,8 +7,11 @@ import { CAMPUS_ZONES, type CampusZone, type CampusZoneId } from './campusZones'
  * Rules
  * - A location belongs to a zone only when it STARTS with one of the zone's aliases (accent/case-insensitive, whole
  *   word). The longest alias wins, so «Negocios 2da Etapa…» never falls into «Negocios».
+ * - A space rule (SPACE_RULES) is more specific than an alias and is checked first, e.g. «Negocios Arts Lab…» is the
+ *   2nd-stage building even though «Negocios» alone means building 3.
  * - Nothing is guessed: if no alias matches, the place is `resolved: false`, keeps its original text and the map
- *   shows the whole campus with a «no tenemos el punto exacto» notice.
+ *   shows the whole campus with a «no tenemos el punto exacto» notice. A space whose building is not proven is
+ *   `pendingConfirmation: true` and degrades the same way («por confirmar»).
  * - Floors are only read when written («, Tercer piso» or «Planta baja - …»); interiors are never invented.
  */
 export type CampusPlace = {
@@ -22,6 +25,8 @@ export type CampusPlace = {
   detail: string | null;
   /** «Planta baja», «Tercer piso»…, when given. */
   floor: string | null;
+  /** Known space whose building is not proven yet: shown as «por confirmar», never pinned. */
+  pendingConfirmation: boolean;
 };
 
 const strip = (s: string) =>
@@ -39,6 +44,12 @@ const FLOOR_PREFIX = new RegExp(`^${FLOOR}\\s*[-–—:]\\s*`, 'i');
 /** Aliases flattened and sorted longest-first once. */
 const ALIASES = CAMPUS_ZONES.flatMap((zone) => zone.aliases.map((alias) => ({ zone, key: strip(alias), length: alias.length })))
   .sort((a, b) => b.key.length - a.key.length);
+
+/** Space rules as «building space» prefixes, longest first. */
+const RULES = SPACE_RULES.map((rule) => ({ rule, key: strip(`${rule.building} ${rule.space}`), buildingWords: strip(rule.building).split(' ').length }))
+  .sort((a, b) => b.key.length - a.key.length);
+
+const startsWithWord = (plain: string, key: string) => plain === key || plain.startsWith(`${key} `) || plain.startsWith(`${key},`);
 
 const capitalize = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s);
 
@@ -70,26 +81,35 @@ export const unmappedLocations = () => [...unmappedSeen];
 
 export function resolveCampusLocation(location: string | null | undefined): CampusPlace {
   const original = (location ?? '').trim();
-  const empty: CampusPlace = { original, resolved: false, zoneId: null, zone: null, building: null, detail: null, floor: null };
+  const empty: CampusPlace = { original, resolved: false, zoneId: null, zone: null, building: null, detail: null, floor: null, pendingConfirmation: false };
   if (!original) return empty;
 
   const plain = strip(original);
-  const hit = ALIASES.find(({ key }) => plain === key || plain.startsWith(`${key} `) || plain.startsWith(`${key},`));
+  const rule = RULES.find(({ key }) => startsWithWord(plain, key));
+  if (rule && !rule.rule.zoneId) {
+    reportUnmapped(original);
+    return { ...empty, pendingConfirmation: true };
+  }
+  const hit = rule
+    ? { zone: ZONE_BY_ID.get(rule.rule.zoneId!)!, key: strip(rule.rule.building), words: rule.buildingWords }
+    : (() => {
+        const alias = ALIASES.find(({ key }) => startsWithWord(plain, key));
+        return alias ? { zone: alias.zone, key: alias.key, words: alias.key.split(' ').length } : null;
+      })();
   if (!hit) {
     reportUnmapped(original);
     return empty;
   }
 
-  // Remove the alias (same number of words) from the original text, keeping the original casing of the rest.
-  const words = hit.key.split(' ').length;
-  const afterAlias = original.split(/\s+/).slice(words).join(' ').replace(/^,\s*/, '');
+  // Remove ONLY the building word(s) from the original text, keeping the original casing of the space.
+  const afterAlias = original.split(/\s+/).slice(hit.words).join(' ').replace(/^,\s*/, '');
   const { rest, floor } = splitFloor(afterAlias);
   const zone = hit.zone;
   // «Cafetería Cafetería» → no detail; a bare room number reads better as «Salón 3304».
   const sameAsBuilding = !rest || strip(rest) === hit.key || strip(rest) === strip(zone.short) || strip(rest) === strip(zone.name);
   const detail = sameAsBuilding ? null : /^\d+[a-z]?$/i.test(rest) ? `Salón ${rest}` : rest;
 
-  return { original, resolved: true, zoneId: zone.id, zone, building: zone.name, detail, floor };
+  return { original, resolved: true, zoneId: zone.id, zone, building: zone.name, detail, floor, pendingConfirmation: false };
 }
 
 /** «Salón 3304 · Tercer piso» (or null when there is nothing beyond the building). */

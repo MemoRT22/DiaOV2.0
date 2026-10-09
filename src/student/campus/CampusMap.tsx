@@ -22,6 +22,21 @@ function shapeEl(shape: Shape, key: string, className: string) {
   return <polygon key={key} points={shape.points.map((p) => p.join(',')).join(' ')} className={className} />;
 }
 
+/**
+ * Size of a route marker for its label («2», «1·3», «1·2·3·4»): the pill grows with the label and the type gets a bit
+ * smaller for long groups, so up to four numbers stay inside and readable. Widths are estimated from the display
+ * font's advance (digits ≈ 0.64em, «·» ≈ 0.34em), plus padding.
+ */
+export function markerMetrics(label: string) {
+  const digits = label.replace(/[^0-9]/g, '').length;
+  const dots = label.length - digits;
+  const fontSize = label.length <= 1 ? 40 : label.length <= 3 ? 36 : 30;
+  const textWidth = digits * 0.64 * fontSize + dots * 0.34 * fontSize;
+  const height = 84;
+  const width = Math.max(height, Math.ceil(textWidth + 44));
+  return { width, height, fontSize };
+}
+
 const clamp = (v: number, min: number, max: number) => Math.min(Math.max(v, min), max);
 
 /** Transform that keeps `focus` near the upper-middle of the frame without ever showing empty space. */
@@ -194,7 +209,7 @@ export default function CampusMap({
 
           {markers.map((m) => {
             const [x, y] = at(ZONE_BY_ID.get(m.zoneId)!.anchor);
-            const wide = m.label.length > 1;
+            const size = markerMetrics(m.label);
             return (
               <g
                 key={m.zoneId}
@@ -204,8 +219,8 @@ export default function CampusMap({
                 aria-hidden
               >
                 {m.next && <circle r={80} className="campus-beacon-ring anim-beacon" />}
-                <rect x={wide ? -60 : -42} y={-42} width={wide ? 120 : 84} height={84} rx={42} className="campus-marker-bg" />
-                <text textAnchor="middle" dominantBaseline="central" fontSize={40} className="campus-marker-text">
+                <rect x={-size.width / 2} y={-size.height / 2} width={size.width} height={size.height} rx={size.height / 2} className="campus-marker-bg" />
+                <text textAnchor="middle" dominantBaseline="central" fontSize={size.fontSize} className="campus-marker-text">
                   {m.label}
                 </text>
               </g>
