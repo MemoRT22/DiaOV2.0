@@ -5,6 +5,7 @@ import type { Board, BoardSession, MyReservation } from '../lib/reservations';
 import { neutralTheme } from '../theme/neutralTheme';
 import Home from './Home';
 import { markerMetrics } from './campus/CampusMap';
+import { SPACE_RULES } from './campus/campusZones';
 import MapPage from './MapPage';
 import MyRoute from './MyRoute';
 
@@ -245,11 +246,25 @@ test('«Negocios Arts Lab, Primer piso» points to the 2nd-stage building with �
   expect(zoneButton('Escuela Internacional de Negocios')).toHaveAttribute('aria-pressed', 'false');
 });
 
-test('«Zona de descanso» is shown as «por confirmar»: original text, whole campus, no building pinned', async () => {
+test('«Zona de descanso» is the Escuela Internacional de Negocios (building 3) with its floor', async () => {
   m.board = board([session('rest', HOUR, 'Negocios Planta baja - Zona de descanso', { title: 'Pausa activa' })]);
   app('/mapa?sesion=rest');
-  const notice = await screen.findByRole('region', { name: 'Ubicación sin punto en el mapa' });
-  expect(within(notice).getByText('El punto exacto de esta ubicación está por confirmar')).toBeInTheDocument();
-  expect(within(notice).getByText(/Negocios Planta baja - Zona de descanso/)).toBeInTheDocument();
-  expect(screen.queryAllByRole('button', { pressed: true }).filter((b) => b.tagName.toLowerCase() === 'g')).toHaveLength(0);
+  const card = await screen.findByRole('region', { name: 'Tu misión es aquí' });
+  expect(within(card).getByText('Escuela Internacional de Negocios')).toBeInTheDocument();
+  expect(within(card).getByText('Zona de descanso · Planta baja')).toBeInTheDocument();
+  expect(zoneButton('Escuela Internacional de Negocios')).toHaveAttribute('aria-pressed', 'true');
+});
+
+test('a space still «por confirmar» shows its original text, the whole campus and no pinned building', async () => {
+  SPACE_RULES.push({ building: 'Negocios', space: 'Sala Pendiente', zoneId: null, evidence: 'test' });
+  try {
+    m.board = board([session('tbd', HOUR, 'Negocios Sala Pendiente, Primer piso', { title: 'Por confirmar' })]);
+    app('/mapa?sesion=tbd');
+    const notice = await screen.findByRole('region', { name: 'Ubicación sin punto en el mapa' });
+    expect(within(notice).getByText('El punto exacto de esta ubicación está por confirmar')).toBeInTheDocument();
+    expect(within(notice).getByText(/Negocios Sala Pendiente, Primer piso/)).toBeInTheDocument();
+    expect(screen.queryAllByRole('button', { pressed: true }).filter((b) => b.tagName.toLowerCase() === 'g')).toHaveLength(0);
+  } finally {
+    SPACE_RULES.pop();
+  }
 });

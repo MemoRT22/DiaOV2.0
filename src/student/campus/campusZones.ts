@@ -199,8 +199,8 @@ export const SPACE_RULES: SpaceRule[] = [
     evidence: 'Plano oficial 2026: «Laboratorio de Artes Escénicas» pertenece al Edificio de Negocios 2da Etapa (4).',
   },
   {
-    building: 'Negocios', space: 'Planta baja - Zona de descanso', zoneId: null,
-    evidence: 'El plano muestra una «Zona de Convivencia» en el edificio 4, pero no prueba que sea la misma «Zona de descanso».',
+    building: 'Negocios', space: 'Planta baja - Zona de descanso', zoneId: 'negocios',
+    evidence: 'Confirmado por Coordinación (2026-10-09): está en la Escuela Internacional de Negocios (3), no en la «Zona de Convivencia» del edificio 4.',
   },
 ];
 

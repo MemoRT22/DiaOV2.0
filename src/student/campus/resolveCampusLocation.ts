@@ -45,9 +45,10 @@ const FLOOR_PREFIX = new RegExp(`^${FLOOR}\\s*[-–—:]\\s*`, 'i');
 const ALIASES = CAMPUS_ZONES.flatMap((zone) => zone.aliases.map((alias) => ({ zone, key: strip(alias), length: alias.length })))
   .sort((a, b) => b.key.length - a.key.length);
 
-/** Space rules as «building space» prefixes, longest first. */
-const RULES = SPACE_RULES.map((rule) => ({ rule, key: strip(`${rule.building} ${rule.space}`), buildingWords: strip(rule.building).split(' ').length }))
-  .sort((a, b) => b.key.length - a.key.length);
+/** Space rules as «building space» prefixes, longest first (a handful: derived per call, so the list stays the only source). */
+const spaceRules = () =>
+  SPACE_RULES.map((rule) => ({ rule, key: strip(`${rule.building} ${rule.space}`), buildingWords: strip(rule.building).split(' ').length }))
+    .sort((a, b) => b.key.length - a.key.length);
 
 const startsWithWord = (plain: string, key: string) => plain === key || plain.startsWith(`${key} `) || plain.startsWith(`${key},`);
 
@@ -85,7 +86,7 @@ export function resolveCampusLocation(location: string | null | undefined): Camp
   if (!original) return empty;
 
   const plain = strip(original);
-  const rule = RULES.find(({ key }) => startsWithWord(plain, key));
+  const rule = spaceRules().find(({ key }) => startsWithWord(plain, key));
   if (rule && !rule.rule.zoneId) {
     reportUnmapped(original);
     return { ...empty, pendingConfirmation: true };
