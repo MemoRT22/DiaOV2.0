@@ -7,7 +7,7 @@ Ejecutar **solo en una base local/descartable** con las migraciones actuales. No
 | Importación en `preparacion` y `oficial` | `regression_official_participant_import.sql` | `OFFICIAL_IMPORT_OK`, salida 0 |
 | Correo, contraseña, autorregistro, consentimiento y conciliación | `regression_participant_access.sql` | `PARTICIPANT_ACCESS_OK` |
 | Reservaciones, cupos, cambio/cancelación, tiempo y check-in flexible | `regression_student_flexibility.sql` | `STUDENT_FLEX_OK` |
-| Check-in con credencial por actividad | `regression_asistencia.sql` | `ASISTENCIA_OK`, salida 0 |
+| Check-in con credencial por actividad, código manual inicial, permisos y regeneración | `regression_asistencia.sql` | `ASISTENCIA_OK`, salida 0 |
 | Recomendador y aislamiento DEMO/real | `regression_recommender.sql` | `RECOMMENDER_OK` |
 | Sorteo, permisos, no-show, idempotencia y selección pendiente | `regression_sorteo.sql` | `RAFFLE REGRESSION: ... 0 failed` |
 | Centro de Operación | `regression_operaciones.sql` | `OPERACIONES REGRESSION: ... 0 failed` |
