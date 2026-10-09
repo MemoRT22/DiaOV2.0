@@ -112,7 +112,7 @@ export default function AdminLayout() {
       {open && <button className="fixed inset-0 z-30 bg-ink/30 lg:hidden" onClick={close} aria-label="Cerrar menú" />}
 
       <div className="admin-workspace min-w-0 flex-1">
-        <header className="admin-topbar sticky top-0 z-20 flex h-16 items-center gap-3 border-b border-line px-4 sm:px-8 lg:px-10">
+        <header className="admin-topbar sticky top-0 z-20 flex items-center gap-3 border-b border-line px-4 sm:px-8 lg:px-10">
           <button onClick={() => setOpen(true)} className="admin-icon-button lg:hidden" aria-label="Abrir menú">
             <Menu className="h-5 w-5" />
           </button>

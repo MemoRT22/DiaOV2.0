@@ -28,10 +28,15 @@ html[data-surface='admin'] h3 {
   letter-spacing: -0.025em;
 }
 
-.admin-shell { background: rgb(var(--surface-sunken)); }
+/* Sticky content uses the same height as the persistent workspace bar. */
+.admin-shell { --admin-topbar-height: 4rem; background: rgb(var(--surface-sunken)); }
 .admin-sidebar { background: rgb(var(--surface)); }
 .admin-workspace { min-width: 0; }
-.admin-topbar { background: rgb(var(--surface) / 0.97); }
+.admin-topbar { height: var(--admin-topbar-height); background: rgb(var(--surface) / 0.97); }
+.admin-session-block-heading { top: var(--admin-topbar-height, 4rem); }
+@media (min-width: 1024px) {
+  .admin-theme-preview-sticky { top: calc(var(--admin-topbar-height, 4rem) + 1.5rem); }
+}
 .admin-brand-mark { background: rgb(var(--surface-raised)); border: 1px solid rgb(var(--line)); }
 .admin-login-intro { background: rgb(var(--surface-raised)); }
 .admin-nav-heading {
