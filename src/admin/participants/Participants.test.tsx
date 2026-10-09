@@ -87,8 +87,26 @@ test('the participants flow never calls the retired lock or manual-signup RPCs',
   await userEvent.type(screen.getByRole('textbox', { name: 'Buscar participante' }), 'ana');
   await screen.findByText('Ana López');
   const called = vi.mocked(rpc).mock.calls.map(([name]) => name);
-  expect(called).toEqual(['search_participants']);
+  expect(new Set(called)).toEqual(new Set(['search_participants']));
   expect(called).not.toContain('clear_access_lock');
   expect(called).not.toContain('create_participant_manual');
   expect(called).not.toContain('access_diagnosis');
+});
+
+test('without typing, the most recent registrations are listed (a student who just signed up appears right away)', async () => {
+  vi.mocked(rpc).mockImplementation(async (name: string) => (name === 'search_participants'
+    ? [hit({ id: 'p-new', full_name: 'Recién Registrado', origin: 'self_service', email: 'nuevo@correo.com' })] : undefined) as never);
+  show();
+  expect(await screen.findByText('Recién Registrado')).toBeInTheDocument();
+  expect(screen.getByText('Registros más recientes')).toBeInTheDocument();
+  expect(vi.mocked(rpc)).toHaveBeenCalledWith('search_participants', { p_query: '' });
+  await userEvent.click(screen.getByRole('link', { name: 'Recién Registrado' }));
+  expect(await screen.findByText('Expediente abierto')).toBeInTheDocument();
+});
+
+test('an empty edition says so instead of a «no match» message', async () => {
+  vi.mocked(rpc).mockImplementation(async (name: string) => (name === 'search_participants' ? [] : undefined) as never);
+  show();
+  expect(await screen.findByText('Aún no hay participantes registrados en esta edición.')).toBeInTheDocument();
+  expect(screen.queryByText(/se registró con otro correo/)).not.toBeInTheDocument();
 });

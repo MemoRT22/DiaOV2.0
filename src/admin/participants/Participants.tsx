@@ -29,12 +29,13 @@ export default function Participants() {
   const [error, setError] = useState('');
   const [searching, setSearching] = useState(false);
 
+  const q = query.trim();
+  // Without a search the screen lists the most recent registrations (newest first), so a student who just signed up
+  // shows up immediately. One character is not a search yet: keep what is on screen.
+  const browsing = q.length === 0;
+
   useEffect(() => {
-    const q = query.trim();
-    if (q.length < 2) {
-      setHits(null);
-      return;
-    }
+    if (q.length === 1) return;
     let cancelled = false;
     const t = setTimeout(async () => {
       setSearching(true);
@@ -47,12 +48,12 @@ export default function Participants() {
       } finally {
         if (!cancelled) setSearching(false);
       }
-    }, 300);
+    }, browsing ? 0 : 300);
     return () => {
       cancelled = true;
       clearTimeout(t);
     };
-  }, [query]);
+  }, [q, browsing]);
 
   return (
     <div className="space-y-6">
@@ -60,7 +61,7 @@ export default function Participants() {
         <div>
           <h1 className="text-2xl font-extrabold">Participantes</h1>
           <p className="mt-1 text-sm text-ink-muted">
-            Busca por nombre, correo o teléfono. Desde su expediente puedes corregir sus datos y restablecer su contraseña.
+            Aquí aparecen los registros más recientes; busca por nombre, correo o teléfono. Desde su expediente puedes corregir sus datos y restablecer su contraseña.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -93,7 +94,13 @@ export default function Participants() {
 
       {error && <Alert tone="error">{error}</Alert>}
       {searching && !hits && <Spinner label="Buscando" />}
-      {hits && hits.length === 0 && !searching && (
+      {browsing && hits && hits.length > 0 && (
+        <p className="-mb-3 text-xs font-semibold uppercase tracking-wide text-ink-muted">Registros más recientes</p>
+      )}
+      {browsing && hits && hits.length === 0 && !searching && (
+        <div className="card p-8 text-center text-sm text-ink-muted">Aún no hay participantes registrados en esta edición.</div>
+      )}
+      {!browsing && hits && hits.length === 0 && !searching && (
         <div className="card p-8 text-center text-sm text-ink-muted">
           <p>No hay ningún participante que coincida con <strong>{query.trim()}</strong>.</p>
           <p className="mt-1">
@@ -136,7 +143,11 @@ export default function Participants() {
               ))}
             </tbody>
           </table>
-          {hits.length === 50 && <p className="p-3 text-center text-xs text-ink-muted">Se muestran 50 resultados. Afina la búsqueda.</p>}
+          {hits.length === 50 && (
+            <p className="p-3 text-center text-xs text-ink-muted">
+              {browsing ? 'Se muestran los 50 registros más recientes. Busca para encontrar a otros.' : 'Se muestran 50 resultados. Afina la búsqueda.'}
+            </p>
+          )}
         </div>
       )}
     </div>
