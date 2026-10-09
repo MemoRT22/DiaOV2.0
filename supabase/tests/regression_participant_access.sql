@@ -16,6 +16,7 @@ BEGIN
     PERFORM set_config('role', 'service_role', true);
   ELSIF who IS NOT NULL AND who <> 'postgres' THEN
     PERFORM set_config('request.jwt.claims', json_build_object('sub', who, 'role', 'authenticated')::text, true);
+    PERFORM set_config('request.jwt.claim.sub', who, true);
     PERFORM set_config('role', 'authenticated', true);
   END IF;
   BEGIN
@@ -24,6 +25,7 @@ BEGIN
   END;
   PERFORM set_config('role', 'postgres', true);
   PERFORM set_config('request.jwt.claims', '', true);
+  PERFORM set_config('request.jwt.claim.sub', '', true);
   RETURN v;
 END
 $f$;
@@ -47,7 +49,7 @@ DECLARE
   u3 text := gen_random_uuid()::text;    -- identidad de Staff vinculada por error a un participante
   u4 text := gen_random_uuid()::text;    -- identidad sin marca de participante
   u5 text := gen_random_uuid()::text;    -- sesión de un participante autorregistrado
-  career uuid; career2 uuid; demo_career uuid;
+  career uuid; career2 uuid; demo_career uuid; school_id uuid;
   pid uuid; pid2 uuid; p_forms uuid; p_syn uuid; p_staff uuid; p_other uuid; p_self uuid;
   v_n int := 0; v text; j jsonb; retired boolean := to_regprocedure('public.access_lock_state(text)') IS NULL;
   payload jsonb;
@@ -70,11 +72,13 @@ BEGIN
   SELECT id INTO career FROM careers WHERE is_active AND NOT is_demo ORDER BY code LIMIT 1;
   SELECT id INTO career2 FROM careers WHERE is_active AND NOT is_demo AND id <> career ORDER BY code LIMIT 1;
   IF career IS NULL OR career2 IS NULL THEN RAISE EXCEPTION 'TEST_REQUIRES_REAL_CAREERS'; END IF;
+  SELECT id INTO school_id FROM high_schools WHERE name = 'Otra escuela' AND is_active;
+  IF school_id IS NULL THEN RAISE EXCEPTION 'TEST_REQUIRES_OTHER_SCHOOL'; END IF;
   INSERT INTO careers (code, name, division_id, is_demo, is_active)
   SELECT 'PA-DEMO', 'PA Demo', division_id, true, true FROM careers WHERE id = career RETURNING id INTO demo_career;
 
   payload := jsonb_build_object('email', 'Ana.Self@Test.invalid ', 'first_name', ' Ana  María ', 'last_name', 'López Pérez',
-    'phone', '998 123 4567', 'high_school', 'Colegio Ejemplo', 'high_school_grade', '3', 'entry_period', '2027-08',
+    'phone', '998 123 4567', 'high_school_id', school_id, 'high_school_grade', '3', 'entry_period', '2027-08',
     'initial_career_id', career::text, 'consent_accepted', true);
 
   -- ===== 1. Permisos: las funciones internas son solo de service_role =====
@@ -111,7 +115,7 @@ BEGIN
   IF v LIKE 'ERR:%' THEN RAISE EXCEPTION 'REGISTER_FAILED[%]', v; END IF;
   pid := v::uuid;
   IF NOT EXISTS (SELECT 1 FROM participants WHERE id = pid AND email = 'ana.self@test.invalid' AND full_name = 'Ana María López Pérez'
-      AND origin = 'self_service' AND NOT is_demo AND phone = '9981234567' AND high_school = 'Colegio Ejemplo'
+      AND origin = 'self_service' AND NOT is_demo AND phone = '9981234567' AND high_school = 'Otra escuela' AND high_school_id = school_id
       AND high_school_grade = '3' AND entry_period = '2027-08' AND initial_career_id = career
       AND auth_user_id IS NULL AND password_configured_at IS NULL AND (to_jsonb(participants)->>'birth_date') IS NULL) THEN RAISE EXCEPTION 'SELF_SERVICE_FIELDS'; END IF;
   IF NOT EXISTS (SELECT 1 FROM initial_interests WHERE participant_id = pid AND preference = 1 AND career_id = career)
@@ -128,7 +132,7 @@ BEGIN
   v_n := v_n + 2;
   -- validaciones
   FOREACH v IN ARRAY ARRAY['{"consent_accepted":false}', '{"consent_accepted":null}', '{"high_school_grade":"4"}', '{"high_school_grade":""}',
-      '{"entry_period":"2026-01"}', '{"entry_period":null}', '{"phone":""}', '{"phone":"123"}', '{"high_school":"  "}', '{"last_name":""}',
+      '{"entry_period":"2026-01"}', '{"entry_period":null}', '{"phone":""}', '{"phone":"123"}', '{"high_school_id":"00000000-0000-0000-0000-000000000000"}', '{"last_name":""}',
       '{"first_name":""}', '{"email":"sin-arroba"}', '{"initial_career_id":"00000000-0000-0000-0000-000000000000"}', '{"initial_career_id":null}'] LOOP
     IF pg_temp.run('service', format($q$select register_self_service_internal(%L::jsonb)$q$, (payload || '{"email":"pa.valida@test.invalid"}')::jsonb || v::jsonb)) NOT LIKE 'ERR:%' THEN
       RAISE EXCEPTION 'VALIDATION_ACCEPTED[%]', v; END IF;
@@ -157,7 +161,7 @@ BEGIN
 
   -- ===== 6. Importación del Forms oficial =====
   v := pg_temp.run(c, format($q$select commit_participant_import(%L::jsonb, 'forms.csv', false)$q$, jsonb_build_array(
-    jsonb_build_object('row', 2, 'email', 'pa.imp@test.invalid', 'full_name', 'Beto Ruiz Díaz', 'phone', '9985551234', 'high_school', 'Prepa Uno',
+    jsonb_build_object('row', 2, 'email', 'pa.imp@test.invalid', 'full_name', 'Beto Ruiz Díaz', 'phone', '9985551234', 'high_school', 'Otra escuela',
       'high_school_grade', 'graduado', 'entry_period', '2028-01', 'career', (SELECT code FROM careers WHERE id = career)),
     jsonb_build_object('row', 3, 'email', 'pa.imp2@test.invalid', 'full_name', 'Carla Soto', 'high_school_grade', 'quinto', 'entry_period', '2030-01',
       'career', (SELECT code FROM careers WHERE id = career))
@@ -180,7 +184,7 @@ BEGIN
   -- self-service ya existente + archivo oficial con el mismo correo: se concilia, no se duplica, no toca cuenta
   UPDATE participants SET password_configured_at = now(), auth_user_id = u5::uuid WHERE id = pid;
   j := pg_temp.j(pg_temp.run(c, format($q$select commit_participant_import(%L::jsonb, 'forms2.csv', false)$q$, jsonb_build_array(
-    jsonb_build_object('row', 2, 'email', 'ana.self@test.invalid', 'full_name', 'Ana María López Pérez', 'phone', '9981234567', 'high_school', 'Colegio Ejemplo',
+    jsonb_build_object('row', 2, 'email', 'ana.self@test.invalid', 'full_name', 'Ana María López Pérez', 'phone', '9981234567', 'high_school', 'Otra escuela',
       'high_school_grade', '3', 'entry_period', '2027-08', 'career', (SELECT code FROM careers WHERE id = career))))));
   IF (SELECT count(*) FROM participants WHERE edition_id = ed AND email = 'ana.self@test.invalid') <> 1 OR (j->'counts'->>'new')::int <> 0 THEN RAISE EXCEPTION 'IMPORT_DUPLICATED_SELF_SERVICE'; END IF;
   IF NOT EXISTS (SELECT 1 FROM participants WHERE id = pid AND auth_user_id = u5::uuid AND password_configured_at IS NOT NULL AND origin = 'self_service') THEN RAISE EXCEPTION 'IMPORT_TOUCHED_ACCOUNT'; END IF;

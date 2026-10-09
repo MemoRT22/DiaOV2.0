@@ -1,10 +1,10 @@
 -- Fixture for concurrency_reservations.mjs (setup).
 -- Creates ONLY identifiable test data in the active edition:
---   participants cc.01..cc.30@test.invalid + cc.max@test.invalid (is_demo, Aviso accepted, birth 2008-03-03)
+--   participants cc.01..cc.30@test.invalid + cc.max@test.invalid (is_demo, Aviso accepted)
 --   demo activities/sessions titled 'CC <code>' located in 'Edificio CC'
 -- Saves the current reservation settings inside the 'CC LAST' activity description,
 -- then opens the reservation window (max 4, buffer 10). Run concurrency_fixture_cleanup.sql afterwards.
--- Run: paste the whole file into the SQL editor (runs as postgres).
+-- Run ONLY against a disposable/local Supabase project as postgres.
 DO $fx$
 DECLARE
   ed uuid := active_edition_id();
@@ -31,8 +31,8 @@ BEGIN
     max_reservations = 4, travel_buffer_minutes = 10
   WHERE id = ed;
 
-  INSERT INTO participants (edition_id, email, full_name, birth_date, origin, is_demo)
-  SELECT ed, e, 'CC Concurrencia ' || split_part(split_part(e, '@', 1), '.', 2), '2008-03-03', 'forms', true
+  INSERT INTO participants (edition_id, email, full_name, origin, is_demo)
+  SELECT ed, e, 'CC Concurrencia ' || split_part(split_part(e, '@', 1), '.', 2), 'demo', true
   FROM (SELECT 'cc.' || lpad(i::text, 2, '0') || '@test.invalid' e FROM generate_series(1, 30) i
         UNION ALL SELECT 'cc.max@test.invalid') x;
 

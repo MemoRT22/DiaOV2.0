@@ -52,10 +52,10 @@ BEGIN
   SELECT id INTO v_prize_chain FROM raffle_prizes WHERE edition_id = ed AND name = 'RS Premio Cadena' LIMIT 1;
   SELECT id INTO v_prize_pending FROM raffle_prizes WHERE edition_id = ed AND name = 'RS Premio Pending' LIMIT 1;
   -- P1: 2 academic + 1 leadership = no group; P2: 4+1 = Mayor; P3: 3+0 = Baja; P4: 3+0 = Baja
-  INSERT INTO participants (edition_id, email, full_name, birth_date, origin, is_demo, auth_user_id) VALUES (ed, 'rs.p1@test.invalid', 'P1 Prueba', '2008-01-01', 'manual', true, p1u) ON CONFLICT (edition_id, email) DO NOTHING;
-  INSERT INTO participants (edition_id, email, full_name, birth_date, origin, is_demo, auth_user_id) VALUES (ed, 'rs.p2@test.invalid', 'P2 Prueba', '2008-01-02', 'forms', true, p2u) ON CONFLICT (edition_id, email) DO NOTHING;
-  INSERT INTO participants (edition_id, email, full_name, birth_date, origin, is_demo, auth_user_id) VALUES (ed, 'rs.p3@test.invalid', 'P3 Prueba', '2008-01-03', 'forms', true, p3u) ON CONFLICT (edition_id, email) DO NOTHING;
-  INSERT INTO participants (edition_id, email, full_name, birth_date, origin, is_demo, auth_user_id) VALUES (ed, 'rs.p4@test.invalid', 'P4 Prueba', '2008-01-04', 'forms', true, p4u) ON CONFLICT (edition_id, email) DO NOTHING;
+  INSERT INTO participants (edition_id, email, full_name, origin, is_demo, auth_user_id) VALUES (ed, 'rs.p1@test.invalid', 'P1 Prueba', 'manual', true, p1u) ON CONFLICT (edition_id, email) DO NOTHING;
+  INSERT INTO participants (edition_id, email, full_name, origin, is_demo, auth_user_id) VALUES (ed, 'rs.p2@test.invalid', 'P2 Prueba', 'forms', true, p2u) ON CONFLICT (edition_id, email) DO NOTHING;
+  INSERT INTO participants (edition_id, email, full_name, origin, is_demo, auth_user_id) VALUES (ed, 'rs.p3@test.invalid', 'P3 Prueba', 'forms', true, p3u) ON CONFLICT (edition_id, email) DO NOTHING;
+  INSERT INTO participants (edition_id, email, full_name, origin, is_demo, auth_user_id) VALUES (ed, 'rs.p4@test.invalid', 'P4 Prueba', 'forms', true, p4u) ON CONFLICT (edition_id, email) DO NOTHING;
   SELECT id INTO v_p1 FROM participants WHERE email = 'rs.p1@test.invalid';
   SELECT id INTO v_p2 FROM participants WHERE email = 'rs.p2@test.invalid';
   SELECT id INTO v_p3 FROM participants WHERE email = 'rs.p3@test.invalid';
@@ -96,6 +96,23 @@ BEGIN
   ('helper: get_pending_winner no ejecutable por auth', 'R', $q$select get_pending_winner(':PRIZE_BAJA')$q$, 'ERR:permission'),
   ('premio: disponible qty=2', 'X', $q$select (SELECT quantity FROM raffle_prizes WHERE id = ':PRIZE_BAJA') = 2$q$, 'TRUE'),
   ('premio inactivo: draw_winner rechaza', 'R', $q$select draw_winner(':PRIZE_INACTIVE', 'rs-key-inactive')$q$, 'ERR:PRIZE_INACTIVE'),
+  -- No-show chain: A no-show -> B selected -> B no-show -> A eligible again
+  ('cadena: sortear premio cadena (Baja: P3+P4)', 'R', $q$select draw_winner(':PRIZE_CHAIN', 'ch1') is not null$q$, 'OK'),
+  ('cadena: no-show A', 'R', $q$select mark_no_show((raffle_pending_selection(':PRIZE_CHAIN')->>'winner_id')::uuid)->>'status' = 'no_presentado'$q$, 'TRUE'),
+  -- Una suite DO comparte now() en toda la transacción. Distinguir las rondas como solicitudes reales separadas.
+  ('cadena: ronda A anterior', 'X', $q$update raffle_winners set drawn_at=now()-interval '1 second' where prize_id=':PRIZE_CHAIN' and status='no_presentado' returning id::text$q$, 'OK'),
+  ('cadena: A es P3 o P4', 'X', $q$select (SELECT participant_id FROM raffle_winners WHERE prize_id = ':PRIZE_CHAIN' AND status = 'no_presentado' ORDER BY drawn_at LIMIT 1) IN (':P3', ':P4')$q$, 'TRUE'),
+  ('cadena: re-sorteo B', 'R', $q$select draw_winner(':PRIZE_CHAIN', 'ch2') is not null$q$, 'OK'),
+  ('cadena: B != A', 'X', $q$select (SELECT participant_id FROM raffle_winners WHERE prize_id = ':PRIZE_CHAIN' AND status = 'seleccionado' LIMIT 1) <> (SELECT participant_id FROM raffle_winners WHERE prize_id = ':PRIZE_CHAIN' AND status = 'no_presentado' ORDER BY drawn_at LIMIT 1)$q$, 'TRUE'),
+  ('cadena: no-show B', 'R', $q$select mark_no_show((raffle_pending_selection(':PRIZE_CHAIN')->>'winner_id')::uuid)->>'status' = 'no_presentado'$q$, 'TRUE'),
+  ('cadena: A vuelve a ser elegible', 'X', $q$select participant_raffle_category((SELECT participant_id FROM raffle_winners WHERE prize_id = ':PRIZE_CHAIN' AND status = 'no_presentado' ORDER BY drawn_at LIMIT 1)) = ':CAT_BAJA'$q$, 'TRUE'),
+  ('cadena: tercer sorteo exitoso (A o B en pool)', 'R', $q$select draw_winner(':PRIZE_CHAIN', 'ch3') is not null$q$, 'OK'),
+  -- Pending selection recovery
+  ('pending: sortear premio pending', 'R', $q$select draw_winner(':PRIZE_PENDING', 'pk1') is not null$q$, 'OK'),
+  ('pending: recuperacion tiene display_name', 'R', $q$select raffle_pending_selection(':PRIZE_PENDING') ? 'display_name'$q$, 'TRUE'),
+  ('pending: recuperacion tiene prize_name', 'R', $q$select raffle_pending_selection(':PRIZE_PENDING') ? 'prize_name'$q$, 'TRUE'),
+  ('cadena: libera tercera selección', 'R', $q$select mark_no_show((raffle_pending_selection(':PRIZE_CHAIN')->>'winner_id')::uuid)->>'status' = 'no_presentado'$q$, 'TRUE'),
+  ('pending: libera selección', 'R', $q$select mark_no_show((raffle_pending_selection(':PRIZE_PENDING')->>'winner_id')::uuid)->>'status' = 'no_presentado'$q$, 'TRUE'),
   ('sorteo: sortear premio baja', 'R', $q$select draw_winner(':PRIZE_BAJA', 'rs-key-1') is not null$q$, 'OK'),
   ('sorteo: ganador seleccionado', 'X', $q$select count(*) = 1 from raffle_winners where prize_id = ':PRIZE_BAJA' and status = 'seleccionado'$q$, 'TRUE'),
   ('sorteo: idempotencia misma clave', 'R', $q$select (draw_winner(':PRIZE_BAJA', 'rs-key-1')->>'idempotent')::boolean = true$q$, 'OK'),
@@ -115,20 +132,7 @@ BEGIN
   ('cantidad: no baja del comprometido', 'C', $q$select save_raffle_prize(jsonb_build_object('id', ':PRIZE_BAJA', 'category_id', ':CAT_BAJA', 'name', 'RS Premio Baja', 'quantity', 1, 'is_active', true, 'sort_order', 1))$q$, 'ERR:QUANTITY_BELOW_COMMITTED'),
   ('aislamiento: premio demo no se mueve a cat real', 'C', $q$select save_raffle_prize(jsonb_build_object('id', ':PRIZE_BAJA', 'category_id', ':CAT_BAJA_REAL', 'name', 'RS Premio Baja', 'quantity', 2, 'is_active', true, 'sort_order', 1))$q$, 'ERR:DEMO_REAL_MISMATCH'),
   ('invalidar: sin motivo se rechaza', 'C', $q$select invalidate_winner('00000000-0000-0000-0000-000000000000', '')$q$, 'ERR:REASON_REQUIRED'),
-  ('rol: sorteo ve winners sin PII', 'R', $q$select not exists (select 1 from jsonb_array_elements(raffle_winners_read()) w where w ? 'email' or w ? 'phone' or w ? 'birth_date')$q$, 'TRUE'),
-  -- No-show chain: A no-show -> B selected -> B no-show -> A eligible again
-  ('cadena: sortear premio cadena (Baja: P3+P4)', 'R', $q$select draw_winner(':PRIZE_CHAIN', 'ch1') is not null$q$, 'OK'),
-  ('cadena: no-show A', 'R', $q$select mark_no_show((raffle_pending_selection(':PRIZE_CHAIN')->>'winner_id')::uuid)->>'status' = 'no_presentado'$q$, 'TRUE'),
-  ('cadena: A es P3 o P4', 'X', $q$select (SELECT participant_id FROM raffle_winners WHERE prize_id = ':PRIZE_CHAIN' AND status = 'no_presentado' ORDER BY drawn_at LIMIT 1) IN (':P3', ':P4')$q$, 'TRUE'),
-  ('cadena: re-sorteo B', 'R', $q$select draw_winner(':PRIZE_CHAIN', 'ch2') is not null$q$, 'OK'),
-  ('cadena: B != A', 'X', $q$select (SELECT participant_id FROM raffle_winners WHERE prize_id = ':PRIZE_CHAIN' AND status = 'seleccionado' LIMIT 1) <> (SELECT participant_id FROM raffle_winners WHERE prize_id = ':PRIZE_CHAIN' AND status = 'no_presentado' ORDER BY drawn_at LIMIT 1)$q$, 'TRUE'),
-  ('cadena: no-show B', 'R', $q$select mark_no_show((raffle_pending_selection(':PRIZE_CHAIN')->>'winner_id')::uuid)->>'status' = 'no_presentado'$q$, 'TRUE'),
-  ('cadena: A vuelve a ser elegible', 'X', $q$select participant_raffle_category((SELECT participant_id FROM raffle_winners WHERE prize_id = ':PRIZE_CHAIN' AND status = 'no_presentado' ORDER BY drawn_at LIMIT 1)) = ':CAT_BAJA'$q$, 'TRUE'),
-  ('cadena: tercer sorteo exitoso (A o B en pool)', 'R', $q$select draw_winner(':PRIZE_CHAIN', 'ch3') is not null$q$, 'OK'),
-  -- Pending selection recovery
-  ('pending: sortear premio pending', 'R', $q$select draw_winner(':PRIZE_PENDING', 'pk1') is not null$q$, 'OK'),
-  ('pending: recuperacion tiene display_name', 'R', $q$select raffle_pending_selection(':PRIZE_PENDING') ? 'display_name'$q$, 'TRUE'),
-  ('pending: recuperacion tiene prize_name', 'R', $q$select raffle_pending_selection(':PRIZE_PENDING') ? 'prize_name'$q$, 'TRUE');
+  ('rol: sorteo ve winners sin PII', 'R', $q$select not exists (select 1 from jsonb_array_elements(raffle_winners_read()) w where w ? 'email' or w ? 'phone' or w ? 'birth_date')$q$, 'TRUE');
   FOR st IN SELECT * FROM rs_steps ORDER BY seq LOOP
     v_q := st.q;
     v_q := replace(v_q, ':ED', ed::text);
@@ -138,10 +142,10 @@ BEGIN
     v_q := replace(v_q, ':CAT_BAJA', v_cat_baja::text); v_q := replace(v_q, ':CAT_MEDIA', v_cat_media::text); v_q := replace(v_q, ':CAT_MAYOR', v_cat_mayor::text);
     v_q := replace(v_q, ':PRIZE_BAJA', v_prize_baja::text); v_q := replace(v_q, ':PRIZE_MAYOR', v_prize_mayor::text); v_q := replace(v_q, ':PRIZE_INACTIVE', v_prize_inactive::text);
     v_q := replace(v_q, ':PRIZE_CHAIN', v_prize_chain::text); v_q := replace(v_q, ':PRIZE_PENDING', v_prize_pending::text);
-    PERFORM set_config('role', 'postgres', true); PERFORM set_config('request.jwt.claims', 'null', true);
-    IF st.who = 'C' THEN PERFORM set_config('role', 'authenticated', true); PERFORM set_config('request.jwt.claims', json_build_object('sub', c, 'role', 'authenticated')::text, true);
-    ELSIF st.who = 'S' THEN PERFORM set_config('role', 'authenticated', true); PERFORM set_config('request.jwt.claims', json_build_object('sub', s, 'role', 'authenticated')::text, true);
-    ELSIF st.who = 'R' THEN PERFORM set_config('role', 'authenticated', true); PERFORM set_config('request.jwt.claims', json_build_object('sub', r, 'role', 'authenticated')::text, true);
+    PERFORM set_config('role', 'postgres', true); PERFORM set_config('request.jwt.claims', 'null', true); PERFORM set_config('request.jwt.claim.sub', '', true);
+    IF st.who = 'C' THEN PERFORM set_config('role', 'authenticated', true); PERFORM set_config('request.jwt.claims', json_build_object('sub', c, 'role', 'authenticated')::text, true); PERFORM set_config('request.jwt.claim.sub', c::text, true);
+    ELSIF st.who = 'S' THEN PERFORM set_config('role', 'authenticated', true); PERFORM set_config('request.jwt.claims', json_build_object('sub', s, 'role', 'authenticated')::text, true); PERFORM set_config('request.jwt.claim.sub', s::text, true);
+    ELSIF st.who = 'R' THEN PERFORM set_config('role', 'authenticated', true); PERFORM set_config('request.jwt.claims', json_build_object('sub', r, 'role', 'authenticated')::text, true); PERFORM set_config('request.jwt.claim.sub', r::text, true);
     END IF;
     BEGIN EXECUTE v_q INTO v_last; v_err := NULL;
     EXCEPTION WHEN OTHERS THEN v_err := SQLERRM; v_last := 'null';
@@ -155,7 +159,7 @@ BEGIN
     ELSE v_fail := v_fail + 1; v_res := v_res || format(' FAIL | %s (expected %s, got %s, last=%s)', st.name, st.expect, COALESCE(v_err, 'OK'), v_last);
     END IF;
   END LOOP;
-  PERFORM set_config('role', 'postgres', true); PERFORM set_config('request.jwt.claims', 'null', true);
+  PERFORM set_config('role', 'postgres', true); PERFORM set_config('request.jwt.claims', 'null', true); PERFORM set_config('request.jwt.claim.sub', '', true);
   DELETE FROM raffle_winners WHERE prize_id IN (v_prize_baja, v_prize_mayor, v_prize_inactive, v_prize_chain, v_prize_pending);
   DELETE FROM raffle_prizes WHERE id IN (v_prize_baja, v_prize_mayor, v_prize_inactive, v_prize_chain, v_prize_pending);
   DELETE FROM attendances WHERE participant_id IN (v_p1, v_p2, v_p3, v_p4);
