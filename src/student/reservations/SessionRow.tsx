@@ -1,6 +1,8 @@
-import { MapPin, Users } from 'lucide-react';
+import { Users } from 'lucide-react';
 import { formatDateTime, formatTime } from '../../lib/catalog';
 import { durationMinutes, isSelectable, type BoardSession, type SessionState } from '../../lib/reservations';
+import { MapActionLink } from '../campus/mapLinks';
+import PlaceLine from '../campus/PlaceLine';
 import { StatusPill } from '../ui/StatusPill';
 import { STATE_LABELS } from './sessionPresentation';
 
@@ -16,6 +18,7 @@ export default function SessionRow({
   showLocation,
   tightMinutes = null,
   hideAction = false,
+  mapHref,
 }: {
   session: BoardSession;
   state: SessionState;
@@ -25,6 +28,8 @@ export default function SessionRow({
   /** Recommended minutes between missions when this session leaves less than that (advice only). */
   tightMinutes?: number | null;
   hideAction?: boolean;
+  /** Map of THIS session's own place (used when the mission's sessions are in different places). */
+  mapHref?: string;
 }) {
   const { label, kind } = STATE_LABELS[state];
   const selectable = isSelectable(state);
@@ -73,10 +78,10 @@ export default function SessionRow({
             </div>
           )}
           {showLocation && session.location && (
-            <p className="mt-1 flex min-w-0 items-center gap-1 text-xs text-ink-muted">
-              <MapPin className="h-3.5 w-3.5 shrink-0" aria-hidden />
-              <span className="truncate">{session.location}</span>
-            </p>
+            <div className="mt-1.5 flex flex-wrap items-center justify-between gap-x-2 text-xs">
+              <PlaceLine location={session.location} strong={false} />
+              {mapHref && <MapActionLink to={mapHref} label="Ver en el mapa" ariaLabel={`Ver en el mapa el lugar de las ${formatTime(session.starts_at)}`} />}
+            </div>
           )}
         </div>
       </div>

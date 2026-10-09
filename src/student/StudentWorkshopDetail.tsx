@@ -13,6 +13,9 @@ import { usePublicTheme } from '../theme/PublicThemeProvider';
 import { MISSION } from './copy';
 import { missionHeadline } from './MissionCard';
 import ConfirmSheet, { type ConfirmRequest } from './reservations/ConfirmSheet';
+import { mapForSession, MapActionLink } from './campus/mapLinks';
+import PlaceLine from './campus/PlaceLine';
+import { formatPlace } from './campus/resolveCampusLocation';
 import SessionRow from './reservations/SessionRow';
 import { DivisionOrb, divisionColor, tintVars } from './ui/divisionVisuals';
 import { ErrorState } from './ui/States';
@@ -49,6 +52,10 @@ export default function StudentWorkshopDetail() {
   const first = sessions[0];
   const metadata = detail.data;
   const location = workshopLocation(sessions);
+  // One place for every session → one map link; different places → each schedule opens ITS own place.
+  const uniqueLocations = [...new Set(sessions.map((s) => s.location))];
+  const sharedLocation = uniqueLocations.length === 1 && uniqueLocations[0] ? uniqueLocations[0] : null;
+  const mapSession = sessions.find((s) => s.my_reservation_id) ?? sessions[0];
   const status = workshopPersonalStatus(sessions);
   const changeId = params.get('cambiar');
   const replacing = board.reservations.find((r) => r.id === changeId && r.status === 'vigente') ?? null;
@@ -62,7 +69,7 @@ export default function StudentWorkshopDetail() {
     const warning = hasTightTransfer(s, replacing)
       ? `Traslado ajustado: tienes menos de ${board.travel_buffer_minutes} min entre esta misión y otra de tu ruta. Puedes continuar.`
       : undefined;
-    const summary = { title: s.title, when: s.in_progress ? `${whenWithDuration} · En curso, puedes entrar` : whenWithDuration, where: s.location || undefined };
+    const summary = { title: s.title, when: s.in_progress ? `${whenWithDuration} · En curso, puedes entrar` : whenWithDuration, where: s.location ? formatPlace(s.location) : undefined };
     if (changing && replacing && replacingSession) {
       setConfirm({
         title: 'Cambiar horario',
@@ -115,10 +122,22 @@ export default function StudentWorkshopDetail() {
             <Fact icon={Users} label="Lugares" value={seatsLeft > 0 ? `${seatsLeft} libres` : 'Llena'} />
           </dl>
           {location && (
-            <p className="relative mt-3 flex items-start gap-2 rounded-theme border border-line bg-surface/70 px-3 py-2.5 text-sm font-semibold">
-              <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-fg-brand" aria-hidden />
-              <span className="min-w-0 break-words">{location}</span>
-            </p>
+            <div className="relative mt-3 rounded-theme border border-line bg-surface/70 px-3 py-2.5 text-sm">
+              {sharedLocation ? (
+                <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                  <PlaceLine location={sharedLocation} />
+                  <MapActionLink to={mapForSession(mapSession.id)} ariaLabel={`Ver en el mapa: ${formatPlace(sharedLocation)}`} />
+                </div>
+              ) : (
+                <p className="flex items-start gap-2">
+                  <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-fg-brand" aria-hidden />
+                  <span className="min-w-0">
+                    <span className="block font-semibold">{location}</span>
+                    <span className="block text-ink-muted">Cada horario indica su lugar y su mapa.</span>
+                  </span>
+                </p>
+              )}
+            </div>
           )}
           {openCount > 0 && (
             <a href="#horarios" className="relative mt-4 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-full bg-primary-500 px-6 text-sm font-extrabold text-on-primary shadow-[0_8px_24px_-8px_rgb(var(--c-primary-500)/0.8)]">
@@ -169,7 +188,7 @@ export default function StudentWorkshopDetail() {
           <p className="text-sm text-ink-muted">Toca «{changing ? 'Cambiar aquí' : 'Reservar'}» en el horario que te quede mejor.</p>
         </div>
         <ul className="space-y-2.5">
-          {sessions.map((s) => <SessionRow key={s.id} session={s} state={sessionState(board, s, replacing)} actionLabel={changing ? 'Cambiar aquí' : 'Reservar'} onAction={() => ask(s)} showLocation={sessions.length > 1 || !location} tightMinutes={hasTightTransfer(s, replacing) ? board.travel_buffer_minutes : null} hideAction={changing && !canChange} />)}
+          {sessions.map((s) => <SessionRow key={s.id} session={s} state={sessionState(board, s, replacing)} actionLabel={changing ? 'Cambiar aquí' : 'Reservar'} onAction={() => ask(s)} showLocation={!sharedLocation} tightMinutes={hasTightTransfer(s, replacing) ? board.travel_buffer_minutes : null} hideAction={changing && !canChange} mapHref={!sharedLocation && s.location ? mapForSession(s.id) : undefined} />)}
         </ul>
       </section>
       {confirm && <ConfirmSheet request={confirm} onClose={() => setConfirm(null)} />}

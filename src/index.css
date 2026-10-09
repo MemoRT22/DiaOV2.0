@@ -254,3 +254,51 @@
 .lite .anim-scan {
   animation: none !important;
 }
+
+/* ---- Campus map (student): a real plan in theme tokens; brand pins keep the official map's colours ---- */
+.campus-ground { fill: rgb(var(--surface)); }
+.campus-plan { transition: transform 0.55s cubic-bezier(0.2, 0.8, 0.2, 1); }
+.campus-forest { fill: rgb(var(--c-success-500) / 0.11); }
+.campus-road { fill: none; stroke: rgb(var(--ink-muted) / 0.38); stroke-width: 22; stroke-linecap: round; stroke-linejoin: round; }
+.campus-road-ring { fill: none; stroke: rgb(var(--ink-muted) / 0.38); stroke-width: 22; }
+.campus-roundabout { fill: rgb(var(--c-success-500) / 0.3); }
+.campus-walkway { fill: none; stroke: rgb(var(--ink) / 0.22); stroke-width: 9; stroke-dasharray: 2 14; stroke-linecap: round; }
+.campus-zone { cursor: pointer; outline: none; }
+.campus-zone-shape { fill: rgb(var(--ink) / 0.16); stroke: rgb(var(--ink) / 0.42); stroke-width: 3; transition: fill 0.25s, stroke 0.25s; }
+.campus-zone--sports .campus-zone-shape { fill: rgb(var(--c-success-500) / 0.3); stroke: rgb(var(--c-success-500) / 0.6); }
+.campus-zone--plaza .campus-zone-shape { fill: rgb(var(--c-success-500) / 0.2); stroke: rgb(var(--ink) / 0.3); stroke-dasharray: 8 6; }
+.campus-zone--parking .campus-zone-shape { fill: rgb(var(--ink) / 0.06); stroke: rgb(var(--ink) / 0.22); stroke-dasharray: 10 8; }
+.campus-zone--access .campus-zone-shape { fill: transparent; stroke: transparent; }
+.campus-zone.is-mine .campus-zone-shape { fill: rgb(var(--c-primary-500) / 0.3); stroke: rgb(var(--c-primary-400)); }
+.campus-zone.is-selected .campus-zone-shape,
+.campus-zone.is-destination .campus-zone-shape { fill: rgb(var(--c-primary-500) / 0.62); stroke: rgb(var(--c-primary-300)); stroke-width: 7; stroke-dasharray: none; }
+.campus-zone:focus-visible .campus-zone-shape { stroke: rgb(var(--c-secondary-400)); stroke-width: 9; }
+.campus-pin { cursor: pointer; }
+.campus-pin-hit { fill: transparent; }
+.campus-pin-dot { stroke: rgb(var(--surface)); stroke-width: 5; }
+.campus-pin.is-quiet { opacity: 0.85; }
+.campus-pin.is-quiet .campus-pin-dot { stroke: #B32025; stroke-width: 4; }
+.campus-pin-text,
+.campus-marker-text,
+.campus-callout-text { font-family: var(--font-display); font-weight: 800; pointer-events: none; }
+.campus-marker { cursor: pointer; }
+.campus-marker-bg { fill: rgb(var(--surface-raised)); stroke: rgb(var(--ink)); stroke-width: 5; }
+.campus-marker-text { fill: rgb(var(--ink)); }
+.campus-marker.is-next .campus-marker-bg { fill: rgb(var(--c-primary-500)); stroke: rgb(var(--surface)); }
+.campus-marker.is-next .campus-marker-text { fill: rgb(var(--on-primary)); }
+.campus-beacon-ring { fill: none; stroke: rgb(var(--c-primary-400)); stroke-width: 6; transform-box: fill-box; transform-origin: center; }
+.campus-beacon-core { fill: rgb(var(--c-primary-500) / 0.25); stroke: rgb(var(--c-primary-400)); stroke-width: 4; }
+.campus-trail { fill: none; stroke: rgb(var(--c-primary-400)); stroke-width: 7; stroke-dasharray: 16 14; stroke-linecap: round; stroke-linejoin: round; opacity: 0.9; }
+.campus-trail-head { fill: rgb(var(--c-primary-400)); }
+.campus-callout-bg { fill: rgb(var(--ink)); }
+.campus-callout-text { fill: rgb(var(--surface)); }
+@keyframes beacon {
+  0% { transform: scale(0.45); opacity: 0.9; }
+  100% { transform: scale(1.25); opacity: 0; }
+}
+/* A short, finite pulse: it marks the destination without moving forever. */
+.anim-beacon { animation: beacon 1.8s ease-out 6; }
+.anim-beacon-late { animation-delay: 0.9s; }
+.lite .anim-beacon { animation: none; opacity: 0.6; }
+.campus-pin.is-dot { opacity: 0.7; }
+.campus-pin.is-dot .campus-pin-dot { stroke-width: 3; }

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { formatTime } from '../lib/catalog';
 import { isFewPlaces, isSelectable, sessionState, type Board, type BoardSession, type MyReservation } from '../lib/reservations';
 import { workshopAvailability, workshopDuration, workshopLocation, workshopPersonalStatus } from '../lib/workshopDiscovery';
+import { formatPlace } from './campus/resolveCampusLocation';
 import { DivisionOrb, tintVars } from './ui/divisionVisuals';
 import { StatusPill, type StatusKind } from './ui/StatusPill';
 
@@ -134,7 +135,7 @@ export default function MissionCard({
           {location && (
             <span className="inline-flex min-w-0 items-center gap-1">
               <MapPin className="h-3.5 w-3.5 shrink-0" aria-hidden />
-              <span className="truncate">{location}</span>
+              <span className="truncate">{formatPlace(location)}</span>
             </span>
           )}
         </div>

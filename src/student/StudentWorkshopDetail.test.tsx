@@ -307,3 +307,31 @@ test('successful change navigates to Mi ruta; failed change keeps old reservatio
   expect(m.change).toHaveBeenCalledTimes(2);
   expect(m.change).toHaveBeenCalledWith('r1', 'new');
 });
+
+// ---------------------------------------------------------------- campus map
+
+test('one shared place → the detail shows building, room and floor with one «Ver en el mapa»', async () => {
+  mount(detailPath, board([
+    slot('one', { location: 'Negocios 3304, Tercer piso' }),
+    slot('two', { location: 'Negocios 3304, Tercer piso', starts_at: '2026-10-15T16:00:00Z', ends_at: '2026-10-15T16:45:00Z' }),
+  ]));
+  await screen.findByRole('heading', { name: 'Taller de prototipos' });
+  expect(screen.getByText('Escuela Internacional de Negocios')).toBeInTheDocument();
+  expect(screen.getByText('Salón 3304 · Tercer piso')).toBeInTheDocument();
+  const links = screen.getAllByRole('link', { name: /Ver en el mapa/ });
+  expect(links).toHaveLength(1);
+  expect(links[0]).toHaveAttribute('href', '/mapa?sesion=one');
+});
+
+test('sessions in different places: each schedule opens ITS own place, never the first session for all', async () => {
+  mount(detailPath, board([
+    slot('aulas', { location: '1 Sala de Juicios Orales, Planta baja' }),
+    slot('rect', { location: 'Rectoría Auditorio San Juan Pablo II', starts_at: '2026-10-15T16:00:00Z', ends_at: '2026-10-15T16:45:00Z' }),
+  ]));
+  await screen.findByRole('heading', { name: 'Taller de prototipos' });
+  expect(screen.getByText('Ubicaciones según horario')).toBeInTheDocument();
+  const links = screen.getAllByRole('link', { name: /Ver en el mapa/ }).map((l) => l.getAttribute('href'));
+  expect(links).toEqual(['/mapa?sesion=aulas', '/mapa?sesion=rect']);
+  expect(screen.getByText('Edificio de Aulas')).toBeInTheDocument();
+  expect(screen.getByText('Administración · Rectoría')).toBeInTheDocument();
+});

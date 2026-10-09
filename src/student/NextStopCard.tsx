@@ -1,9 +1,11 @@
-import { ArrowRight, Clock, MapPin, ScanQrCode, Sparkles, Timer } from 'lucide-react';
+import { ArrowRight, Clock, MapPin, MapPinned, ScanQrCode, Sparkles, Timer } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { buttonClasses } from '../components/ui';
 import { formatTime } from '../lib/catalog';
 import type { Board } from '../lib/reservations';
 import { heroAction, timingLabel, type Journey } from '../lib/studentJourney';
+import { mapForSession, MapLink } from './campus/mapLinks';
+import { placeDetailLine, resolveCampusLocation } from './campus/resolveCampusLocation';
 import { MISSION, SCAN_CTA } from './copy';
 import { GuideAvatar } from './ui/Guide';
 import { OrbitArcs, PlanetHorizon } from './ui/SpaceDecor';
@@ -69,6 +71,8 @@ export default function NextStopCard({ board, journey, now }: { board: Board; jo
         : 'hero-next border-line';
   const muted = live ? 'text-on-primary/85' : 'text-ink-muted';
   const timing = timingLabel(session, now);
+  const place = resolveCampusLocation(session.location);
+  const placeLine = place.resolved ? placeDetailLine(place) : null;
 
   return (
     <section aria-label={region} className={`relative overflow-hidden rounded-theme border p-5 animate-fade-up ${surface}`}>
@@ -106,10 +110,25 @@ export default function NextStopCard({ board, journey, now }: { board: Board; jo
                 <MapPin className="h-4 w-4" aria-hidden />
                 Dónde
               </dt>
-              <dd className="min-w-0 break-words font-bold">{session.location}</dd>
+              <dd className="min-w-0 break-words">
+                <span className="font-bold">{place.resolved ? place.building : session.location}</span>
+                {placeLine && <span className={`block ${muted}`}>{placeLine}</span>}
+              </dd>
             </>
           )}
         </dl>
+        {/* Secondary on purpose: it never competes with the main action below. */}
+        {session.location && (
+          <MapLink
+            to={mapForSession(session.id)}
+            className={`mt-2 inline-flex min-h-11 items-center gap-1.5 rounded-full px-1 text-sm font-semibold underline-offset-4 hover:underline ${
+              live ? 'text-on-primary' : 'text-fg-brand'
+            }`}
+          >
+            <MapPinned className="h-4 w-4" aria-hidden />
+            Ver ubicación
+          </MapLink>
+        )}
 
         <div className="mt-5 grid gap-2 sm:grid-cols-2">
           {live ? (
