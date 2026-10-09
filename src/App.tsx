@@ -17,6 +17,7 @@ const Missions = lazy(() => import('./student/Missions'));
 const StudentWorkshopDetail = lazy(() => import('./student/StudentWorkshopDetail'));
 const MyRoute = lazy(() => import('./student/MyRoute'));
 const Interests = lazy(() => import('./student/Interests'));
+const MapPage = lazy(() => import('./student/MapPage'));
 const WorkshopRegistration = lazy(() => import('./public/WorkshopRegistration'));
 
 const AdminLayout = lazy(() => import('./admin/AdminLayout'));
@@ -90,6 +91,7 @@ export default function App() {
               <Route path="/ruta" element={<MyRoute />} />
               <Route path="/escanear" element={<Scanner />} />
               <Route path="/destinos" element={<Interests />} />
+              <Route path="/mapa" element={<MapPage />} />
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>

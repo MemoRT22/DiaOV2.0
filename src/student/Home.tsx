@@ -13,6 +13,7 @@ import { useParticipantSync } from '../lib/useParticipantSync';
 import { useReservationBoard } from '../lib/useReservationBoard';
 import { useEdition } from '../edition/EditionProvider';
 import { usePublicTheme } from '../theme/PublicThemeProvider';
+import { formatPlace } from './campus/resolveCampusLocation';
 import { missions } from './copy';
 import NextStopCard from './NextStopCard';
 import { progressNextMessage } from './progressText';
@@ -195,7 +196,7 @@ function LaterToday({ stops }: { stops: Journey['upcoming'] }) {
             <span className="h-2.5 w-2.5 shrink-0 rounded-full border-2 border-primary-500" aria-hidden />
             <span className="min-w-0 flex-1">
               <span className="block truncate text-sm font-semibold">{session.title}</span>
-              {session.location && <span className="block truncate text-xs text-ink-muted">{session.location}</span>}
+              {session.location && <span className="block truncate text-xs text-ink-muted">{formatPlace(session.location)}</span>}
             </span>
           </li>
         ))}

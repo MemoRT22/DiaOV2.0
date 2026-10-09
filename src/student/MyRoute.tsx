@@ -1,4 +1,4 @@
-import { ArrowRight, BadgeCheck, CalendarPlus, Check, MapPin, Plus, Rocket, ScanQrCode, Stamp, Timer, X } from 'lucide-react';
+import { ArrowRight, BadgeCheck, CalendarPlus, Check, Plus, Rocket, ScanQrCode, Stamp, Timer, X } from 'lucide-react';
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { buttonClasses, PageSkeleton } from '../components/ui';
@@ -11,6 +11,8 @@ import { useReservationBoard } from '../lib/useReservationBoard';
 import { useEdition } from '../edition/EditionProvider';
 import { usePublicTheme } from '../theme/PublicThemeProvider';
 import { LOGBOOK, MISSION, NAV, SCAN_CTA } from './copy';
+import { mapForRoute, mapForSession, MapActionLink } from './campus/mapLinks';
+import PlaceLine from './campus/PlaceLine';
 import ConfirmSheet, { type ConfirmRequest } from './reservations/ConfirmSheet';
 import WindowNotice from './reservations/WindowNotice';
 import { divisionColor, tintVars } from './ui/divisionVisuals';
@@ -73,6 +75,7 @@ export default function MyRoute() {
       <PageHeader
         eyebrow="Tu itinerario del día"
         title={NAV.route}
+        aside={total > 0 ? <MapActionLink to={mapForRoute()} label="Ver mapa" ariaLabel="Ver mi ruta en el mapa del campus" /> : undefined}
         subtitle={`${activeCount} de ${board.max_reservations} misiones reservadas${journey.done.length ? ` · ${journey.done.length} ${journey.done.length === 1 ? 'completada' : 'completadas'}` : ''} · Deja ${board.travel_buffer_minutes} min entre misiones para llegar`}
       />
       <div className="px-1">
@@ -254,10 +257,13 @@ function StopCard({
           <h3 className={`mt-1.5 text-base font-extrabold leading-snug ${cancelled ? 'text-ink-muted line-through' : ''}`}>{s.title}</h3>
           {division?.name && <p className="mt-0.5 text-[11px] font-bold uppercase tracking-wide text-ink-muted">{division.name}</p>}
           {s.location && (
-            <p className="mt-2 flex items-start gap-1.5 text-sm font-semibold">
-              <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-fg-brand" aria-hidden />
-              <span className="min-w-0 break-words">{s.location}</span>
-            </p>
+            <div className="mt-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-sm">
+              <PlaceLine location={s.location} />
+              {/* Discreet; only the next/live station gets a little more weight. */}
+              {!cancelled && !completed && ds !== 'expired' && (
+                <MapActionLink to={mapForSession(s.id)} label="Cómo llegar" emphasis={variant === 'next'} ariaLabel={`Cómo llegar a ${s.title}`} />
+              )}
+            </div>
           )}
           {completed && r.credits_granted != null && (
             <p className="mt-2 inline-flex items-center gap-1 text-sm font-semibold text-fg-success">
