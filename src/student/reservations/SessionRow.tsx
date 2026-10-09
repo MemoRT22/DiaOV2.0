@@ -1,10 +1,13 @@
-import { Clock3, MapPin, Users } from 'lucide-react';
-import { Badge } from '../../components/ui';
+import { MapPin, Users } from 'lucide-react';
 import { formatDateTime, formatTime } from '../../lib/catalog';
 import { durationMinutes, isSelectable, type BoardSession, type SessionState } from '../../lib/reservations';
+import { StatusPill } from '../ui/StatusPill';
 import { STATE_LABELS } from './sessionPresentation';
 
-/** One time slot of a workshop: when, whether there is room, whether I can join, and the single action. */
+/**
+ * One time slot of a mission, built to be read at a glance: the time is the biggest thing, then whether there is
+ * room (a seat bar, not only a number), then the single action as a full-width button.
+ */
 export default function SessionRow({
   session,
   state,
@@ -19,58 +22,73 @@ export default function SessionRow({
   actionLabel: string;
   onAction: () => void;
   showLocation: boolean;
-  /** Recommended minutes between talleres when this session leaves less than that (advice only). */
+  /** Recommended minutes between missions when this session leaves less than that (advice only). */
   tightMinutes?: number | null;
   hideAction?: boolean;
 }) {
-  const { label, tone } = STATE_LABELS[state];
+  const { label, kind } = STATE_LABELS[state];
   const selectable = isSelectable(state);
   const showCount = state !== 'cancelled' && state !== 'ended';
   const dim = state === 'ended' || state === 'cancelled' || state === 'full';
   const live = state === 'in_progress';
+  const mine = state === 'reserved' || state === 'already_attended';
   const seats = session.remaining === 0 ? 'Sin lugares' : `${session.remaining} de ${session.capacity} lugares`;
+  // The bar shows the room LEFT (more fill = easier to get in), coloured like the state.
+  const free = session.capacity > 0 ? Math.min(Math.max(session.remaining / session.capacity, 0), 1) : 0;
 
   return (
     <li
-      className={`flex flex-wrap items-center gap-3 rounded-theme border p-3 ${
-        live ? 'border-primary-500/60 bg-primary-500/10' : 'border-line bg-surface-sunken/40'
+      className={`overflow-hidden rounded-theme border ${
+        live ? 'border-primary-500/70 bg-primary-500/10' : mine ? 'border-secondary-500/50 bg-secondary-500/10' : selectable ? 'border-line bg-surface' : 'border-line bg-surface/60'
       } ${dim ? 'opacity-70' : ''}`}
     >
-      <div className="w-14 shrink-0 text-center">
-        <p className="font-display text-xl font-extrabold leading-none">{formatTime(session.starts_at)}</p>
-        <p className="mt-1 text-[11px] leading-none text-ink-muted">
-          <span className="sr-only">a </span>
-          {formatTime(session.ends_at)}
-        </p>
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-1.5">
-          <Badge tone={tone}>{label}</Badge>
-          {tightMinutes != null && selectable && <Badge tone="warning">Traslado ajustado · menos de {tightMinutes} min</Badge>}
+      <div className="flex items-stretch">
+        <div className="flex w-20 shrink-0 flex-col items-center justify-center border-r border-line px-2 py-3 text-center">
+          <p className="font-display text-xl font-extrabold leading-none">{formatTime(session.starts_at)}</p>
+          <p className="mt-1 text-[11px] leading-none text-ink-muted">
+            <span className="sr-only">a </span>
+            {formatTime(session.ends_at)}
+          </p>
         </div>
-        <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-muted">
-          <span className="inline-flex items-center gap-1"><Clock3 className="h-3.5 w-3.5" aria-hidden />{formatDateTime(session.starts_at)} · {durationMinutes(session)} min</span>
+        <div className="min-w-0 flex-1 p-3">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <StatusPill kind={kind}>{label}</StatusPill>
+            {tightMinutes != null && selectable && <StatusPill kind="few">Traslado ajustado · menos de {tightMinutes} min</StatusPill>}
+          </div>
+          <p className="mt-1.5 text-xs text-ink-muted">
+            {formatDateTime(session.starts_at)} · {durationMinutes(session)} min
+          </p>
           {showCount && (
-            <span className="inline-flex items-center gap-1">
-              <Users className="h-3.5 w-3.5" aria-hidden />
-              {seats}
-            </span>
+            <div className="mt-2">
+              <div className="h-1.5 overflow-hidden rounded-full bg-line" aria-hidden>
+                <div
+                  className={`h-full rounded-full ${session.remaining === 0 ? 'bg-error-500' : kind === 'few' ? 'bg-warning-500' : 'bg-success-500'}`}
+                  style={{ width: `${free * 100}%` }}
+                />
+              </div>
+              <p className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-ink-muted">
+                <Users className="h-3.5 w-3.5" aria-hidden />
+                {seats}
+              </p>
+            </div>
           )}
           {showLocation && session.location && (
-            <span className="inline-flex min-w-0 items-center gap-1">
+            <p className="mt-1 flex min-w-0 items-center gap-1 text-xs text-ink-muted">
               <MapPin className="h-3.5 w-3.5 shrink-0" aria-hidden />
               <span className="truncate">{session.location}</span>
-            </span>
+            </p>
           )}
         </div>
       </div>
       {selectable && !hideAction && (
-        <button
-          onClick={onAction}
-          className="min-h-11 w-full shrink-0 rounded-full bg-primary-500 px-5 text-sm font-bold text-on-primary transition-all hover:bg-primary-400 active:scale-[0.97] sm:w-auto"
-        >
-          {actionLabel}
-        </button>
+        <div className="border-t border-line p-2">
+          <button
+            onClick={onAction}
+            className="min-h-12 w-full rounded-full bg-primary-500 px-5 text-sm font-extrabold text-on-primary shadow-[0_8px_20px_-10px_rgb(var(--c-primary-500)/0.9)] transition-all hover:bg-primary-400 active:scale-[0.98]"
+          >
+            {actionLabel}
+          </button>
+        </div>
       )}
     </li>
   );

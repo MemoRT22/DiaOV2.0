@@ -72,6 +72,13 @@ test('admin variables are fixed and independent from any public theme', () => {
   expect(loud['--fg-error']).toBe(loud['--c-error-200']);
 });
 
+test('public readable foregrounds follow the background: light tones on a dark theme, dark tones on a light one', () => {
+  const dark = themeCssVars({ ...neutralTheme, colors: { ...neutralTheme.colors, background: '#04060C' } });
+  const light = themeCssVars({ ...neutralTheme, colors: { ...neutralTheme.colors, background: '#F6F7F9' } });
+  expect(dark['--fg-brand']).toBe(dark['--c-primary-200']);
+  expect(light['--fg-brand']).toBe(light['--c-primary-700']);
+});
+
 test('painting the admin removes every trace of the public theme', () => {
   paintPublicTheme({ ...neutralTheme, typography: { display: 'Pacifico', body: 'Comic Neue' }, style: { ...neutralTheme.style, background: 'starfield' } });
   expect(rootVar('--font-display')).toContain('Pacifico');

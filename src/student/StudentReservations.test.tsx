@@ -42,7 +42,7 @@ const board = (over: Partial<Board>): Board => ({
 const renderRoute = async (b: Board) => {
   state.board = b;
   render(<MemoryRouter><MyRoute /></MemoryRouter>);
-  await screen.findByText(/talleres activos/); // divisions load asynchronously
+  await screen.findByText(/misiones reservadas/); // divisions load asynchronously
 };
 beforeEach(() => vi.clearAllMocks());
 
@@ -50,7 +50,7 @@ beforeEach(() => vi.clearAllMocks());
 
 test('the header recommends — never imposes — the transfer time', async () => {
   await renderRoute(board({ active_reservation_count: 1 }));
-  expect(screen.getByText(/1 de 4 talleres activos · Recomendamos 10 min entre talleres/)).toBeInTheDocument();
+  expect(screen.getByText(/1 de 4 misiones reservadas · Deja 10 min entre misiones para llegar/)).toBeInTheDocument();
   expect(screen.queryByText(/para trasladarte/)).not.toBeInTheDocument();
 });
 
@@ -76,7 +76,7 @@ test('a completed or ended reservation offers no change or cancel', async () => 
   expect(screen.queryByRole('button', { name: 'Cambiar' })).not.toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Cancelar' })).not.toBeInTheDocument();
   expect(screen.getByText('Completada', { selector: 'span' })).toBeInTheDocument();
-  expect(screen.getByText(/puedes reservar otra sesión de este taller/)).toBeInTheDocument();
+  expect(screen.getByText(/puedes reservar otra sesión de esta misión/)).toBeInTheDocument();
 });
 
 test('two reservations with a tight transfer show a non-blocking warning on each', async () => {
@@ -88,6 +88,6 @@ test('two reservations with a tight transfer show a non-blocking warning on each
   }));
   const first = screen.getByRole('heading', { name: 'Primero' }).closest('li') as HTMLElement;
   const second = screen.getByRole('heading', { name: 'Segundo' }).closest('li') as HTMLElement;
-  expect(within(first).getByText(/tienes menos de 10 min para llegar a tu siguiente taller/)).toBeInTheDocument();
-  expect(within(second).getByText(/llegas con menos de 10 min desde tu taller anterior/)).toBeInTheDocument();
+  expect(within(first).getByText(/tienes menos de 10 min para llegar a tu siguiente misión/)).toBeInTheDocument();
+  expect(within(second).getByText(/llegas con menos de 10 min desde tu misión anterior/)).toBeInTheDocument();
 });

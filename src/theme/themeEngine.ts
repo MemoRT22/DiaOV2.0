@@ -81,8 +81,10 @@ export function paletteCssVars(colors: Record<ColorKey, string>, fgShade: 200 | 
 
 /** Variables of the public (student-facing) theme. Never applied to the admin surface. */
 export function themeCssVars(theme: ThemeConfig): Record<string, string> {
+  // Readable status/brand text: light tones over a dark background, dark tones over a light one (same rule as color-scheme).
+  const darkBackground = contrastRatio(theme.colors.background, '#000000') < 4;
   return {
-    ...paletteCssVars(theme.colors, 200),
+    ...paletteCssVars(theme.colors, darkBackground ? 200 : 700),
     '--font-display': `'${theme.typography.display}', system-ui, sans-serif`,
     '--font-body': `'${theme.typography.body}', system-ui, sans-serif`,
     '--radius': `${theme.radius}px`,

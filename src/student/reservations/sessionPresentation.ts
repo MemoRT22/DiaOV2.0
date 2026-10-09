@@ -1,19 +1,19 @@
 import type { SessionState } from '../../lib/reservations';
+import type { StatusKind } from '../ui/StatusPill';
 
-type Tone = 'info' | 'success' | 'warning' | 'error' | 'neutral';
-
-export const STATE_LABELS: Record<SessionState, { label: string; tone: Tone }> = {
-  available: { label: 'Disponible', tone: 'success' },
-  few: { label: 'Pocos lugares', tone: 'warning' },
-  full: { label: 'Llena', tone: 'error' },
-  ended: { label: 'Terminó', tone: 'neutral' },
-  in_progress: { label: 'En curso · puedes entrar', tone: 'info' },
-  cancelled: { label: 'Cancelada', tone: 'error' },
-  conflict: { label: 'Choca con tu ruta', tone: 'error' },
-  same_workshop: { label: 'Ya en tu ruta', tone: 'neutral' },
-  max: { label: 'Ruta completa', tone: 'neutral' },
-  reserved: { label: 'Reservada', tone: 'success' },
-  not_open: { label: 'Aún no abre', tone: 'neutral' },
-  closed: { label: 'Reservas cerradas', tone: 'neutral' },
-  already_attended: { label: 'Ya completada', tone: 'success' },
+/** One word + one look per session state, shared by the mission detail (time slots). */
+export const STATE_LABELS: Record<SessionState, { label: string; kind: StatusKind }> = {
+  available: { label: 'Disponible', kind: 'available' },
+  few: { label: 'Pocos lugares', kind: 'few' },
+  full: { label: 'Llena', kind: 'full' },
+  ended: { label: 'Terminó', kind: 'ended' },
+  in_progress: { label: 'En curso · puedes entrar', kind: 'live' },
+  cancelled: { label: 'Cancelada', kind: 'cancelled' },
+  conflict: { label: 'Choca con tu ruta', kind: 'full' },
+  same_workshop: { label: 'Ya en tu ruta', kind: 'in_route' },
+  max: { label: 'Ruta completa', kind: 'waiting' },
+  reserved: { label: 'Reservada', kind: 'in_route' },
+  not_open: { label: 'Aún no abre', kind: 'waiting' },
+  closed: { label: 'Reservas cerradas', kind: 'waiting' },
+  already_attended: { label: 'Completada', kind: 'done' },
 };

@@ -81,13 +81,13 @@ test('the bottom navigation always offers Escanear, one tap away, and marks the 
   const scan = within(nav).getByRole('link', { name: 'Escanear asistencia' });
   expect(scan).toHaveAttribute('href', '/escanear');
   expect(within(nav).getAllByRole('link').map((l) => l.getAttribute('href'))).toEqual(['/bitacora', '/misiones', '/escanear', '/ruta', '/pasaporte']);
-  expect(within(nav).getByRole('link', { name: /Talleres/ })).toHaveAttribute('aria-current', 'page');
+  expect(within(nav).getByRole('link', { name: /Misiones/ })).toHaveAttribute('aria-current', 'page');
   expect(within(nav).getByRole('link', { name: /Inicio/ })).not.toHaveAttribute('aria-current');
 });
 
-test('the student workshop detail keeps Talleres selected in the bottom navigation', () => {
+test('the mission detail keeps Misiones selected in the bottom navigation', () => {
   renderAt('/misiones/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', <BottomNav />);
-  expect(screen.getByRole('link', { name: /Talleres/ })).toHaveAttribute('aria-current', 'page');
+  expect(screen.getByRole('link', { name: /Misiones/ })).toHaveAttribute('aria-current', 'page');
 });
 
 test('Escanear is available from every student screen', () => {
@@ -98,9 +98,9 @@ test('Escanear is available from every student screen', () => {
   }
 });
 
-test('Intereses is contextual: it keeps Pasaporte highlighted instead of being a permanent tab', () => {
+test('Intereses is contextual: it keeps Bitácora highlighted instead of being a permanent tab', () => {
   renderAt('/destinos', <BottomNav />);
-  expect(screen.getByRole('link', { name: /Pasaporte/ })).toHaveAttribute('aria-current', 'page');
+  expect(screen.getByRole('link', { name: /Bitácora/ })).toHaveAttribute('aria-current', 'page');
   expect(screen.queryByRole('link', { name: /Intereses/ })).not.toBeInTheDocument();
 });
 
@@ -115,8 +115,8 @@ test('the former routes are still registered (bookmarks keep working) and the ne
 test('Inicio puts the next activity first: what, when, where and how to see the route', async () => {
   m.board = board([session('1', 20 * 60_000, HOUR, { my_reservation_id: 'r1' })], [reservation('r1', '1', 'active')]);
   renderAt('/bitacora', <Home />);
-  const hero = await screen.findByRole('region', { name: 'Siguiente actividad' });
-  expect(within(hero).getByText('Sigue')).toBeInTheDocument();
+  const hero = await screen.findByRole('region', { name: 'Tu siguiente misión' });
+  expect(within(hero).getByText('Tu siguiente misión')).toBeInTheDocument();
   expect(within(hero).getByRole('heading', { name: 'Taller 1' })).toBeInTheDocument();
   expect(within(hero).getByText(/Empieza en (19|20) min/)).toBeInTheDocument();
   expect(within(hero).getByText('Salón 1')).toBeInTheDocument();
@@ -127,18 +127,18 @@ test('Inicio puts the next activity first: what, when, where and how to see the 
 test('Inicio with an activity in progress makes it unmistakable and offers the scan', async () => {
   m.board = board([session('1', -10 * 60_000, 20 * 60_000, { my_reservation_id: 'r1' })], [reservation('r1', '1', 'in_progress')]);
   renderAt('/bitacora', <Home />);
-  const hero = await screen.findByRole('region', { name: 'Actividad en curso' });
-  expect(within(hero).getByText('Ahora')).toBeInTheDocument();
+  const hero = await screen.findByRole('region', { name: 'Misión en curso' });
+  expect(within(hero).getByText('En curso ahora')).toBeInTheDocument();
   expect(within(hero).getByText(/En curso · termina en/)).toBeInTheDocument();
-  expect(within(hero).getByRole('link', { name: 'Registrar asistencia' })).toHaveAttribute('href', '/escanear');
+  expect(within(hero).getByRole('link', { name: 'Escanear asistencia' })).toHaveAttribute('href', '/escanear');
 });
 
 test('Inicio without reservations guides to pick workshops instead of showing dead space', async () => {
   m.board = board([], []);
   renderAt('/bitacora', <Home />);
-  const hero = await screen.findByRole('region', { name: 'Siguiente actividad' });
+  const hero = await screen.findByRole('region', { name: 'Tu siguiente misión' });
   expect(within(hero).getByRole('heading', { name: 'Arma tu ruta del día' })).toBeInTheDocument();
-  expect(within(hero).getByRole('link', { name: /Ver talleres/ })).toHaveAttribute('href', '/misiones');
+  expect(within(hero).getByRole('link', { name: /Explorar misiones/ })).toHaveAttribute('href', '/misiones');
 });
 
 // -- Inicio: ONE main action, in human priority order (in progress > imminent > pending attendance > next > pick workshops)
@@ -152,7 +152,7 @@ test('Home A: an activity in progress beats an old pending attendance, which sta
     [pendingRes, reservation('rl', 'live', 'in_progress')],
   );
   renderAt('/bitacora', <Home />);
-  const hero = await screen.findByRole('region', { name: 'Actividad en curso' });
+  const hero = await screen.findByRole('region', { name: 'Misión en curso' });
   expect(within(hero).getByRole('heading', { name: 'Taller live' })).toBeInTheDocument();
   expect(screen.getByText('¿Ya fuiste a Taller old?')).toBeInTheDocument();
 });
@@ -163,7 +163,7 @@ test('Home B: next activity in 5 minutes beats the pending attendance (never mak
     [pendingRes, reservation('rs', 'soon', 'active')],
   );
   renderAt('/bitacora', <Home />);
-  const hero = await screen.findByRole('region', { name: 'Siguiente actividad' });
+  const hero = await screen.findByRole('region', { name: 'Tu siguiente misión' });
   expect(within(hero).getByRole('heading', { name: 'Taller soon' })).toBeInTheDocument();
   expect(within(hero).getByText(/Empieza en [45] min/)).toBeInTheDocument();
   const reminder = screen.getByRole('link', { name: /¿Ya fuiste a Taller old\?/ });
@@ -178,31 +178,31 @@ test('Home C: next activity in 2 hours → the main action is registering the pe
   renderAt('/bitacora', <Home />);
   const hero = await screen.findByRole('region', { name: 'Asistencia pendiente' });
   expect(within(hero).getByRole('heading', { name: 'Taller old' })).toBeInTheDocument();
-  expect(within(hero).getByText('Falta registrar asistencia')).toBeInTheDocument();
+  expect(within(hero).getByText('Falta registrar tu asistencia')).toBeInTheDocument();
   expect(within(hero).getByText(/Terminó a las/)).toBeInTheDocument();
-  expect(within(hero).getByRole('link', { name: 'Registrar asistencia' })).toHaveAttribute('href', '/escanear');
+  expect(within(hero).getByRole('link', { name: 'Escanear asistencia' })).toHaveAttribute('href', '/escanear');
   expect(within(hero).getByRole('link', { name: 'Ver mi ruta' })).toHaveAttribute('href', '/ruta');
   // it is not presented as running, nor as a stamp earned, and the same reminder is not repeated below the hero
   expect(within(hero).queryByText(/En curso/)).not.toBeInTheDocument();
   expect(within(hero).queryByText(/sello/i)).not.toBeInTheDocument();
   expect(screen.queryByText('¿Ya fuiste a Taller old?')).not.toBeInTheDocument();
-  expect(screen.queryByRole('region', { name: 'Siguiente actividad' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('region', { name: 'Tu siguiente misión' })).not.toBeInTheDocument();
 });
 
 test('Home D: with only a pending attendance, that is the main action', async () => {
   m.board = board([ended], [pendingRes]);
   renderAt('/bitacora', <Home />);
   const hero = await screen.findByRole('region', { name: 'Asistencia pendiente' });
-  expect(within(hero).getByRole('link', { name: 'Registrar asistencia' })).toBeInTheDocument();
-  expect(screen.queryByRole('heading', { name: 'Elige tu siguiente taller' })).not.toBeInTheDocument();
+  expect(within(hero).getByRole('link', { name: 'Escanear asistencia' })).toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: 'Elige tu siguiente misión' })).not.toBeInTheDocument();
 });
 
 test('Home E: nothing booked and nothing pending → pick workshops', async () => {
   m.board = board([], []);
   renderAt('/bitacora', <Home />);
-  const hero = await screen.findByRole('region', { name: 'Siguiente actividad' });
+  const hero = await screen.findByRole('region', { name: 'Tu siguiente misión' });
   expect(within(hero).getByRole('heading', { name: 'Arma tu ruta del día' })).toBeInTheDocument();
-  expect(within(hero).getByRole('link', { name: /Ver talleres/ })).toHaveAttribute('href', '/misiones');
+  expect(within(hero).getByRole('link', { name: /Explorar misiones/ })).toHaveAttribute('href', '/misiones');
   expect(screen.queryByText(/¿Ya fuiste a/)).not.toBeInTheDocument();
 });
 
@@ -210,7 +210,7 @@ test('Inicio shows progress with a clear hierarchy: rank, stamps and a collectio
   m.board = board([], []);
   m.fetchProgress.mockResolvedValue(progress({ level: 2, stamps: 3, attended_workshops: 2, division_ids: ['d1'], next: { level: 3, required_attendances: 5, required_divisions: 0 } }));
   renderAt('/bitacora', <Home />);
-  expect(await screen.findByRole('region', { name: 'Nivel actual' })).toBeInTheDocument();
+  expect(await screen.findByRole('region', { name: 'Tu avance' })).toBeInTheDocument();
   expect(screen.getByRole('progressbar', { name: /Avance hacia el siguiente/ })).toHaveAttribute('aria-valuenow', '60');
   expect(screen.getByLabelText('Ciencias de la Salud: conseguido')).toBeInTheDocument();
   expect(screen.getByLabelText('Negocios: pendiente')).toBeInTheDocument();
@@ -240,15 +240,15 @@ test('Mi ruta tells apart what is happening now, what is next, what comes later 
     [reservation('r0', 'done', 'completed', { credits_granted: 1 }), reservation('r1', 'now', 'in_progress'), reservation('r2', 'next', 'active'), reservation('r3', 'later', 'active')],
   );
   renderAt('/ruta', <MyRoute />);
-  await screen.findByText(/talleres activos/);
+  await screen.findByText(/misiones reservadas/);
   const regionOf = (name: string) => screen.getByRole('region', { name });
   expect(within(regionOf('Ahora')).getByRole('heading', { name: 'Taller now' })).toBeInTheDocument();
-  expect(within(regionOf('Sigue')).getByRole('heading', { name: 'Taller next' })).toBeInTheDocument();
+  expect(within(regionOf('Siguiente')).getByRole('heading', { name: 'Taller next' })).toBeInTheDocument();
   expect(within(regionOf('Después')).getByRole('heading', { name: 'Taller later' })).toBeInTheDocument();
-  expect(within(regionOf('Completados')).getByRole('heading', { name: 'Taller done' })).toBeInTheDocument();
+  expect(within(regionOf('Completadas')).getByRole('heading', { name: 'Taller done' })).toBeInTheDocument();
   // the live stop leads with the scan; Cambiar/Cancelar stay small and secondary
-  expect(within(regionOf('Ahora')).getByRole('link', { name: 'Registrar asistencia' })).toBeInTheDocument();
-  expect(within(regionOf('Completados')).queryByRole('button', { name: 'Cancelar' })).not.toBeInTheDocument();
+  expect(within(regionOf('Ahora')).getByRole('link', { name: 'Escanear asistencia' })).toBeInTheDocument();
+  expect(within(regionOf('Completadas')).queryByRole('button', { name: 'Cancelar' })).not.toBeInTheDocument();
 });
 
 // ------------------------------------------------------------------ reservar
@@ -306,6 +306,6 @@ test('Routes smoke: Inicio renders inside the router without the old Pasaporte s
       </Routes>
     </MemoryRouter>,
   );
-  await screen.findByRole('region', { name: 'Siguiente actividad' });
+  await screen.findByRole('region', { name: 'Tu siguiente misión' });
   expect(screen.queryByRole('link', { name: 'Escanear asistencia' })).not.toBeInTheDocument();
 });

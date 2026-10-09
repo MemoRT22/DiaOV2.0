@@ -73,10 +73,10 @@ test('catalogue has one compact card per activity, a clamped pitch, all division
   const card = heading.closest('li') as HTMLElement;
   expect(screen.getAllByRole('heading', { name: 'Taller de prototipos' })).toHaveLength(1);
   expect(within(card).getByText('Ingenierías · Negocios')).toBeInTheDocument();
-  expect(within(card).getByText('Construye una idea con tus manos.').className).toMatch(/line-clamp-3/);
+  expect(within(card).getByText('Construye una idea con tus manos.').className).toMatch(/line-clamp-2/);
   expect(within(card).getByText('Ubicaciones según horario')).toBeInTheDocument();
   expect(within(card).getByText('2 horarios disponibles')).toBeInTheDocument();
-  expect(within(card).getByRole('link', { name: 'Ver taller' })).toHaveAttribute('href', detailPath);
+  expect(within(card).getByRole('link', { name: 'Ver misión' })).toHaveAttribute('href', detailPath);
   expect(within(card).queryByRole('button', { name: 'Reservar' })).not.toBeInTheDocument();
   expect(within(card).queryByText(/Ver más|Ver menos/)).not.toBeInTheDocument();
   expect(m.fetchDetail).not.toHaveBeenCalled();
@@ -89,7 +89,7 @@ test('a large catalogue does not request editorial detail for its cards', async 
   }));
   mount('/misiones', board(many));
   await screen.findByRole('heading', { name: 'Taller 0' });
-  expect(screen.getAllByRole('link', { name: 'Ver taller' })).toHaveLength(65);
+  expect(screen.getAllByRole('link', { name: 'Ver misión' })).toHaveLength(65);
   expect(m.fetchDetail).not.toHaveBeenCalled();
 });
 
@@ -107,8 +107,8 @@ test('catalogue preserves division and change context on the way to the detail a
   }));
   const card = (await screen.findByRole('heading', { name: 'Taller de prototipos' })).closest('li') as HTMLElement;
   expect(screen.queryByRole('heading', { name: 'Otro' })).not.toBeInTheDocument();
-  fireEvent.click(within(card).getByRole('link', { name: 'Ver taller' }));
-  const back = await screen.findByRole('link', { name: 'Volver a Talleres' });
+  fireEvent.click(within(card).getByRole('link', { name: 'Ver misión' }));
+  const back = await screen.findByRole('link', { name: 'Volver a Misiones' });
   expect(back).toHaveAttribute('href', '/misiones?f=division&d=d2&cambiar=r1');
   expect(screen.getByRole('button', { name: 'Cambiar aquí' })).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Cambiar aquí' }));
@@ -157,8 +157,8 @@ test('Vida Universitaria 10:00–10:15 appears in card and detail, then enters t
   expect(within(card).getByText('Vida Universitaria')).toBeInTheDocument();
   expect(within(card).getByText('15 min')).toBeInTheDocument();
   expect(within(card).getByText('1 horario disponible')).toBeInTheDocument();
-  fireEvent.click(within(card).getByRole('link', { name: 'Ver taller' }));
-  expect(await screen.findByText('Vida Universitaria · Deportiva')).toBeInTheDocument();
+  fireEvent.click(within(card).getByRole('link', { name: 'Ver misión' }));
+  expect(await screen.findByText('Misión · Vida Universitaria · Deportiva')).toBeInTheDocument();
   expect(screen.getByText(/10:00.*15 min/)).toBeInTheDocument();
   expect(screen.getByText('15 de 20 lugares')).toBeInTheDocument();
   expect(screen.getAllByText('Terraza').length).toBeGreaterThan(0);
@@ -172,7 +172,7 @@ test('Vida Universitaria 10:00–10:15 appears in card and detail, then enters t
 test.each([[30, '2026-10-15T15:30:00Z'], [60, '2026-10-15T16:00:00Z']])('academic %i-minute session keeps its actual duration', async (minutes, endsAt) => {
   mount(detailPath, board([slot('academic', { ends_at: endsAt })]));
   await screen.findByRole('heading', { name: 'Taller de prototipos' });
-  expect(screen.getByText(new RegExp(`${minutes} min`))).toBeInTheDocument();
+  expect(screen.getAllByText(new RegExp(`${minutes} min`)).length).toBeGreaterThan(0);
   fireEvent.click(screen.getByRole('button', { name: 'Reservar' }));
   const dialog = await screen.findByRole('dialog', { name: 'Reservar lugar' });
   expect(within(dialog).getByText(new RegExp(`${minutes} min`))).toBeInTheDocument();
@@ -182,7 +182,7 @@ test('legacy detail omits absent editorial sections and a failed editorial RPC l
   m.fetchDetail.mockRejectedValueOnce(new Error('RPC unavailable'));
   mount(detailPath, board([slot('one')]));
   await screen.findByRole('heading', { name: 'Taller de prototipos' });
-  expect(screen.queryByRole('heading', { name: 'Qué vas a hacer' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: 'Qué vas a vivir' })).not.toBeInTheDocument();
   expect(screen.getByText(/No pudimos cargar toda la información/)).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Reservar' })).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'reintentar' }));
@@ -193,23 +193,25 @@ test('legacy metadata with null editorial fields opens without empty sections', 
   m.fetchDetail.mockResolvedValue({ ...metadata, objective: null, takeaway: null, requirements: null, careers: [], divisions: [] });
   mount(detailPath, board([slot('one')]));
   await screen.findByRole('heading', { name: 'Taller de prototipos' });
-  expect(screen.queryByRole('heading', { name: 'Qué vas a hacer' })).not.toBeInTheDocument();
-  expect(screen.queryByRole('heading', { name: 'Para quién' })).not.toBeInTheDocument();
-  expect(screen.getByRole('heading', { name: 'Antes de ir' })).toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: 'Qué vas a vivir' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: 'Ideal si te interesa' })).not.toBeInTheDocument();
+  // No requirements → no «Antes de ir» block; the place is still shown with the logistics.
+  expect(screen.queryByRole('heading', { name: 'Antes de ir' })).not.toBeInTheDocument();
+  expect(screen.getAllByText('Laboratorio 1').length).toBeGreaterThan(0);
 });
 
 test('experience type and category are shown only when the editorial projection provides them', async () => {
   m.fetchDetail.mockResolvedValue({ ...metadata, activity_type: 'vida_universitaria', experience_category: 'deportiva' });
   mount(detailPath, board([slot('one')]));
   await screen.findByRole('heading', { name: 'Taller de prototipos' });
-  expect(screen.getByText('Vida Universitaria · Deportiva')).toBeInTheDocument();
+  expect(screen.getByText('Misión · Vida Universitaria · Deportiva')).toBeInTheDocument();
 });
 
 test('the general Vida Universitaria category is not repeated beside its type', async () => {
   m.fetchDetail.mockResolvedValue({ ...metadata, activity_type: 'vida_universitaria', experience_category: 'vida_universitaria' });
   mount(detailPath, board([slot('one')]));
   await screen.findByRole('heading', { name: 'Taller de prototipos' });
-  expect(screen.getByText('Vida Universitaria')).toBeInTheDocument();
+  expect(screen.getByText('Misión · Vida Universitaria')).toBeInTheDocument();
   expect(screen.queryByText(/Vida Universitaria · Vida universitaria/i)).not.toBeInTheDocument();
 });
 
@@ -227,8 +229,8 @@ test('a fresh detail read reflects post-publication edits from the activity and 
 
 test('missing activity shows a useful return path', async () => {
   mount(`/misiones/${B}`, board([slot('one')]));
-  expect(screen.getByText('Este taller no está disponible.')).toBeInTheDocument();
-  expect(screen.getByRole('link', { name: 'Volver a Talleres' })).toHaveAttribute('href', '/misiones');
+  expect(screen.getByText('Esta misión no está disponible.')).toBeInTheDocument();
+  expect(screen.getByRole('link', { name: 'Volver a Misiones' })).toHaveAttribute('href', '/misiones');
 });
 
 test('board loading and failure provide a retry path', async () => {
@@ -297,7 +299,7 @@ test('successful change navigates to Mi ruta; failed change keeps old reservatio
   fireEvent.click(within(dialog).getByRole('button', { name: 'Confirmar cambio' }));
   expect(await within(dialog).findByText(/acaba de llenarse/)).toBeInTheDocument();
   expect(data.reservations[0]).toMatchObject({ id: 'r1', session_id: 'old', status: 'vigente' });
-  expect(screen.getByRole('link', { name: 'Volver a Talleres' })).toHaveAttribute('href', '/misiones?cambiar=r1');
+  expect(screen.getByRole('link', { name: 'Volver a Misiones' })).toHaveAttribute('href', '/misiones?cambiar=r1');
   fireEvent.click(within(dialog).getByRole('button', { name: 'Cerrar' }));
   fireEvent.click(screen.getByRole('button', { name: 'Cambiar aquí' }));
   fireEvent.click(within(await screen.findByRole('dialog', { name: 'Cambiar horario' })).getByRole('button', { name: 'Confirmar cambio' }));

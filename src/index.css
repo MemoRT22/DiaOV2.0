@@ -137,3 +137,120 @@
 .anim-bar { transform-origin: left; animation: bar-grow 0.9s ease-out both; }
 .no-scrollbar { scrollbar-width: none; }
 .no-scrollbar::-webkit-scrollbar { display: none; }
+
+/* ---- Student space system: shared surfaces, orbs, guide, nav and feedback motion (all token-driven) ---- */
+@layer components {
+  /* Card with a faint top-left light, like a panel lit by a nearby star. */
+  .space-card {
+    @apply rounded-theme border border-line;
+    background:
+      radial-gradient(120% 80% at 0% 0%, rgb(var(--c-secondary-500) / 0.07), transparent 55%),
+      linear-gradient(180deg, rgb(var(--surface-raised) / 0.92), rgb(var(--surface) / 0.92));
+  }
+  .icon-orb {
+    background: radial-gradient(circle at 30% 25%, rgb(var(--c-primary-400) / 0.35), rgb(var(--c-primary-500) / 0.12) 60%);
+    box-shadow: inset 0 0 0 1px rgb(var(--c-primary-500) / 0.35), 0 8px 24px -10px rgb(var(--c-primary-500) / 0.6);
+  }
+  .division-orb {
+    color: rgb(var(--tint));
+    background: radial-gradient(circle at 30% 25%, rgb(var(--tint) / 0.32), rgb(var(--tint) / 0.1) 65%);
+    box-shadow: inset 0 0 0 1px rgb(var(--tint) / 0.4), 0 6px 18px -8px rgb(var(--tint) / 0.7);
+  }
+  /* Astronaut-helmet porthole around the mascot: tinted glass + a metallic rim + a glare. */
+  .guide-helmet {
+    background: radial-gradient(circle at 50% 35%, rgb(var(--c-secondary-500) / 0.35), rgb(var(--surface-raised)) 70%);
+    box-shadow: 0 0 0 3px rgb(var(--surface-raised)), 0 0 0 5px rgb(var(--c-primary-500) / 0.85), 0 10px 30px -8px rgb(var(--c-primary-500) / 0.6);
+  }
+  .guide-helmet::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: linear-gradient(140deg, rgba(255, 255, 255, 0.38) 0%, rgba(255, 255, 255, 0.06) 32%, transparent 55%);
+    pointer-events: none;
+  }
+  .guide-helmet-img {
+    object-position: 50% 0%;
+    transform: scale(1.55) translateY(14%);
+  }
+  /* Hero states of «Tu siguiente misión». */
+  .hero-live {
+    background:
+      radial-gradient(120% 90% at 100% 0%, rgb(var(--c-primary-300) / 0.45), transparent 55%),
+      linear-gradient(160deg, rgb(var(--c-primary-500)), rgb(var(--c-primary-700)));
+  }
+  .hero-next {
+    background:
+      radial-gradient(110% 80% at 100% 0%, rgb(var(--c-primary-500) / 0.18), transparent 60%),
+      linear-gradient(180deg, rgb(var(--surface-raised)), rgb(var(--surface)));
+  }
+  /* Reservation summary drawn as a boarding pass: two notches and a dashed tear line. */
+  .ticket {
+    @apply relative rounded-theme border border-line bg-surface-raised;
+    -webkit-mask: radial-gradient(circle 10px at 0 62%, transparent 98%, #000) left / 51% 100% no-repeat,
+      radial-gradient(circle 10px at 100% 62%, transparent 98%, #000) right / 51% 100% no-repeat;
+    mask: radial-gradient(circle 10px at 0 62%, transparent 98%, #000) left / 51% 100% no-repeat,
+      radial-gradient(circle 10px at 100% 62%, transparent 98%, #000) right / 51% 100% no-repeat;
+  }
+  .ticket-tear {
+    border-top: 2px dashed rgb(var(--line));
+  }
+  /* Passport cover. */
+  .passport-cover {
+    background:
+      radial-gradient(90% 70% at 100% 0%, rgb(var(--c-primary-500) / 0.35), transparent 60%),
+      radial-gradient(80% 60% at 0% 100%, rgb(var(--c-secondary-500) / 0.25), transparent 60%),
+      linear-gradient(160deg, rgb(var(--surface-raised)), rgb(var(--surface-sunken)));
+  }
+  /* Ink stamp of the passport: double ring, slight rotation. */
+  .ink-stamp {
+    color: rgb(var(--tint));
+    border: 2px solid rgb(var(--tint) / 0.85);
+    background: radial-gradient(circle, rgb(var(--tint) / 0.18), rgb(var(--tint) / 0.06) 70%);
+    box-shadow: inset 0 0 0 4px rgb(var(--surface)), inset 0 0 0 5px rgb(var(--tint) / 0.6);
+  }
+  .scan-frame-corner {
+    @apply absolute h-9 w-9 border-primary-400;
+  }
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+@keyframes scan-sweep {
+  0% { transform: translateY(0); opacity: 0; }
+  10% { opacity: 1; }
+  90% { opacity: 1; }
+  100% { transform: translateY(var(--sweep, 220px)); opacity: 0; }
+}
+@keyframes burst {
+  0% { transform: scale(0.4) rotate(0deg); opacity: 0; }
+  40% { opacity: 1; }
+  100% { transform: scale(1.15) rotate(25deg); opacity: 0; }
+}
+@keyframes launch {
+  0% { transform: translateY(18px) scale(0.8); opacity: 0; }
+  35% { transform: translateY(0) scale(1); opacity: 1; }
+  70% { transform: translateY(-6px); }
+  100% { transform: translateY(0); }
+}
+@keyframes trail {
+  0% { transform: scaleY(0); opacity: 0; }
+  40% { transform: scaleY(1); opacity: 0.9; }
+  100% { transform: scaleY(0.4); opacity: 0; }
+}
+@keyframes nav-pop {
+  0% { transform: scale(0.7); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+.anim-blink { animation: blink 1.6s ease-in-out infinite; }
+.anim-scan { animation: scan-sweep 2.2s ease-in-out infinite; }
+.anim-burst { animation: burst 0.9s ease-out 0.1s both; }
+.anim-launch { animation: launch 0.8s cubic-bezier(0.2, 0.9, 0.3, 1.1) both; }
+.anim-trail { transform-origin: top; animation: trail 0.9s ease-out 0.15s both; }
+.anim-nav-pop { animation: nav-pop 0.25s ease-out both; }
+.lite .anim-blink,
+.lite .anim-scan {
+  animation: none !important;
+}

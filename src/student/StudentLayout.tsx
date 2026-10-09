@@ -33,7 +33,7 @@ export default function StudentLayout() {
   return (
     <div className="relative min-h-dvh">
       <Backdrop />
-      {/* Slim header: vertical space on a phone is for the event, not for chrome. Sign-out lives in Pasaporte. */}
+      {/* Slim header: vertical space on a phone is for the event, not for chrome. Sign-out lives in Bitácora. */}
       <header className="sticky top-0 z-30 border-b border-line/60 bg-surface-sunken/85 pt-[env(safe-area-inset-top)] backdrop-blur-md">
         <div className="mx-auto flex h-12 max-w-2xl items-center justify-between px-4">
           <div className="flex min-w-0 items-center gap-2">
@@ -43,8 +43,8 @@ export default function StudentLayout() {
           {consentOk && (
             <Link
               to="/pasaporte"
-              aria-label={`Mi pasaporte, ${profile.display_name}`}
-              className="flex h-9 w-9 items-center justify-center rounded-full bg-primary-500/20 text-xs font-extrabold text-fg-brand"
+              aria-label={`Mi bitácora, ${profile.display_name}`}
+              className="flex h-10 w-10 items-center justify-center rounded-full bg-primary-500/20 text-xs font-extrabold text-fg-brand ring-1 ring-primary-500/50"
             >
               {initials(profile.display_name)}
             </Link>

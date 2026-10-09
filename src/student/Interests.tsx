@@ -1,11 +1,12 @@
-import { ArrowDown, ArrowUp, Check, Search, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, Check, Compass, Search, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, Button, LoadError, PageSkeleton } from '../components/ui';
+import { Alert, Button, PageSkeleton } from '../components/ui';
 import { fetchDivisions, fetchPostEventInterests } from '../lib/catalog';
 import { friendlyError } from '../lib/errors';
 import { supabase } from '../lib/supabase';
 import { useLoad } from '../lib/useLoad';
 import { usePublicTheme } from '../theme/PublicThemeProvider';
+import { ErrorState } from './ui/States';
 
 const MAX = 3;
 
@@ -48,7 +49,7 @@ export default function Interests() {
   }, [careers, divisions, query]);
 
   if (loading && !data) return <PageSkeleton />;
-  if (error || !data || !interests) return <LoadError error={error} onRetry={reload} />;
+  if (error || !data || !interests) return <ErrorState error={error} onRetry={reload} />;
 
   // Only editable while the question is enabled and its window is open; a closed window is read-only.
   const closed = !interests.post_event_interests_open;
@@ -89,10 +90,15 @@ export default function Interests() {
 
   return (
     <div className="space-y-5">
-      <header className="animate-fade-up">
-        <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Después de vivir el Día OV…</p>
-        <h1 className="text-2xl font-extrabold">{text('interestsTitle')}</h1>
-        <p className="mt-1 text-sm text-ink-muted">{text('interestsBody')}</p>
+      <header className="flex animate-fade-up items-start gap-3">
+        <span className="icon-orb flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl text-fg-brand" aria-hidden>
+          <Compass className="h-6 w-6" />
+        </span>
+        <div className="min-w-0">
+          <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-fg-brand">Carreras que te interesan</p>
+          <h1 className="text-2xl font-extrabold leading-tight">{text('interestsTitle')}</h1>
+          <p className="mt-1 text-sm text-ink-muted">{text('interestsBody')}</p>
+        </div>
       </header>
 
       {notYet && (
@@ -101,7 +107,7 @@ export default function Interests() {
       {closed && <Alert tone="warning">{text('interestsClosed')}</Alert>}
 
       {!notYet && (
-      <section className="card p-4" aria-label="Carreras que más me interesaron">
+      <section className="space-card p-4" aria-label="Carreras que más me interesaron">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-sm font-semibold">Mis carreras de interés</h2>
           <span className="text-xs text-ink-muted" aria-live="polite">
