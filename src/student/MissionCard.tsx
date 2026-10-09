@@ -23,6 +23,34 @@ export function missionHeadline(
   return null;
 }
 
+export const LIVE_JOINABLE = 'Puedes reservar y entrar ahora';
+export const LIVE_ONLY = 'En curso ahora';
+
+/**
+ * Footer line: «¿puedo ir?» for THIS student. «En curso» (headline) only says the mission is happening now; the footer
+ * promises an immediate action only when a session in progress is really selectable under the existing rules
+ * (`isSelectable(sessionState(...))` — full, conflict, same workshop, max… all say no).
+ */
+export function missionFooter(
+  board: Board,
+  sessions: BoardSession[],
+  replacing: MyReservation | null,
+  personal: ReturnType<typeof workshopPersonalStatus>,
+): { text: string; tone: 'success' | 'info' | 'error' | 'brand' | 'muted' } {
+  if (personal === 'Explorado') return { text: '¡Ya la completaste!', tone: 'success' };
+  const mine = sessions.find((s) => s.my_reservation_id && !s.ended);
+  if (personal === 'En tu ruta' && mine) return { text: `Tu horario: ${formatTime(mine.starts_at)}`, tone: 'info' };
+  const live = sessions.filter((s) => s.in_progress);
+  if (live.length > 0) {
+    const joinable = live.some((s) => isSelectable(sessionState(board, s, replacing)));
+    return joinable ? { text: LIVE_JOINABLE, tone: 'brand' } : { text: LIVE_ONLY, tone: 'muted' };
+  }
+  const headline = missionHeadline(board, sessions, replacing, personal);
+  return { text: workshopAvailability(board, sessions, replacing), tone: headline?.kind === 'full' ? 'error' : 'muted' };
+}
+
+const FOOTER_TONE = { success: 'text-fg-success', info: 'text-fg-info', error: 'text-fg-error', brand: 'text-fg-brand', muted: 'text-ink-muted' } as const;
+
 /**
  * Compact catalogue card: just enough to decide «¿me interesa?» — division, name, one-line pitch, why it is for me,
  * duration, place, availability and my own state. The whole card is the tap target (the «Ver misión» link stretches
@@ -59,18 +87,9 @@ export default function MissionCard({
   const personal = workshopPersonalStatus(sessions, attended, reserved);
   const headline = missionHeadline(board, sessions, replacing, personal);
   const location = workshopLocation(sessions);
-  const availability = workshopAvailability(board, sessions, replacing);
   const done = personal === 'Explorado';
   const dim = headline?.kind === 'full';
-  const mine = sessions.find((s) => s.my_reservation_id && !s.ended);
-  // The footer answers «¿puedo ir?» for THIS student: my own slot when it is booked, otherwise availability.
-  const footer = done
-    ? '¡Ya la completaste!'
-    : personal === 'En tu ruta' && mine
-      ? `Tu horario: ${formatTime(mine.starts_at)}`
-      : headline?.kind === 'live'
-        ? 'Puedes entrar ahora'
-        : availability;
+  const footer = missionFooter(board, sessions, replacing, personal);
 
   return (
     <li
@@ -121,8 +140,8 @@ export default function MissionCard({
         </div>
 
         <div className="mt-3 flex items-center justify-between gap-3 border-t border-line pt-3">
-          <span className={`text-xs font-semibold ${done ? 'text-fg-success' : personal === 'En tu ruta' && mine ? 'text-fg-info' : headline?.kind === 'full' ? 'text-fg-error' : headline?.kind === 'live' ? 'text-fg-brand' : 'text-ink-muted'}`}>
-            {footer}
+          <span className={`text-xs font-semibold ${FOOTER_TONE[footer.tone]}`}>
+            {footer.text}
           </span>
           <Link
             to={href}
