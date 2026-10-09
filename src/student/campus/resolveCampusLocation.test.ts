@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { CAMPUS_ZONES, ZONE_BY_ID } from './campusZones';
+import { CAMPUS_ZONES, SPACE_RULES, ZONE_BY_ID } from './campusZones';
 import { formatPlace, placeDetailLine, resolveCampusLocation, unmappedLocations } from './resolveCampusLocation';
 
 const zoneOf = (location: string) => resolveCampusLocation(location).zoneId;
@@ -38,10 +38,22 @@ describe('resolveCampusLocation — space rules (more specific than a building a
     expect(formatPlace('Negocios Arts Lab, Primer piso')).toBe('Edificio de Negocios 2da Etapa · Arts Lab · Primer piso');
   });
 
-  test('«Negocios Planta baja - Zona de descanso» is not pinned on any building: original text, «por confirmar»', () => {
+  test('«Negocios Planta baja - Zona de descanso» (confirmed by Coordinación) is building 3, keeping space and floor', () => {
     const place = resolveCampusLocation('Negocios Planta baja - Zona de descanso');
-    expect(place).toMatchObject({ resolved: false, zoneId: null, zone: null, building: null, pendingConfirmation: true, original: 'Negocios Planta baja - Zona de descanso' });
-    expect(formatPlace('Negocios Planta baja - Zona de descanso')).toBe('Negocios Planta baja - Zona de descanso');
+    expect(place).toMatchObject({ resolved: true, zoneId: 'negocios', detail: 'Zona de descanso', floor: 'Planta baja', pendingConfirmation: false });
+    expect(formatPlace('Negocios Planta baja - Zona de descanso')).toBe('Escuela Internacional de Negocios · Zona de descanso · Planta baja');
+  });
+
+  test('a space rule without a proven building degrades to «por confirmar»: original text, no zone, no pin', () => {
+    SPACE_RULES.push({ building: 'Negocios', space: 'Sala Pendiente', zoneId: null, evidence: 'test' });
+    try {
+      expect(resolveCampusLocation('Negocios Sala Pendiente, Primer piso')).toMatchObject({
+        resolved: false, zoneId: null, building: null, pendingConfirmation: true, original: 'Negocios Sala Pendiente, Primer piso',
+      });
+      expect(formatPlace('Negocios Sala Pendiente, Primer piso')).toBe('Negocios Sala Pendiente, Primer piso');
+    } finally {
+      SPACE_RULES.pop();
+    }
   });
 
   test('the rules touch only their own spaces: every other «Negocios …» stays in building 3', () => {
@@ -99,7 +111,7 @@ describe('resolveCampusLocation — parsing rules', () => {
  * Snapshot (read-only query, 2026-10-09) of every distinct location the student board currently sends for REAL
  * workshops: `coalesce(nullif(activity_sessions.location, ''), activities.location)`. All must land on a building.
  */
-const REAL_LOCATIONS: Array<[string, string | null]> = [
+const REAL_LOCATIONS: Array<[string, string]> = [
   ['1 125, Primer piso', 'aulas'], ['1 131 y Cámara Gesell, Tercer piso', 'aulas'], ['1 135, Tercer piso', 'aulas'],
   ['1 Clínica de Fisioterapia, Planta baja', 'aulas'], ['1 Sala de Juicios Orales, Planta baja', 'aulas'], ['1 Salón Sutton, Planta baja', 'aulas'],
   ['1 Taller de cerámica, Segundo piso', 'aulas'], ['1 Taller de costura, Tercer piso', 'aulas'], ['1 Taller de joyería', 'aulas'],
@@ -121,16 +133,15 @@ const REAL_LOCATIONS: Array<[string, string | null]> = [
   ['Negocios 3202, Segundo piso', 'negocios'], ['Negocios 3301, Tercer piso', 'negocios'], ['Negocios 3302, Tercer piso', 'negocios'],
   ['Negocios 3303, Tercer piso', 'negocios'], ['Negocios 3304, Tercer piso', 'negocios'], ['Negocios 3305, Tercer piso', 'negocios'],
   ['Negocios Arts Lab, Primer piso', 'negocios2'], ['Negocios HUB de IA y Ciberseguridad, Planta baja', 'negocios'],
-  ['Negocios Planta baja - Zona de descanso', null], ['Negocios Sala Alpha, Primer piso', 'negocios'],
+  ['Negocios Planta baja - Zona de descanso', 'negocios'], ['Negocios Sala Alpha, Primer piso', 'negocios'],
   ['Negocios Sala de cómputo, Segundo piso', 'negocios'], ['Negocios Sala Genera, Planta baja', 'negocios'],
   ['Rectoría Auditorio San Juan Pablo II', 'rectoria'], ['Rectoría CASA', 'rectoria'], ['Rectoría Jardín frontal', 'rectoria'],
 ];
 const DEMO_LOCATIONS = ['CERT DEMO Aula Creativa', 'CERT DEMO Aula Mixta', 'CERT DEMO Aula Salud', 'CERT DEMO Plaza', 'Salón Demo A', 'Salón Demo B', 'Salón Demo C', 'Salón Demo L'];
 
-test('real locations: 61 of 62 resolve to their building, 1 is pending confirmation; the DEMO fixtures stay unmapped', () => {
+test('all 62 distinct real locations (63 workshops) resolve to the expected building; the DEMO fixtures stay unmapped', () => {
   expect(REAL_LOCATIONS).toHaveLength(62);
-  expect(REAL_LOCATIONS.filter(([, zone]) => zone !== null)).toHaveLength(61);
-  expect(REAL_LOCATIONS.filter(([location]) => resolveCampusLocation(location).pendingConfirmation).map(([l]) => l)).toEqual(['Negocios Planta baja - Zona de descanso']);
+  expect(REAL_LOCATIONS.filter(([location]) => resolveCampusLocation(location).pendingConfirmation)).toEqual([]);
   for (const [location, zoneId] of REAL_LOCATIONS) expect([location, zoneOf(location)]).toEqual([location, zoneId]);
   for (const location of DEMO_LOCATIONS) expect([location, zoneOf(location)]).toEqual([location, null]);
 });
