@@ -1,16 +1,20 @@
-import { Check, EyeOff, Maximize2, X } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { Check, ExternalLink, Monitor } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Alert, Badge, Button } from '../../components/ui';
 import { friendlyError } from '../../lib/errors';
 import {
   confirmWinner, drawWinner, fetchPendingSelection, markNoShow,
-  type RaffleCategory, type RafflePrize,
+  type DrawResult, type RaffleCategory, type RafflePrize,
 } from '../../lib/raffleApi';
-import { drawBlocker, initialCategory, initialPrize, isDrawable, nextTarget, SPIN_MS, unitsLeft } from '../../lib/raffleShow';
+import { toPublicState, type PublicState } from '../../lib/rafflePublic';
+import {
+  drawBlocker, initialCategory, initialPrize, isDefinitiveDrawError, isDrawable, nextTarget, SPIN_MS, unitsLeft,
+} from '../../lib/raffleShow';
+import { useRafflePublicScreen } from '../../lib/useRafflePublicScreen';
 import { DataPanel, EmptyState } from '../design/Primitives';
 import { InvalidateModal } from './RaffleModals';
-import RaffleStage, { useReducedMotion, type StagePhase, type StageResult } from './RaffleStage';
+import RaffleStage, { PublicStage, useReducedMotion, type StagePhase, type StageResult } from './RaffleStage';
 import type { RaffleContext } from './types';
 
 const EMPTY: RafflePrize[] = [];
@@ -18,9 +22,22 @@ const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, 
 const errorCode = (cause: unknown) => (cause && typeof cause === 'object' && 'message' in cause ? String((cause as { message: unknown }).message) : '');
 const newKey = (prizeId: string) => `${prizeId}-${globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`}`;
 
+const NOT_REGISTERED = 'No pudimos confirmar la respuesta del servidor y no hay ningún ganador registrado para este premio. Puedes reintentar: se reutiliza la misma operación, así que no se duplica la selección.';
+const UNCERTAIN = 'No pudimos confirmar si el servidor ya eligió un ganador (conexión o error temporal). El premio queda bloqueado para no duplicar la selección: comprueba de nuevo.';
+
+type Pending = Record<string, StageResult>;
+type PendingCheck = { found: Pending; unknown: string[] };
+
+/** What `raffle_pending_selection` answered, as a result to show; the pool size is not part of that answer. */
+const recovered = (current: { winner_id: string | null; display_name?: string; prize_name?: string; category_name?: string }, prize: RafflePrize, fresh = false): StageResult => ({
+  winnerId: current.winner_id as string, name: current.display_name ?? 'Participante', prizeName: current.prize_name ?? prize.name,
+  categoryName: current.category_name ?? '', poolSize: null, fresh,
+});
+
 /**
- * The operating console: pick category and prize, draw, reveal and decide, round after round. The same stage can be
- * taken to full screen (projection mode) with the operator's controls reduced to a discreet dock.
+ * The operating console: pick category and prize, draw, reveal and decide, round after round. What the audience sees
+ * goes to a separate public window (or to the on-screen rehearsal) that has no controls; every decision, error and
+ * notice stays here.
  */
 export default function RaffleRun({ ctx }: { ctx: RaffleContext }) {
   const { categories, prizes, scope, canConfigure, prizesLoading } = ctx;
@@ -33,61 +50,87 @@ export default function RaffleRun({ ctx }: { ctx: RaffleContext }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
-  const [pending, setPending] = useState<Record<string, StageResult>>({});
-  const [projecting, setProjecting] = useState(false);
+  const [redraw, setRedraw] = useState<null | 'again' | 'retry'>(null);
+  const [pending, setPending] = useState<Pending>({});
+  const [unverified, setUnverified] = useState<Record<string, true>>({});
+  const [checking, setChecking] = useState(false);
+  const [serverEmpty, setServerEmpty] = useState<{ prizeId: string; pool: number; available: number } | null>(null);
+  const [rehearsing, setRehearsing] = useState(false);
   const [invalidating, setInvalidating] = useState(false);
   const token = useRef(0);
   const started = useRef(false);
   const latest = useRef({ prizes, categories });
   latest.current = { prizes, categories };
+  // A draw in flight and the key of the operation being attempted: a second click, or a retry after an uncertain
+  // answer, is the same logical operation and must never become a second draw.
+  const drawing = useRef(false);
+  const attempt = useRef<{ prizeId: string; key: string } | null>(null);
 
   const category = categories.find((item) => item.id === categoryId);
   const categoryPrizes = prizes[categoryId] ?? EMPTY;
   const prize = categoryPrizes.find((item) => item.id === prizeId);
   const poolCount = category?.pool_count ?? 0;
-  const blocker = prizesLoading ? null : drawBlocker(category, categoryPrizes, prize, poolCount);
-  const locked = busy || phase === 'drawing';
+  const serverEmptyHere = !!serverEmpty && serverEmpty.prizeId === prizeId && serverEmpty.pool === poolCount && serverEmpty.available === prize?.available;
+  const blocker = prizesLoading ? null : drawBlocker(category, categoryPrizes, prize, poolCount, { unverified: !!prize && !!unverified[prize.id], serverEmpty: serverEmptyHere });
+  const unverifiedHere = categoryPrizes.filter((item) => unverified[item.id]);
+  const locked = busy || phase === 'drawing' || phase === 'uncertain';
 
-  /** Winners left pending (a reload, another operator) among the given prizes, by prize. */
-  const findPending = useCallback(async (list: RafflePrize[]) => {
-    const found: Record<string, StageResult> = {};
+  const recordChecks = useCallback((list: RafflePrize[], check: PendingCheck) => {
+    setPending((current) => { const next = { ...current }; for (const item of list) delete next[item.id]; return { ...next, ...check.found }; });
+    setUnverified((current) => { const next = { ...current }; for (const item of list) delete next[item.id]; for (const id of check.unknown) next[id] = true; return next; });
+  }, []);
+
+  /**
+   * Asks the server about every prize. Three outcomes per prize, never mixed: a winner is waiting, none is waiting, or
+   * the server could not be asked (`unknown`): that last one must not be read as «none».
+   */
+  const findPending = useCallback(async (list: RafflePrize[]): Promise<PendingCheck> => {
+    const found: Pending = {};
+    const unknown: string[] = [];
     await Promise.all(list.map(async (item) => {
       try {
         const current = await fetchPendingSelection(item.id);
-        if (current.winner_id) found[item.id] = {
-          winnerId: current.winner_id, name: current.display_name ?? 'Participante', prizeName: current.prize_name ?? item.name,
-          categoryName: current.category_name ?? '', poolSize: 0, fresh: false,
-        };
-      } catch { /* without pending information the prize is simply drawn from scratch */ }
+        if (!current || typeof current !== 'object' || !('winner_id' in current)) throw new Error('UNREADABLE');
+        if (current.winner_id) found[item.id] = recovered(current, item);
+      } catch (cause) { console.error('pending selection check failed', cause); unknown.push(item.id); }
     }));
-    return found;
+    return { found, unknown };
   }, []);
 
   /** Selects a category and, within it, the prize that deserves attention first (a pending winner, else one with units). */
-  const enter = useCallback(async (nextCategory: string, preferred?: string) => {
+  const enter = useCallback(async (nextCategory: string, preferred?: string, known?: PendingCheck) => {
     const mine = ++token.current;
-    setCategoryId(nextCategory); setPhase('idle'); setResult(null); setRevealDone(false); setError(''); setNotice('');
+    attempt.current = null;
+    setCategoryId(nextCategory); setPhase('idle'); setResult(null); setRevealDone(false); setError(''); setNotice(''); setRedraw(null); setServerEmpty(null);
     const list = latest.current.prizes[nextCategory] ?? EMPTY;
-    const found = await findPending(list);
+    const check = known ?? await findPending(list);
     if (token.current !== mine) return;
-    setPending(found);
-    const pick = preferred && list.some((item) => item.id === preferred) ? preferred : initialPrize(list, Object.fromEntries(Object.keys(found).map((id) => [id, true])));
+    recordChecks(list, check);
+    const pick = preferred && list.some((item) => item.id === preferred) ? preferred : initialPrize(list, Object.fromEntries(Object.keys(check.found).map((id) => [id, true])));
     setPrizeId(pick);
-    if (found[pick]) { setResult(found[pick]); setRevealDone(true); setPhase('revealed'); }
-  }, [findPending]);
+    if (check.found[pick]) { setResult(check.found[pick]); setRevealDone(true); setPhase('revealed'); }
+  }, [findPending, recordChecks]);
 
   // First visit: go straight to a winner that is waiting for a decision, otherwise to the first category that can be drawn.
   useEffect(() => {
     if (started.current || categories.length === 0 || prizesLoading || !categories.every((item) => prizes[item.id])) return;
     started.current = true;
     void (async () => {
-      const waiting = await findPending(categories.flatMap((item) => prizes[item.id] ?? EMPTY));
-      const hit = categories.map((item) => ({ categoryId: item.id, prize: (prizes[item.id] ?? EMPTY).find((candidate) => waiting[candidate.id]) })).find((entry) => entry.prize);
-      await enter(hit?.categoryId ?? initialCategory(categories, prizes), hit?.prize?.id);
+      const all = categories.flatMap((item) => prizes[item.id] ?? EMPTY);
+      const check = await findPending(all);
+      const hit = categories.map((item) => ({ categoryId: item.id, prize: (prizes[item.id] ?? EMPTY).find((candidate) => check.found[candidate.id]) })).find((entry) => entry.prize);
+      const target = hit?.categoryId ?? initialCategory(categories, prizes);
+      const own = new Set((prizes[target] ?? EMPTY).map((item) => item.id));
+      const split = (inside: boolean): PendingCheck => ({
+        found: Object.fromEntries(Object.entries(check.found).filter(([id]) => own.has(id) === inside)),
+        unknown: check.unknown.filter((id) => own.has(id) === inside),
+      });
+      recordChecks(all.filter((item) => !own.has(item.id)), split(false));
+      await enter(target, hit?.prize?.id, split(true));
     })();
-  }, [categories, prizes, prizesLoading, enter, findPending]);
+  }, [categories, prizes, prizesLoading, enter, findPending, recordChecks]);
 
-  // The burst has played: from here on the result is shown as is, so toggling the projection never replays it.
+  // The burst has played: from here on the result is shown as is, so toggling the rehearsal never replays it.
   useEffect(() => {
     if (!revealDone || !result?.fresh) return;
     const timer = setTimeout(() => setResult((current) => (current && current.winnerId === result.winnerId ? { ...current, fresh: false } : current)), 2000);
@@ -96,41 +139,97 @@ export default function RaffleRun({ ctx }: { ctx: RaffleContext }) {
 
   const choosePrize = (id: string) => {
     token.current += 1;
-    setPrizeId(id); setError(''); setNotice('');
+    attempt.current = null;
+    setPrizeId(id); setError(''); setNotice(''); setRedraw(null); setServerEmpty(null);
     const resume = pending[id];
     setResult(resume ?? null); setRevealDone(!!resume); setPhase(resume ? 'revealed' : 'idle');
   };
 
-  const draw = async () => {
-    if (!category || !prize || blocker || locked || prizesLoading) return;
-    const mine = ++token.current;
-    setBusy(true); setError(''); setNotice(''); setResult(null); setRevealDone(false); setPhase('drawing');
+  /** Re-asks about the prizes of this category that could not be checked; a waiting winner appears as soon as it is found. */
+  const recheck = async () => {
+    if (checking || unverifiedHere.length === 0) return;
+    setChecking(true);
     try {
-      const [drawn] = await Promise.all([drawWinner(prize.id, newKey(prize.id)), wait(reduced ? 600 : SPIN_MS)]);
-      const next: StageResult = {
-        winnerId: drawn.winner_id, name: drawn.display_name, prizeName: drawn.prize_name ?? prize.name,
-        categoryName: drawn.category_name ?? category.name, poolSize: drawn.pool_size ?? poolCount, fresh: true,
-      };
+      const list = unverifiedHere;
+      const check = await findPending(list);
+      recordChecks(list, check);
+      const resume = check.found[prizeId];
+      if (resume && phase === 'idle') { setResult(resume); setRevealDone(true); setPhase('revealed'); setNotice(''); }
+    } finally { setChecking(false); }
+  };
+
+  const showDrawn = (drawn: DrawResult, from: RafflePrize, to: RaffleCategory) => {
+    const next: StageResult = {
+      winnerId: drawn.winner_id, name: drawn.display_name, prizeName: drawn.prize_name ?? from.name, categoryName: drawn.category_name ?? to.name,
+      // Only the server's own figure for this draw; a replayed answer does not carry it and stays unknown (never zero).
+      poolSize: typeof drawn.pool_size === 'number' && drawn.pool_size > 0 ? drawn.pool_size : null, fresh: true,
+    };
+    attempt.current = null;
+    setResult(next); setPending((current) => ({ ...current, [from.id]: { ...next, fresh: false } })); setPhase('revealed'); setRevealDone(false);
+    void ctx.refresh();
+  };
+
+  /**
+   * The server may or may not have recorded the draw. Ask for the pending selection with the existing contract:
+   * found → show that very winner; none → nothing was recorded (a retry reuses the same key, so it cannot duplicate);
+   * could not ask → stay blocked and let the operator check again. Nothing is invented and nothing new is drawn here.
+   */
+  const verify = async (target: RafflePrize, to: RaffleCategory) => {
+    setBusy(true); setPhase('uncertain'); setError('');
+    try {
+      const current = await fetchPendingSelection(target.id);
+      if (!current || typeof current !== 'object' || !('winner_id' in current)) throw new Error('UNREADABLE');
+      if (current.winner_id) {
+        const found = recovered(current, target, true);
+        attempt.current = null;
+        setResult({ ...found, categoryName: found.categoryName || to.name }); setPending((value) => ({ ...value, [target.id]: { ...found, fresh: false } }));
+        setPhase('revealed'); setRevealDone(false); setNotice(''); void ctx.refresh();
+      } else { setPhase('idle'); setRedraw('retry'); setNotice(NOT_REGISTERED); }
+    } catch (cause) {
+      console.error('draw verification failed', cause);
+      setPhase('uncertain'); setNotice(UNCERTAIN);
+    } finally { setBusy(false); }
+  };
+
+  const draw = async () => {
+    // A synchronous guard: a double click arrives before React has re-rendered the disabled button.
+    if (drawing.current || !category || !prize || blocker || locked || prizesLoading) return;
+    drawing.current = true;
+    const mine = ++token.current;
+    if (attempt.current?.prizeId !== prize.id) attempt.current = { prizeId: prize.id, key: newKey(prize.id) };
+    const { key } = attempt.current;
+    setBusy(true); setError(''); setNotice(''); setRedraw(null); setResult(null); setRevealDone(false); setPhase('drawing');
+    try {
+      const [drawn] = await Promise.all([drawWinner(prize.id, key), wait(reduced ? 600 : SPIN_MS)]);
       if (token.current !== mine) return;
-      setResult(next); setPending((current) => ({ ...current, [prize.id]: { ...next, fresh: false } })); setPhase('revealed');
-      void ctx.refresh();
+      showDrawn(drawn, prize, category);
     } catch (cause) {
       if (token.current !== mine) return;
-      setPhase('idle'); setError(friendlyError(cause));
-      if (errorCode(cause) === 'PENDING_SELECTION') await enter(category.id, prize.id);
-    } finally { setBusy(false); }
+      const code = errorCode(cause);
+      if (!isDefinitiveDrawError(code)) { console.error('draw outcome unknown', cause); await verify(prize, category); return; }
+      attempt.current = null;
+      setPhase('idle');
+      if (code === 'POOL_EMPTY') setServerEmpty({ prizeId: prize.id, pool: poolCount, available: prize.available });
+      else setError(friendlyError(cause));
+      if (code === 'PENDING_SELECTION') await enter(category.id, prize.id);
+      else if (code === 'PRIZE_EXHAUSTED' || code === 'POOL_EMPTY') void ctx.refresh();
+    } finally { drawing.current = false; setBusy(false); }
   };
 
   const settle = async (action: () => Promise<unknown>, after: () => void) => {
     if (!result) return;
     setBusy(true); setError('');
-    try { await action(); setPending((current) => { const { [prizeId]: _gone, ...rest } = current; return rest; }); after(); await ctx.refresh(); }
-    catch (cause) { setError(friendlyError(cause)); }
+    try {
+      await action();
+      attempt.current = null; setServerEmpty(null);
+      setPending((current) => { const { [prizeId]: _gone, ...rest } = current; return rest; });
+      after(); await ctx.refresh();
+    } catch (cause) { setError(friendlyError(cause)); }
     finally { setBusy(false); }
   };
   const confirm = () => settle(() => confirmWinner(result!.winnerId), () => setPhase('confirmed'));
   const noShow = () => settle(() => markNoShow(result!.winnerId), () => {
-    setNotice(`${result!.name} no se presentó. El premio sigue disponible: puedes volver a sortear.`);
+    setNotice(`${result!.name} no se presentó. El premio sigue disponible: puedes volver a sortear.`); setRedraw('again');
     setResult(null); setRevealDone(false); setPhase('idle');
   });
 
@@ -146,7 +245,24 @@ export default function RaffleRun({ ctx }: { ctx: RaffleContext }) {
     document.querySelector('.rf-module .rf-env')?.scrollIntoView({ block: 'start', behavior: reduced ? 'auto' : 'smooth' });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const exitProjection = useCallback(() => setProjecting(false), []);
+  // What the audience may see: no blockers, no notices, no errors, no controls.
+  const publicState: PublicState = useMemo(() => toPublicState({
+    scope, phase, ready: !blocker && !!prize, categoryName: category?.name, poolCount,
+    prize: prize && { name: prize.name, available: prize.available, quantity: prize.quantity },
+    result: result && { winnerId: result.winnerId, name: result.name, prizeName: result.prizeName, poolSize: result.poolSize, fresh: result.fresh },
+  }), [scope, phase, blocker, prize, category?.name, poolCount, result]);
+  const screen = useRafflePublicScreen(publicState);
+
+  // Space/Enter in the rehearsal: the one obvious next step of the round.
+  const primary = () => {
+    if (phase === 'idle' && !blocker && prize && !prizesLoading) void draw();
+    else if (phase === 'revealed' && revealDone && !busy) void confirm();
+    else if (phase === 'confirmed' && !prizesLoading && !busy) nextRound();
+  };
+
+  // The rehearsal has no way to show a problem, so a problem takes the operator back to the console.
+  const problem = !!error || phase === 'uncertain' || blocker?.code === 'unverified' || blocker?.code === 'server-empty';
+  useEffect(() => { if (rehearsing && problem) setRehearsing(false); }, [rehearsing, problem]);
 
   if (categories.length === 0) {
     return (
@@ -156,16 +272,7 @@ export default function RaffleRun({ ctx }: { ctx: RaffleContext }) {
     );
   }
 
-  const actions = (variant: 'panel' | 'projection') => (
-    <RoundActions variant={variant} phase={phase} revealDone={revealDone} busy={busy} refreshing={prizesLoading}
-      canDraw={!blocker && !!prize} redraw={!!notice && phase === 'idle' && !!prize}
-      onDraw={draw} onConfirm={confirm} onNoShow={noShow} onNext={nextRound}
-      onInvalidate={variant === 'panel' && canConfigure ? () => setInvalidating(true) : undefined} />
-  );
-  const stageProps = {
-    scope, phase, prize, poolCount, result, blocker, notice, categoryName: category?.name,
-    onRevealDone: () => setRevealDone(true), alreadyRevealed: revealDone,
-  };
+  const drawLabel = redraw === 'retry' ? 'Reintentar sorteo' : redraw === 'again' ? 'Sortear de nuevo' : 'Sortear';
 
   return (
     <div className="rf-run">
@@ -187,35 +294,63 @@ export default function RaffleRun({ ctx }: { ctx: RaffleContext }) {
             </div>
           ) : (
             <div className="rf-choices" role="radiogroup" aria-label="Premio">
-              {categoryPrizes.map((item) => <PrizeChoice key={item.id} prize={item} pending={!!pending[item.id]} checked={item.id === prizeId}
+              {categoryPrizes.map((item) => <PrizeChoice key={item.id} prize={item} pending={!!pending[item.id]} unverified={!!unverified[item.id]} checked={item.id === prizeId}
                 disabled={locked} onSelect={() => choosePrize(item.id)} />)}
             </div>
           )}
+          {unverifiedHere.length > 0 && (
+            <Alert tone="warning">
+              <div className="rf-alert-row">
+                <span>No se pudo comprobar si {unverifiedHere.length === 1 ? `«${unverifiedHere[0].name}» tiene` : `${unverifiedHere.length} premios tienen`} un ganador pendiente (sin conexión o error del servidor). Hasta comprobarlo no {unverifiedHere.length === 1 ? 'se puede sortear' : 'se pueden sortear'}, para no duplicar la selección.</span>
+                <Button variant="secondary" onClick={() => void recheck()} loading={checking}>Reintentar comprobación</Button>
+              </div>
+            </Alert>
+          )}
+        </section>
+        <section aria-label="Pantalla pública">
+          <h2 className="rf-step"><span>3</span> Pantalla pública</h2>
+          <PublicScreenBar screen={screen} onRehearse={() => setRehearsing(true)} />
         </section>
       </div>
 
       <div className="rf-live">
         {error && <Alert tone="error">{error}</Alert>}
-        {projecting ? (
-          <div className="rf-projecting"><p>El sorteo se está proyectando en pantalla completa.</p><Button variant="secondary" onClick={exitProjection}>Salir de la proyección</Button></div>
-        ) : (
-          <RaffleStage {...stageProps} variant="panel"
-            corner={<Button variant="secondary" className="rf-corner-btn" onClick={() => setProjecting(true)}><Maximize2 size={15} aria-hidden /> Modo proyección</Button>}>
-            {actions('panel')}
-          </RaffleStage>
-        )}
+        <RaffleStage variant="panel" scope={scope} phase={phase} prize={prize} poolCount={poolCount} result={result} blocker={blocker}
+          notice={notice} categoryName={category?.name} onRevealDone={() => setRevealDone(true)} alreadyRevealed={revealDone}>
+          <RoundActions phase={phase} revealDone={revealDone} busy={busy} refreshing={prizesLoading} checking={checking} drawLabel={drawLabel}
+            blockerCode={blocker?.code} canDraw={!blocker && !!prize}
+            onDraw={() => void draw()} onConfirm={() => void confirm()} onNoShow={() => void noShow()} onNext={nextRound}
+            onVerify={() => { if (category && prize) void verify(prize, category); }} onRecheck={() => void recheck()} onRefresh={() => void ctx.refresh()}
+            onInvalidate={canConfigure ? () => setInvalidating(true) : undefined} />
+        </RaffleStage>
         <p className="rf-live-help">Los participantes y el ganador los decide el servidor al sortear; esta pantalla solo los muestra. {phase === 'revealed' && 'Confirma la entrega cuando la persona se presente.'}</p>
       </div>
 
-      {projecting && (
-        <ProjectionLayer onExit={exitProjection}>
-          {(controlsHidden, tools) => <RaffleStage {...stageProps} variant="projection" controlsHidden={controlsHidden} corner={tools}>{actions('projection')}</RaffleStage>}
-        </ProjectionLayer>
-      )}
+      {rehearsing && <RehearsalLayer state={publicState} alreadyRevealed={revealDone} onExit={() => setRehearsing(false)} onPrimary={primary} />}
       {invalidating && result && (
         <InvalidateModal winner={{ id: result.winnerId, prize_name: result.prizeName, display_name: result.name }} onClose={() => setInvalidating(false)}
-          onDone={() => { setInvalidating(false); setResult(null); setPhase('idle'); setNotice('Ganador invalidado. El premio volvió al inventario: puedes volver a sortear.'); void ctx.refresh(); }} />
+          onDone={() => { setInvalidating(false); setResult(null); setPhase('idle'); setRedraw('again'); setNotice('Ganador invalidado. El premio volvió al inventario: puedes volver a sortear.'); void ctx.refresh(); }} />
       )}
+    </div>
+  );
+}
+
+function PublicScreenBar({ screen, onRehearse }: { screen: ReturnType<typeof useRafflePublicScreen>; onRehearse: () => void }) {
+  return (
+    <div className="rf-public-bar" data-connected={screen.connected || undefined}>
+      <div className="rf-public-text">
+        <p className="rf-public-title"><i aria-hidden /> Pantalla pública · {screen.connected ? 'conectada' : 'no abierta'}</p>
+        <p className="rf-public-help">
+          {!screen.supported ? 'Este navegador no puede sincronizar ventanas: usa «Ensayar en esta pantalla».'
+            : screen.blocked ? 'El navegador bloqueó la ventana. Permite las ventanas emergentes de este sitio e inténtalo de nuevo.'
+            : screen.connected ? 'Llévala al proyector y ponla en pantalla completa con doble clic. Ahí no hay controles: todo se maneja desde aquí.'
+            : 'Ábrela en otra ventana y arrástrala al proyector. Tú conservas aquí todos los controles.'}
+        </p>
+      </div>
+      <div className="rf-public-actions">
+        <Button variant="secondary" onClick={() => screen.open()} disabled={!screen.supported}><ExternalLink size={15} aria-hidden /> {screen.connected ? 'Traer al frente' : 'Abrir pantalla pública'}</Button>
+        <Button variant="ghost" onClick={onRehearse} title="Pantalla completa sin controles. Espacio: sortear, confirmar y siguiente ronda. Esc: salir."><Monitor size={15} aria-hidden /> Ensayar en esta pantalla</Button>
+      </div>
     </div>
   );
 }
@@ -235,13 +370,13 @@ function CategoryChoice({ category, prizes, checked, disabled, onSelect }: { cat
   );
 }
 
-function PrizeChoice({ prize, pending, checked, disabled, onSelect }: { prize: RafflePrize; pending: boolean; checked: boolean; disabled: boolean; onSelect: () => void }) {
-  const flag = pending ? 'Ganador pendiente' : !prize.is_active ? 'Inactivo' : !isDrawable(prize) ? 'Agotado' : null;
+function PrizeChoice({ prize, pending, unverified, checked, disabled, onSelect }: { prize: RafflePrize; pending: boolean; unverified: boolean; checked: boolean; disabled: boolean; onSelect: () => void }) {
+  const flag = pending ? 'Ganador pendiente' : unverified ? 'Sin comprobar' : !prize.is_active ? 'Inactivo' : !isDrawable(prize) ? 'Agotado' : null;
   return (
     <label className="rf-choice" data-checked={checked || undefined} data-muted={flag && !pending ? true : undefined}>
       <input type="radio" name="rf-prize" checked={checked} disabled={disabled} onChange={onSelect} />
       <span className="rf-choice-body">
-        <span className="rf-choice-title">{prize.name}{flag && <Badge tone={pending ? 'warning' : 'neutral'}>{flag}</Badge>}</span>
+        <span className="rf-choice-title">{prize.name}{flag && <Badge tone={pending || unverified ? 'warning' : 'neutral'}>{flag}</Badge>}</span>
         <span className="rf-choice-meta">{prize.available} de {prize.quantity} disponibles{prize.description && ` · ${prize.description}`}</span>
       </span>
     </label>
@@ -249,17 +384,26 @@ function PrizeChoice({ prize, pending, checked, disabled, onSelect }: { prize: R
 }
 
 type ActionsProps = {
-  variant: 'panel' | 'projection'; phase: StagePhase; revealDone: boolean; busy: boolean; refreshing: boolean; canDraw: boolean; redraw: boolean;
-  onDraw: () => void; onConfirm: () => void; onNoShow: () => void; onNext: () => void; onInvalidate?: () => void;
+  phase: StagePhase; revealDone: boolean; busy: boolean; refreshing: boolean; checking: boolean; canDraw: boolean; drawLabel: string; blockerCode?: string;
+  onDraw: () => void; onConfirm: () => void; onNoShow: () => void; onNext: () => void; onVerify: () => void; onRecheck: () => void; onRefresh: () => void; onInvalidate?: () => void;
 };
 
-function RoundActions({ variant, phase, revealDone, busy, refreshing, canDraw, redraw, onDraw, onConfirm, onNoShow, onNext, onInvalidate }: ActionsProps) {
+function RoundActions({ phase, revealDone, busy, refreshing, checking, canDraw, drawLabel, blockerCode, onDraw, onConfirm, onNoShow, onNext, onVerify, onRecheck, onRefresh, onInvalidate }: ActionsProps) {
   const [askNoShow, setAskNoShow] = useState(false);
   useEffect(() => setAskNoShow(false), [phase]);
-  const big = variant === 'projection' ? 'rf-draw-btn rf-draw-btn-compact' : 'rf-draw-btn';
+  const big = 'rf-draw-btn';
 
   if (phase === 'drawing') return <Button className={big} disabled loading>Sorteando…</Button>;
-  if (phase === 'idle') return <Button className={big} onClick={onDraw} disabled={!canDraw || refreshing} loading={busy}>{redraw ? 'Sortear de nuevo' : 'Sortear'}</Button>;
+  if (phase === 'uncertain') return <Button className={big} onClick={onVerify} loading={busy}>Comprobar de nuevo</Button>;
+  if (phase === 'idle') {
+    if (blockerCode === 'unverified') return <Button className={big} onClick={onRecheck} loading={checking}>Reintentar comprobación</Button>;
+    return (
+      <>
+        <Button className={big} onClick={onDraw} disabled={!canDraw || refreshing} loading={busy}>{drawLabel}</Button>
+        {blockerCode === 'server-empty' && <Button variant="secondary" onClick={onRefresh} disabled={refreshing}>Actualizar datos</Button>}
+      </>
+    );
+  }
   if (phase === 'confirmed') {
     return (
       <>
@@ -286,18 +430,20 @@ function RoundActions({ variant, phase, revealDone, busy, refreshing, canDraw, r
 }
 
 /**
- * Full-screen layer for the projector: Esc leaves, H hides the operator's controls (hover or focus brings them back).
- * It asks the browser for real full screen as well, and leaves projection if the browser leaves it.
+ * Rehearsal on a single screen: the public stage in full screen with NOTHING clickable on it. It is driven from the
+ * keyboard (Space or Enter: draw, confirm, next round; Esc: leave), and a problem closes it so the operator sees it.
+ * For the real event use the public window on the second screen.
  */
-function ProjectionLayer({ onExit, children }: { onExit: () => void; children: (controlsHidden: boolean, tools: ReactNode) => ReactNode }) {
-  const [hidden, setHidden] = useState(false);
+function RehearsalLayer({ state, alreadyRevealed, onExit, onPrimary }: { state: PublicState; alreadyRevealed: boolean; onExit: () => void; onPrimary: () => void }) {
   const exitRef = useRef(onExit);
   exitRef.current = onExit;
+  const primaryRef = useRef(onPrimary);
+  primaryRef.current = onPrimary;
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') exitRef.current();
-      else if (event.key.toLowerCase() === 'h' && !event.metaKey && !event.ctrlKey && !(event.target instanceof HTMLInputElement)) setHidden((value) => !value);
+      else if ((event.key === ' ' || event.key === 'Enter') && !event.repeat) { event.preventDefault(); primaryRef.current(); }
     };
     window.addEventListener('keydown', onKey);
     const previous = document.body.style.overflow;
@@ -309,6 +455,7 @@ function ProjectionLayer({ onExit, children }: { onExit: () => void; children: (
     }
     const onFullscreen = () => { if (entered && !document.fullscreenElement) exitRef.current(); };
     document.addEventListener('fullscreenchange', onFullscreen);
+    (document.activeElement as HTMLElement | null)?.blur?.();
     return () => {
       window.removeEventListener('keydown', onKey);
       document.removeEventListener('fullscreenchange', onFullscreen);
@@ -317,14 +464,8 @@ function ProjectionLayer({ onExit, children }: { onExit: () => void; children: (
     };
   }, []);
 
-  const tools = (
-    <div className="rf-tools">
-      <button type="button" onClick={() => setHidden((value) => !value)} aria-pressed={hidden} title="Ocultar controles (H)"><EyeOff size={16} aria-hidden /><span>{hidden ? 'Mostrar controles' : 'Ocultar controles'}</span></button>
-      <button type="button" onClick={onExit} title="Salir (Esc)"><X size={16} aria-hidden /><span>Salir</span></button>
-    </div>
-  );
   return createPortal(
-    <div className="rf-projection" role="dialog" aria-modal="true" aria-label="Proyección del sorteo">{children(hidden, tools)}</div>,
+    <div className="rf-projection" role="dialog" aria-modal="true" aria-label="Ensayo en pantalla completa"><PublicStage state={state} alreadyRevealed={alreadyRevealed} /></div>,
     document.body,
   );
 }

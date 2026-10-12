@@ -3,6 +3,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import RaffleAdmin from '../RaffleAdmin';
 import RaffleOperator from '../RaffleOperator';
+import { FakeBroadcastChannel } from './fakeBroadcastChannel';
 import { category, OFFICIAL, prize } from './raffleFixtures';
 
 const m = vi.hoisted(() => ({
@@ -24,9 +25,10 @@ vi.mock('../../lib/auth', () => ({
 // Reduced motion: the draw still waits for the server but skips the long spin and the letter-by-letter reveal.
 const realMatchMedia = window.matchMedia;
 beforeEach(() => {
+  vi.stubGlobal('BroadcastChannel', FakeBroadcastChannel);
   window.matchMedia = ((query: string) => ({ matches: query.includes('reduce'), media: query, addEventListener: () => undefined, removeEventListener: () => undefined })) as unknown as typeof window.matchMedia;
 });
-afterEach(() => { window.matchMedia = realMatchMedia; });
+afterEach(() => { window.matchMedia = realMatchMedia; FakeBroadcastChannel.reset(); vi.unstubAllGlobals(); });
 
 let prizes: Record<string, ReturnType<typeof prize>[]>;
 const drawn = (name = 'Ana López', over = {}) => ({
@@ -168,16 +170,6 @@ test('«No se presentó» asks first, frees the prize and offers to draw again',
   expect(await stage().findByText('Luis Pérez')).toBeInTheDocument();
 });
 
-test('a failed draw returns to the start with the reason', async () => {
-  m.draw.mockRejectedValue(new Error('POOL_EMPTY'));
-  open();
-  const button = await within(await screen.findByLabelText('Escenario del sorteo')).findByRole('button', { name: 'Sortear' });
-  await waitFor(() => expect(button).toBeEnabled());
-  fireEvent.click(button);
-  expect(await screen.findByText('No hay candidatos en el pool para este sorteo.')).toBeInTheDocument();
-  expect(stage().getByRole('button', { name: 'Sortear' })).toBeEnabled();
-});
-
 test('a winner left pending (reload, second operator) comes back ready to confirm', async () => {
   m.pending.mockImplementation(async (id: string) => (id === 'tablet'
     ? { winner_id: 'w9', display_name: 'María Torres', prize_name: 'Tablet', category_name: 'Universo', status: 'seleccionado' }
@@ -197,26 +189,6 @@ test('a pending winner on a prize that shows no units left is still reachable', 
   open();
   await screen.findByLabelText('Escenario del sorteo');
   expect(await stage().findByText('María Torres')).toBeInTheDocument();
-});
-
-test('projection mode takes the stage to a full-screen layer with discreet controls and Esc to leave', async () => {
-  open();
-  const button = await within(await screen.findByLabelText('Escenario del sorteo')).findByRole('button', { name: 'Sortear' });
-  await waitFor(() => expect(button).toBeEnabled());
-  fireEvent.click(screen.getByRole('button', { name: /Modo proyección/ }));
-  const layer = within(screen.getByRole('dialog', { name: 'Proyección del sorteo' }));
-  expect(layer.getByRole('heading', { name: 'Tablet' })).toBeInTheDocument();
-  expect(layer.getByText('Universo')).toBeInTheDocument();
-  expect(screen.getAllByLabelText('Escenario del sorteo')).toHaveLength(1);
-  fireEvent.click(layer.getByRole('button', { name: 'Sortear' }));
-  expect(await layer.findByText('Ana López')).toBeInTheDocument();
-  expect(layer.queryByRole('button', { name: /Invalidar/ })).not.toBeInTheDocument();
-  // H hides the controls without removing them; Esc leaves and the state survives
-  fireEvent.keyDown(window, { key: 'h' });
-  expect(layer.getByRole('button', { name: /Mostrar controles/ })).toBeInTheDocument();
-  fireEvent.keyDown(window, { key: 'Escape' });
-  expect(screen.queryByRole('dialog', { name: 'Proyección del sorteo' })).not.toBeInTheDocument();
-  expect(stage().getByText('Ana López')).toBeInTheDocument();
 });
 
 test('the demo environment is announced on the stage so nobody mistakes a rehearsal for the real draw', async () => {

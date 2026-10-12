@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import type { RaffleCategory, RafflePrize } from './raffleApi';
-import { burstParticles, drawBlocker, initialCategory, initialPrize, isDrawable, letterCount, nextTarget, orbitTokens, scrambleName, unitsLeft } from './raffleShow';
+import { burstParticles, drawBlocker, isDefinitiveDrawError, initialCategory, initialPrize, isDrawable, letterCount, nextTarget, orbitTokens, scrambleName, unitsLeft } from './raffleShow';
 
 const category = (id: string, pool: number, over: Partial<RaffleCategory> = {}): RaffleCategory => ({
   id, name: id, sort_order: 0, rules: [{ total: 3 }], required_academic: 0, required_leadership: 0,
@@ -107,5 +107,23 @@ describe('visual helpers', () => {
   test('burst particles are fixed for a given count', () => {
     expect(burstParticles(12)).toEqual(burstParticles(12));
     expect(burstParticles(12)).toHaveLength(12);
+  });
+});
+
+describe('uncertainty and server refusals', () => {
+  const cat = category('un', 10);
+  const p = prize('tablet', 'un', 2);
+  test('a prize that could not be checked for a pending winner cannot be drawn, even when it shows no units', () => {
+    expect(drawBlocker(cat, [p], p, 10, { unverified: true })?.code).toBe('unverified');
+    const spent = prize('tablet', 'un', 0);
+    expect(drawBlocker(cat, [spent], spent, 10, { unverified: true })?.code).toBe('unverified');
+    expect(drawBlocker(cat, [p], p, 10, { unverified: false })).toBeNull();
+  });
+  test('after POOL_EMPTY the same round is not offered again while the aggregate still shows candidates', () => {
+    expect(drawBlocker(cat, [p], p, 10, { serverEmpty: true })?.code).toBe('server-empty');
+  });
+  test('only refusals that settle the matter are definitive; connection problems are not', () => {
+    for (const code of ['POOL_EMPTY', 'PRIZE_EXHAUSTED', 'PRIZE_INACTIVE', 'CATEGORY_INACTIVE', 'NOT_AUTHORIZED', 'NOT_FOUND', 'PENDING_SELECTION']) expect(isDefinitiveDrawError(code)).toBe(true);
+    for (const code of ['', 'NETWORK', 'Failed to fetch', 'upstream request timeout', 'JWT expired', 'AbortError']) expect(isDefinitiveDrawError(code)).toBe(false);
   });
 });

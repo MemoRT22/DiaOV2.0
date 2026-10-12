@@ -82,7 +82,6 @@
 .rf-choice-meta { color: var(--ad-muted); font-size: .76rem; line-height: 1.4; }
 .rf-choice-empty { display: grid; gap: .5rem; justify-items: start; padding: 1rem; border: 1px dashed var(--ad-line); border-radius: 10px; color: var(--ad-muted); font-size: .82rem; line-height: 1.5; }
 .rf-choice-empty strong { color: var(--ad-ink); }
-.rf-projecting { display: grid; place-items: center; gap: 1rem; min-height: 14rem; padding: 2rem; border: 1px dashed var(--ad-line); border-radius: 14px; text-align: center; color: var(--ad-muted); }
 
 /* ------------------------------------------------------------------ escenario (panel y proyección) */
 .rf-stage { --rf-orange: #f08a5d; --rf-ink: #f6f3ee; --rf-muted: #c2cacf; position: relative; display: flex; flex-direction: column; overflow: hidden; isolation: isolate; container-type: size; border-radius: 14px; color: var(--rf-ink);
@@ -121,8 +120,6 @@ html[data-surface='admin'] .rf-stage h2 { color: var(--rf-ink); font-weight: 720
 /* Controles del operador: al pie, discretos en proyección. */
 .rf-dock { position: relative; z-index: 3; display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: .6rem; padding: clamp(.9rem, 2.6cqmin, 1.6rem) clamp(1rem, 3.5cqmin, 2.4rem) clamp(1rem, 3cqmin, 2rem); transition: opacity .25s; }
 .rf-stage[data-variant='projection'] .rf-dock { background: linear-gradient(transparent, #0009); }
-.rf-dock[data-hidden] { opacity: 0; }
-.rf-dock[data-hidden]:hover, .rf-dock[data-hidden]:focus-within { opacity: 1; }
 .rf-ask { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: .6rem; }
 .rf-ask p { width: 100%; text-align: center; color: var(--rf-muted); font-size: .84rem; }
 html[data-surface='admin'] .rf-stage .btn { border-radius: 10px; }
@@ -131,14 +128,11 @@ html[data-surface='admin'] .rf-stage .btn-primary:hover:not(:disabled) { backgro
 html[data-surface='admin'] .rf-stage .rf-draw-btn { min-height: 3.5rem; padding: 0 2.4rem; font-size: 1.08rem; }
 html[data-surface='admin'] .rf-stage .rf-draw-btn-compact { min-height: 2.9rem; padding: 0 1.8rem; font-size: .98rem; }
 html[data-surface='admin'] .rf-stage .btn-secondary,
-html[data-surface='admin'] .rf-stage .btn-ghost,
-html[data-surface='admin'] .rf-stage .rf-corner-btn { background: #ffffff14; border: 1px solid #ffffff38; color: #f6f3ee; }
+html[data-surface='admin'] .rf-stage .btn-ghost { background: #ffffff14; border: 1px solid #ffffff38; color: #f6f3ee; }
 html[data-surface='admin'] .rf-stage .btn-ghost { border-color: transparent; background: transparent; color: #d4dade; }
 html[data-surface='admin'] .rf-stage .btn-secondary:hover:not(:disabled),
-html[data-surface='admin'] .rf-stage .btn-ghost:hover:not(:disabled),
-html[data-surface='admin'] .rf-stage .rf-corner-btn:hover:not(:disabled) { background: #ffffff24; color: #fff; }
-html[data-surface='admin'] .rf-stage .rf-corner-btn { min-height: 2.2rem; padding: .3rem .75rem; font-size: .8rem; }
-.rf-stage .btn:focus-visible, .rf-tools button:focus-visible { outline: 3px solid #f6c778; outline-offset: 2px; }
+html[data-surface='admin'] .rf-stage .btn-ghost:hover:not(:disabled) { background: #ffffff24; color: #fff; }
+.rf-stage .btn:focus-visible { outline: 3px solid #f6c778; outline-offset: 2px; }
 
 /* Órbitas: la multitud del sorteo. */
 .rf-orbits { position: absolute; z-index: 0; left: 50%; top: 50%; width: 125cqmin; aspect-ratio: 1; translate: -50% -50%; opacity: .5; pointer-events: none; transition: opacity .6s; }
@@ -167,11 +161,29 @@ html[data-surface='admin'] .rf-stage .rf-corner-btn { min-height: 2.2rem; paddin
 @keyframes rf-pop { 0% { scale: .86; opacity: .6; } 100% { scale: 1; opacity: 1; } }
 @keyframes rf-burst { 0% { translate: 0 0; rotate: 0deg; scale: .4; opacity: 0; } 12% { opacity: 1; } 65% { opacity: 1; } 100% { translate: var(--dx) calc(var(--dy) + 9cqmin); rotate: var(--rot); scale: 1; opacity: 0; } }
 
-/* Capa de proyección: toda la pantalla, sin navegación. */
-.rf-projection { position: fixed; inset: 0; z-index: 80; background: #0f1214; }
-.rf-tools { display: flex; gap: .4rem; }
-.rf-tools button { display: inline-flex; align-items: center; gap: .4rem; min-height: 34px; padding: .3rem .7rem; border-radius: 8px; background: #ffffff12; color: #d4dade; font-size: .78rem; font-weight: 600; opacity: .7; transition: opacity .15s, background .15s; }
-.rf-tools button:hover, .rf-tools button:focus-visible { opacity: 1; background: #ffffff24; }
+/* Pantalla pública (ventana propia) y ensayo a pantalla completa: solo el escenario, nada que pulsar. */
+.rf-projection, .rf-public { position: fixed; inset: 0; background: #0f1214; }
+.rf-projection { z-index: 80; }
+html[data-surface='admin']:has(.rf-public) body { background: #0f1214; }
+.rf-public[data-idle] { cursor: none; }
+.rf-public-hint { position: fixed; left: 50%; bottom: 1.6rem; translate: -50% 0; z-index: 5; padding: .35rem .8rem; border-radius: 999px; background: #ffffff12; color: #aab3b8; font-size: .8rem; pointer-events: none; }
+.rf-public-note { position: absolute; inset: 0; display: grid; place-content: center; padding: 2rem; color: #c2cacf; text-align: center; font-size: 1.1rem; }
+.rf-title { font-size: clamp(2.2rem, 11cqmin, 8rem); }
+
+/* Consola: estado de la pantalla pública. */
+.rf-public-bar { display: grid; gap: .7rem; padding: .85rem 1rem; border: 1px solid var(--ad-line); border-radius: 10px; background: var(--ad-surface); }
+.rf-public-text { min-width: 0; }
+.rf-public-title { display: flex; align-items: center; gap: .5rem; font-size: .84rem; font-weight: 700; }
+.rf-public-title i { width: 9px; height: 9px; border-radius: 50%; background: #a8aeb1; }
+.rf-public-bar[data-connected] .rf-public-title i { background: #15803d; box-shadow: 0 0 0 3px #15803d22; }
+.rf-public-help { margin-top: .2rem; color: var(--ad-muted); font-size: .78rem; line-height: 1.45; }
+.rf-public-actions { display: flex; gap: .4rem; flex-wrap: wrap; }
+.rf-pick .rf-alert-row { display: grid; gap: .6rem; }
+.rf-pick .rf-alert-row .btn { justify-self: start; }
+.rf-pick .rf-choices + .alert, .rf-pick .alert { margin-top: .6rem; font-size: .82rem; }
+.rf-public-actions .btn { min-height: 38px; font-size: .8rem; }
+.rf-alert-row { display: flex; align-items: center; justify-content: space-between; gap: .8rem 1rem; flex-wrap: wrap; }
+.rf-alert-row > span { flex: 1 1 18rem; }
 
 @media (prefers-reduced-motion: reduce) {
   .rf-stage *, .rf-stage { animation: none !important; transition: none !important; }
@@ -203,4 +215,5 @@ html[data-surface='admin'] .rf-stage .rf-corner-btn { min-height: 2.2rem; paddin
   .rf-dock { padding: .8rem .9rem 1rem; }
   .rf-dock .btn { flex: 1 1 100%; }
   .rf-ask .btn { flex: 1 1 8rem; }
+  .rf-public-actions, .rf-public-actions .btn { width: 100%; }
 }

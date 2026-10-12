@@ -21,16 +21,35 @@ export const isDrawable = (prize: Pick<RafflePrize, 'is_active' | 'available'>) 
 /** Units still to hand out across the active prizes of a category. */
 export const unitsLeft = (prizes: RafflePrize[]) => prizes.filter((prize) => prize.is_active).reduce((sum, prize) => sum + Math.max(0, prize.available), 0);
 
-export type Blocker = { code: 'no-category' | 'inactive-category' | 'no-prizes' | 'no-prize' | 'inactive-prize' | 'exhausted' | 'empty-pool'; message: string };
+export type Blocker = { code: 'no-category' | 'inactive-category' | 'no-prizes' | 'no-prize' | 'inactive-prize' | 'unverified' | 'server-empty' | 'exhausted' | 'empty-pool'; message: string };
+
+/** Things the screen knows that the aggregate numbers do not. */
+export type DrawFlags = {
+  /** The server could not be asked whether this prize already has a winner waiting: drawing could duplicate it. */
+  unverified?: boolean;
+  /** The server answered POOL_EMPTY for this prize with the figures currently on screen. */
+  serverEmpty?: boolean;
+};
+
+/**
+ * Answers of `draw_winner` that settle the matter: the server understood the request and refused it, so nothing was
+ * chosen. Anything else (network, timeout, 5xx, an unknown message) leaves open whether a winner was recorded.
+ */
+const DEFINITIVE_DRAW_ERRORS = new Set(['POOL_EMPTY', 'PRIZE_EXHAUSTED', 'PRIZE_INACTIVE', 'CATEGORY_INACTIVE', 'NOT_AUTHORIZED', 'NOT_FOUND', 'PENDING_SELECTION']);
+export const isDefinitiveDrawError = (code: string) => DEFINITIVE_DRAW_ERRORS.has(code);
+
+export const SERVER_EMPTY_MESSAGE = 'El servidor no encontró participantes disponibles para esta ronda, aunque el conteo de la categoría todavía muestre candidatos (ese conteo no descuenta a quien ya tiene una selección pendiente ni al último «no se presentó» de este premio). Elige otro premio o categoría, o actualiza los datos.';
 
 /** Why the draw cannot start, or null. Order matters: the first problem is the one the operator must fix. */
-export function drawBlocker(category: RaffleCategory | undefined, prizes: RafflePrize[], prize: RafflePrize | undefined, poolCount: number): Blocker | null {
+export function drawBlocker(category: RaffleCategory | undefined, prizes: RafflePrize[], prize: RafflePrize | undefined, poolCount: number, flags: DrawFlags = {}): Blocker | null {
   if (!category) return { code: 'no-category', message: 'Elige una categoría para empezar.' };
   if (!category.is_active) return { code: 'inactive-category', message: 'Esta categoría está inactiva y no puede sortearse.' };
   if (prizes.length === 0) return { code: 'no-prizes', message: 'Esta categoría todavía no tiene premios.' };
   if (!prize) return { code: 'no-prize', message: 'Elige el premio que vas a sortear.' };
   if (!prize.is_active) return { code: 'inactive-prize', message: 'Este premio está inactivo y no puede sortearse.' };
+  if (flags.unverified) return { code: 'unverified', message: 'No pudimos comprobar si este premio ya tiene un ganador pendiente. Reintenta la comprobación antes de sortear para no duplicar la selección.' };
   if (prize.available <= 0) return { code: 'exhausted', message: 'Este premio está agotado: ya no quedan unidades.' };
+  if (flags.serverEmpty) return { code: 'server-empty', message: SERVER_EMPTY_MESSAGE };
   if (poolCount <= 0) return { code: 'empty-pool', message: 'No hay participantes elegibles en esta categoría.' };
   return null;
 }
