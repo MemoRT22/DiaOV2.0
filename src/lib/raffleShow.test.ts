@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import type { RaffleCategory, RafflePrize } from './raffleApi';
-import { burstParticles, drawBlocker, isDefinitiveDrawError, initialCategory, initialPrize, isDrawable, letterCount, nextTarget, orbitTokens, scrambleName, unitsLeft } from './raffleShow';
+import { burstParticles, drawBlocker, isDefinitiveDrawError, pickDataSet, initialCategory, initialPrize, isDrawable, letterCount, nextTarget, orbitTokens, scrambleName, unitsLeft } from './raffleShow';
 
 const category = (id: string, pool: number, over: Partial<RaffleCategory> = {}): RaffleCategory => ({
   id, name: id, sort_order: 0, rules: [{ total: 3 }], required_academic: 0, required_leadership: 0,
@@ -125,5 +125,28 @@ describe('uncertainty and server refusals', () => {
   test('only refusals that settle the matter are definitive; connection problems are not', () => {
     for (const code of ['POOL_EMPTY', 'PRIZE_EXHAUSTED', 'PRIZE_INACTIVE', 'CATEGORY_INACTIVE', 'NOT_AUTHORIZED', 'NOT_FOUND', 'PENDING_SELECTION']) expect(isDefinitiveDrawError(code)).toBe(true);
     for (const code of ['', 'NETWORK', 'Failed to fetch', 'upstream request timeout', 'JWT expired', 'AbortError']) expect(isDefinitiveDrawError(code)).toBe(false);
+  });
+});
+
+describe('pickDataSet: which set of server records the raffle uses', () => {
+  const cat = (is_demo: boolean, pool_count: number, name = 'Universo') => ({ is_demo, pool_count, name });
+  const pick = (rehearsal: boolean, canConfigure: boolean, categories: ReturnType<typeof cat>[]) => pickDataSet({ rehearsal, canConfigure, categories });
+
+  test('official operation uses the real records', () => {
+    expect(pick(false, true, [cat(false, 5), cat(true, 9)])).toBe('real');
+    expect(pick(false, false, [cat(false, 0), cat(true, 9)])).toBe('real');
+  });
+  test('raffle staff in a rehearsal can only use what the server allows them: the test records', () => {
+    expect(pick(true, false, [cat(false, 50), cat(true, 0)])).toBe('demo');
+  });
+  test('Coordinación in a rehearsal uses the set that holds the rehearsal participants', () => {
+    expect(pick(true, true, [cat(false, 40), cat(true, 0)])).toBe('real');
+    expect(pick(true, true, [cat(false, 0), cat(true, 7)])).toBe('demo');
+  });
+  test('with candidates in both, or in neither, it prefers the rehearsal set when it exists and falls back to the other one', () => {
+    expect(pick(true, true, [cat(false, 40), cat(true, 7)])).toBe('demo');
+    expect(pick(true, true, [cat(false, 0), cat(true, 0)])).toBe('demo');
+    expect(pick(true, true, [cat(false, 0)])).toBe('real');
+    expect(pick(true, true, [])).toBe('demo');
   });
 });

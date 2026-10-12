@@ -2,18 +2,18 @@ import { act, render } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { PUBLIC_PATH, parsePublicMessage, toPublicState } from '../../lib/rafflePublic';
 import { FakeBroadcastChannel } from './fakeBroadcastChannel';
-import { category } from './raffleFixtures';
+import { AMAZON, demoCategories, demoPrizes } from './raffleFixtures';
 import RaffleProjection from './RaffleProjection';
 import { consoleStage, defaultPrizes, drawn, fireEvent, openConsole, readyToDraw, screen, setReducedMotion, view, waitFor, within } from './raffleRunHarness';
 
-const m = vi.hoisted(() => ({ view: vi.fn(), prizes: vi.fn(), winners: vi.fn(), draw: vi.fn(), confirm: vi.fn(), noShow: vi.fn(), pending: vi.fn(), invalidate: vi.fn() }));
+const m = vi.hoisted(() => ({ mode: { current: 'operacion_real' }, view: vi.fn(), prizes: vi.fn(), winners: vi.fn(), draw: vi.fn(), confirm: vi.fn(), noShow: vi.fn(), pending: vi.fn(), invalidate: vi.fn() }));
 
 vi.mock('../../lib/raffleApi', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../lib/raffleApi')>()),
   fetchOperatorView: m.view, fetchPrizes: m.prizes, fetchWinners: m.winners, drawWinner: m.draw, confirmWinner: m.confirm,
   markNoShow: m.noShow, fetchPendingSelection: m.pending, invalidateWinner: m.invalidate,
 }));
-vi.mock('../../edition/EditionProvider', () => ({ useEdition: () => ({ edition: { mode: 'operacion_real' } }) }));
+vi.mock('../../edition/EditionProvider', () => ({ useEdition: () => ({ edition: { mode: m.mode.current } }) }));
 vi.mock('../../lib/auth', () => ({
   useAuth: () => ({ staff: { user_id: 'u', full_name: 'Operador', roles: ['coordinacion'] } }),
   hasRole: (staff: { roles: string[] } | null, ...roles: string[]) => !!staff && roles.some((role) => staff.roles.includes(role)),
@@ -24,6 +24,7 @@ let prizes = defaultPrizes();
 
 beforeEach(() => {
   vi.clearAllMocks();
+  m.mode.current = 'operacion_real';
   vi.stubGlobal('BroadcastChannel', FakeBroadcastChannel);
   restoreMotion = setReducedMotion();
   prizes = defaultPrizes();
@@ -58,9 +59,9 @@ test('before the draw it shows category, prize and pool; the console keeps every
   const pub = openPublic();
   openConsole();
   await readyToDraw();
-  expect(await pub.stage().findByRole('heading', { name: 'Tablet' })).toBeInTheDocument();
+  expect(await pub.stage().findByRole('heading', { name: AMAZON })).toBeInTheDocument();
   expect(pub.stage().getByText('participantes compiten por')).toBeInTheDocument();
-  expect(pub.stage().getByText('Universo')).toBeInTheDocument();
+  expect(pub.stage().getByText('Sistema Solar')).toBeInTheDocument();
   noControls(pub.container);
   expect(consoleStage().getByRole('button', { name: 'Sortear' })).toBeInTheDocument();
 });
@@ -72,7 +73,7 @@ test('it follows the whole round — drawing, winner, confirmation, next round �
   expect(await pub.stage().findByText(/Sorteando entre/)).toBeInTheDocument();
   noControls(pub.container);
   expect(await pub.stage().findByText('Ana López')).toBeInTheDocument();
-  expect(pub.stage().getByText('Elegido entre 4 participantes')).toBeInTheDocument();
+  expect(pub.stage().getByText('Elegido entre 12 participantes')).toBeInTheDocument();
   noControls(pub.container);
 
   await waitFor(() => expect(consoleStage().getByRole('button', { name: /Confirmar ganador/ })).toBeEnabled());
@@ -80,7 +81,7 @@ test('it follows the whole round — drawing, winner, confirmation, next round �
   expect(await pub.stage().findByText('Entrega confirmada')).toBeInTheDocument();
   noControls(pub.container);
 
-  prizes.un = [{ ...prizes.un[0], available: 1 }, prizes.un[1]];
+  prizes.ss = [{ ...prizes.ss[0], available: 9, delivered: 1 }];
   const next = await consoleStage().findByRole('button', { name: 'Siguiente ronda' });
   await waitFor(() => expect(next).toBeEnabled());
   fireEvent.click(next);
@@ -133,7 +134,7 @@ test('closing and reopening the public window brings back the round as it is', a
   first.unmount();
   const second = openPublic();
   expect(await second.stage().findByText('Ana López')).toBeInTheDocument();
-  expect(second.stage().getByText('Tablet')).toBeInTheDocument();
+  expect(second.stage().getByText(AMAZON)).toBeInTheDocument();
   noControls(second.container);
 });
 
@@ -158,33 +159,37 @@ test('the console opens the public window by name, and says so when the browser 
   open.mockRestore();
 });
 
-test('switching between real and demo environments never leaves the other one on the projector', async () => {
-  m.view.mockImplementation(async () => view([...view().categories, category('d', 'Universo', 10, [{ total: 3 }], 3, { is_demo: true })]));
-  prizes = { ...prizes, d: [{ ...prizes.un[0], id: 'dp', category_id: 'd', name: 'Premio de prueba', quantity: 1, available: 1, delivered: 0 }] } as typeof prizes;
-  const pub = openPublic();
+test('in rehearsal mode the public screen carries the «Ensayo» mark; in official operation it does not', async () => {
+  const official = openPublic();
   openConsole();
   await readyToDraw();
-  expect(await pub.stage().findByRole('heading', { name: 'Tablet' })).toBeInTheDocument();
-  expect(pub.stage().queryByText('Ensayo · datos de prueba')).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: 'Datos de prueba' }));
-  expect(await pub.stage().findByText('Ensayo · datos de prueba')).toBeInTheDocument();
-  expect(await pub.stage().findByRole('heading', { name: 'Premio de prueba' })).toBeInTheDocument();
-  expect(pub.stage().queryByRole('heading', { name: 'Tablet' })).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: 'Datos reales' }));
-  await waitFor(() => expect(pub.stage().queryByText('Ensayo · datos de prueba')).not.toBeInTheDocument());
-  expect(await pub.stage().findByRole('heading', { name: 'Tablet' })).toBeInTheDocument();
+  expect(await official.stage().findByRole('heading', { name: AMAZON })).toBeInTheDocument();
+  expect(official.stage().queryByText('Ensayo del evento')).not.toBeInTheDocument();
+  official.unmount();
+  FakeBroadcastChannel.reset();
+  document.body.innerHTML = '';
+
+  m.mode.current = 'preparacion';
+  m.view.mockImplementation(async () => view(demoCategories()));
+  m.prizes.mockImplementation(async (id: string) => (demoPrizes() as Record<string, unknown[]>)[id] ?? []);
+  const rehearsal = openPublic();
+  openConsole();
+  await readyToDraw();
+  expect(await rehearsal.stage().findByText('Ensayo del evento')).toBeInTheDocument();
+  expect(await rehearsal.stage().findByRole('heading', { name: AMAZON })).toBeInTheDocument();
 });
 
-test('leaving the console leaves the title on the projector and keeps the environment mark of a rehearsal', async () => {
-  m.view.mockImplementation(async () => view([category('d', 'Universo', 10, [{ total: 3 }], 3, { is_demo: true })]));
-  prizes = { d: [{ ...prizes.un[0], id: 'dp', category_id: 'd', name: 'Premio de prueba', quantity: 1, available: 1, delivered: 0 }] } as unknown as typeof prizes;
+test('leaving the console leaves the title on the projector and keeps the rehearsal mark', async () => {
+  m.mode.current = 'preparacion';
+  m.view.mockImplementation(async () => view(demoCategories()));
+  m.prizes.mockImplementation(async (id: string) => (demoPrizes() as Record<string, unknown[]>)[id] ?? []);
   const pub = openPublic();
   const consoleView = openConsole();
-  fireEvent.click(await screen.findByRole('button', { name: 'Datos de prueba' }));
-  await pub.stage().findByRole('heading', { name: 'Premio de prueba' });
+  await readyToDraw();
+  await pub.stage().findByRole('heading', { name: AMAZON });
   consoleView.unmount();
   expect(await pub.stage().findByRole('heading', { name: 'Sorteo final' })).toBeInTheDocument();
-  expect(pub.stage().getByText('Ensayo · datos de prueba')).toBeInTheDocument();
+  expect(pub.stage().getByText('Ensayo del evento')).toBeInTheDocument();
 });
 
 // ------------------------------------------------------------------ rehearsal on a single screen
@@ -195,7 +200,7 @@ test('the on-screen rehearsal has nothing to click, is driven from the keyboard 
   fireEvent.click(screen.getByRole('button', { name: /Ensayar en esta pantalla/ }));
   const layer = screen.getByRole('dialog', { name: 'Ensayo en pantalla completa' });
   noControls(layer);
-  expect(within(layer).getByRole('heading', { name: 'Tablet' })).toBeInTheDocument();
+  expect(within(layer).getByRole('heading', { name: AMAZON })).toBeInTheDocument();
 
   fireEvent.keyDown(window, { key: ' ' });
   expect(await within(layer).findByText('Ana López')).toBeInTheDocument();
@@ -221,27 +226,28 @@ test('a problem closes the rehearsal so the operator sees it', async () => {
   expect(await screen.findByText('Este premio ya no tiene unidades disponibles.')).toBeInTheDocument();
 });
 
-test('the rehearsal of a demo round is unmistakably marked', async () => {
-  m.view.mockImplementation(async () => view([category('d', 'Universo', 10, [{ total: 3 }], 3, { is_demo: true })]));
-  prizes = { d: [{ ...prizes.un[0], id: 'dp', category_id: 'd', name: 'Premio de prueba', quantity: 1, available: 1, delivered: 0 }] } as unknown as typeof prizes;
+test('the on-screen rehearsal of the event rehearsal is unmistakably marked', async () => {
+  m.mode.current = 'preparacion';
+  m.view.mockImplementation(async () => view(demoCategories()));
+  m.prizes.mockImplementation(async (id: string) => (demoPrizes() as Record<string, unknown[]>)[id] ?? []);
   openConsole();
-  fireEvent.click(await screen.findByRole('button', { name: 'Datos de prueba' }));
-  fireEvent.click(await screen.findByRole('button', { name: /Ensayar en esta pantalla/ }));
-  expect(within(screen.getByRole('dialog', { name: 'Ensayo en pantalla completa' })).getByText('Ensayo · datos de prueba')).toBeInTheDocument();
+  await readyToDraw();
+  fireEvent.click(screen.getByRole('button', { name: /Ensayar en esta pantalla/ }));
+  expect(within(screen.getByRole('dialog', { name: 'Ensayo en pantalla completa' })).getByText('Ensayo del evento')).toBeInTheDocument();
 });
 
 // ------------------------------------------------------------------ what may cross to the audience
 
 test('the public state has no field for errors, notices or controls', () => {
-  const state = toPublicState({ scope: 'real', phase: 'uncertain', ready: false, poolCount: 3, prize: { name: 'Tablet', available: 1, quantity: 2 }, result: null });
-  expect(Object.keys(state).sort()).toEqual(['categoryName', 'phase', 'poolCount', 'prize', 'result', 'scope']);
+  const state = toPublicState({ rehearsal: false, phase: 'uncertain', ready: false, poolCount: 3, prize: { name: AMAZON, available: 1, quantity: 2 }, result: null });
+  expect(Object.keys(state).sort()).toEqual(['categoryName', 'phase', 'poolCount', 'prize', 'rehearsal', 'result']);
   expect(state.phase).toBe('drawing');
-  expect(toPublicState({ scope: 'real', phase: 'idle', ready: false, poolCount: 3, result: null }).phase).toBe('standby');
+  expect(toPublicState({ rehearsal: false, phase: 'idle', ready: false, poolCount: 3, result: null }).phase).toBe('standby');
 });
 
 test('a message that is not exactly a public state is ignored', () => {
-  expect(parsePublicMessage({ type: 'state', state: { scope: 'real', phase: 'ready', poolCount: 'x', prize: null, result: null, categoryName: null } })).toBeNull();
-  expect(parsePublicMessage({ type: 'state', state: { scope: 'other', phase: 'ready', poolCount: 1, prize: null, result: null, categoryName: null } })).toBeNull();
+  expect(parsePublicMessage({ type: 'state', state: { rehearsal: false, phase: 'ready', poolCount: 'x', prize: null, result: null, categoryName: null } })).toBeNull();
+  expect(parsePublicMessage({ type: 'state', state: { rehearsal: 'maybe', phase: 'ready', poolCount: 1, prize: null, result: null, categoryName: null } })).toBeNull();
   expect(parsePublicMessage({ type: 'launch' })).toBeNull();
   expect(parsePublicMessage('x')).toBeNull();
   expect(parsePublicMessage({ type: 'state', state: null })).toEqual({ type: 'state', state: null });

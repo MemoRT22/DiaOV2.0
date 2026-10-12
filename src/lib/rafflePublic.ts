@@ -6,8 +6,6 @@
  * the winner always comes from `draw_winner` on the server. Errors, notices and operator controls have no field in
  * `PublicState`, so they cannot reach the audience by construction.
  */
-import type { RaffleScope } from './raffleShow';
-
 export const PUBLIC_CHANNEL = 'dia-ov-sorteo-publico';
 export const PUBLIC_WINDOW = 'dia-ov-sorteo-publico';
 export const PUBLIC_PATH = '/coordinacion/sorteo-publico';
@@ -16,7 +14,8 @@ export const PUBLIC_PATH = '/coordinacion/sorteo-publico';
 export type PublicPhase = 'standby' | 'ready' | 'drawing' | 'revealed' | 'confirmed';
 
 export type PublicState = {
-  scope: RaffleScope;
+  /** The edition is in rehearsal: the screen carries the «Ensayo» mark so nobody mistakes it for the official draw. */
+  rehearsal: boolean;
   phase: PublicPhase;
   categoryName: string | null;
   prize: { name: string; available: number; quantity: number } | null;
@@ -48,7 +47,7 @@ export function parsePublicMessage(value: unknown): PublicMessage | null {
   if (message.type !== 'state') return null;
   if (message.state === null) return { type: 'state', state: null };
   const s = message.state as Record<string, unknown> | undefined;
-  if (!s || (s.scope !== 'real' && s.scope !== 'demo') || !PHASES.includes(s.phase as PublicPhase) || !isCount(s.poolCount)) return null;
+  if (!s || typeof s.rehearsal !== 'boolean' || !PHASES.includes(s.phase as PublicPhase) || !isCount(s.poolCount)) return null;
   const prize = s.prize as Record<string, unknown> | null;
   if (prize !== null && !(prize && isText(prize.name) && isCount(prize.available) && isCount(prize.quantity))) return null;
   const result = s.result as Record<string, unknown> | null;
@@ -56,7 +55,7 @@ export function parsePublicMessage(value: unknown): PublicMessage | null {
     && (result.poolSize === null || isCount(result.poolSize)) && typeof result.fresh === 'boolean')) return null;
   if ((s.categoryName !== null && !isText(s.categoryName))) return null;
   return { type: 'state', state: {
-    scope: s.scope as RaffleScope, phase: s.phase as PublicPhase, categoryName: s.categoryName as string | null,
+    rehearsal: s.rehearsal as boolean, phase: s.phase as PublicPhase, categoryName: s.categoryName as string | null,
     prize: prize as PublicState['prize'], poolCount: s.poolCount as number, result: result as PublicState['result'],
   } };
 }
@@ -68,14 +67,14 @@ export type ConsolePhase = 'idle' | 'drawing' | 'revealed' | 'confirmed' | 'unce
  * screen simply keeps drawing; it is never shown a problem. If the round cannot be drawn it shows the standby title.
  */
 export function toPublicState(input: {
-  scope: RaffleScope; phase: ConsolePhase; ready: boolean; categoryName?: string;
+  rehearsal: boolean; phase: ConsolePhase; ready: boolean; categoryName?: string;
   prize?: { name: string; available: number; quantity: number }; poolCount: number;
   result: { winnerId: string; name: string; prizeName: string; poolSize: number | null; fresh: boolean } | null;
 }): PublicState {
   const phase: PublicPhase = input.phase === 'uncertain' ? 'drawing' : input.phase === 'idle' ? (input.ready ? 'ready' : 'standby') : input.phase;
   const showsResult = phase === 'revealed' || phase === 'confirmed';
   return {
-    scope: input.scope, phase, categoryName: input.categoryName ?? null,
+    rehearsal: input.rehearsal, phase, categoryName: input.categoryName ?? null,
     prize: input.prize ? { name: input.prize.name, available: input.prize.available, quantity: input.prize.quantity } : null,
     poolCount: input.poolCount,
     result: showsResult && input.result ? { ...input.result } : null,

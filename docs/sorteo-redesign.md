@@ -1,5 +1,7 @@
 # Sorteo final · rediseño funcional y visual
 
+> Sustituido en su estructura por [`sorteo-simplificado.md`](sorteo-simplificado.md) (Sorteo en vivo / Premios / Ganadores). El motor, la pantalla pública y la fiabilidad que se describen abajo siguen vigentes.
+
 Segunda iteración del módulo Sorteo dentro del PR #36. No toca backend, migraciones ni Edge Functions; no cambia sellos, categorías ni elegibilidad.
 
 ## Estructura

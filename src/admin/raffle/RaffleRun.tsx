@@ -9,10 +9,11 @@ import {
 } from '../../lib/raffleApi';
 import { toPublicState, type PublicState } from '../../lib/rafflePublic';
 import {
-  drawBlocker, initialCategory, initialPrize, isDefinitiveDrawError, isDrawable, nextTarget, SPIN_MS, unitsLeft,
+  drawBlocker, initialCategory, initialPrize, isDefinitiveDrawError, isDrawable, nextTarget, SPIN_MS,
 } from '../../lib/raffleShow';
 import { useRafflePublicScreen } from '../../lib/useRafflePublicScreen';
 import { DataPanel, EmptyState } from '../design/Primitives';
+import { deliveredText, kindOf, plural, PrizeIcon, prizeTally, StockDots, toneOf } from './PrizeParts';
 import { InvalidateModal } from './RaffleModals';
 import RaffleStage, { PublicStage, useReducedMotion, type StagePhase, type StageResult } from './RaffleStage';
 import type { RaffleContext } from './types';
@@ -40,7 +41,9 @@ const recovered = (current: { winner_id: string | null; display_name?: string; p
  * notice stays here.
  */
 export default function RaffleRun({ ctx }: { ctx: RaffleContext }) {
-  const { categories, prizes, scope, canConfigure, prizesLoading } = ctx;
+  const { categories, prizes, rehearsal, canConfigure, prizesLoading, winners } = ctx;
+  // The suggested order of the event: from the smaller prizes to the big ones. Any prize can be picked at any time.
+  const drawOrder = useMemo(() => [...categories].reverse(), [categories]);
   const reduced = useReducedMotion();
   const [categoryId, setCategoryId] = useState('');
   const [prizeId, setPrizeId] = useState('');
@@ -119,7 +122,7 @@ export default function RaffleRun({ ctx }: { ctx: RaffleContext }) {
       const all = categories.flatMap((item) => prizes[item.id] ?? EMPTY);
       const check = await findPending(all);
       const hit = categories.map((item) => ({ categoryId: item.id, prize: (prizes[item.id] ?? EMPTY).find((candidate) => check.found[candidate.id]) })).find((entry) => entry.prize);
-      const target = hit?.categoryId ?? initialCategory(categories, prizes);
+      const target = hit?.categoryId ?? initialCategory(drawOrder, prizes);
       const own = new Set((prizes[target] ?? EMPTY).map((item) => item.id));
       const split = (inside: boolean): PendingCheck => ({
         found: Object.fromEntries(Object.entries(check.found).filter(([id]) => own.has(id) === inside)),
@@ -128,7 +131,7 @@ export default function RaffleRun({ ctx }: { ctx: RaffleContext }) {
       recordChecks(all.filter((item) => !own.has(item.id)), split(false));
       await enter(target, hit?.prize?.id, split(true));
     })();
-  }, [categories, prizes, prizesLoading, enter, findPending, recordChecks]);
+  }, [categories, drawOrder, prizes, prizesLoading, enter, findPending, recordChecks]);
 
   // The burst has played: from here on the result is shown as is, so toggling the rehearsal never replays it.
   useEffect(() => {
@@ -234,7 +237,7 @@ export default function RaffleRun({ ctx }: { ctx: RaffleContext }) {
   });
 
   const nextRound = () => {
-    const target = nextTarget(categories, prizes, { categoryId, prizeId });
+    const target = nextTarget(drawOrder, prizes, { categoryId, prizeId });
     if (!target) { setPhase('idle'); setResult(null); setNotice('Ya no quedan premios por sortear en este entorno.'); return; }
     void enter(target.categoryId, target.prizeId);
   };
@@ -242,15 +245,15 @@ export default function RaffleRun({ ctx }: { ctx: RaffleContext }) {
   // On a wide screen the console should open with the stage fully in view (the environment banner stays visible above it).
   useEffect(() => {
     if (window.innerWidth < 1000) return;
-    document.querySelector('.rf-module .rf-env')?.scrollIntoView({ block: 'start', behavior: reduced ? 'auto' : 'smooth' });
+    document.querySelector('.rf-module .rf-stats')?.scrollIntoView({ block: 'start', behavior: reduced ? 'auto' : 'smooth' });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // What the audience may see: no blockers, no notices, no errors, no controls.
   const publicState: PublicState = useMemo(() => toPublicState({
-    scope, phase, ready: !blocker && !!prize, categoryName: category?.name, poolCount,
+    rehearsal, phase, ready: !blocker && !!prize, categoryName: category?.name, poolCount,
     prize: prize && { name: prize.name, available: prize.available, quantity: prize.quantity },
     result: result && { winnerId: result.winnerId, name: result.name, prizeName: result.prizeName, poolSize: result.poolSize, fresh: result.fresh },
-  }), [scope, phase, blocker, prize, category?.name, poolCount, result]);
+  }), [rehearsal, phase, blocker, prize, category?.name, poolCount, result]);
   const screen = useRafflePublicScreen(publicState);
 
   // Space/Enter in the rehearsal: the one obvious next step of the round.
@@ -264,74 +267,82 @@ export default function RaffleRun({ ctx }: { ctx: RaffleContext }) {
   const problem = !!error || phase === 'uncertain' || blocker?.code === 'unverified' || blocker?.code === 'server-empty';
   useEffect(() => { if (rehearsing && problem) setRehearsing(false); }, [rehearsing, problem]);
 
-  if (categories.length === 0) {
+  const registeredPrizes = categories.flatMap((item) => prizes[item.id] ?? EMPTY);
+  if (registeredPrizes.length === 0 && !prizesLoading) {
     return (
-      <DataPanel><EmptyState title={`Sin categorías ${scope === 'demo' ? 'de prueba' : 'reales'}.`}
-        description="Para sortear hace falta al menos una categoría con premios."
-        action={canConfigure ? <Button className="mt-4" onClick={() => ctx.goTo('preparacion')}>Ir a Preparación</Button> : undefined} /></DataPanel>
+      <DataPanel><EmptyState title="Los premios todavía no están preparados."
+        description={canConfigure ? 'Registra los premios oficiales de Día OV 2026 para poder sortearlos. Es un solo paso.' : 'Avisa a Coordinación: hay que preparar los premios oficiales antes de sortear.'}
+        action={canConfigure ? <Button className="mt-4" onClick={() => ctx.goTo('premios')}>Ir a Premios</Button> : undefined} /></DataPanel>
     );
   }
 
   const drawLabel = redraw === 'retry' ? 'Reintentar sorteo' : redraw === 'again' ? 'Sortear de nuevo' : 'Sortear';
+  const totalLeft = registeredPrizes.reduce((sum, item) => sum + prizeTally(item, winners).left, 0);
+  const totalUnits = registeredPrizes.reduce((sum, item) => sum + item.quantity, 0);
+  const eligible = categories.reduce((sum, item) => sum + (item.pool_count ?? 0), 0);
+  const openCategories = categories.filter((item) => (prizes[item.id] ?? EMPTY).some(isDrawable)).length;
+  const pick = (item: RaffleCategory, target: RafflePrize) => { if (item.id === categoryId) choosePrize(target.id); else void enter(item.id, target.id); };
 
   return (
-    <div className="rf-run">
-      <div className="rf-pick">
-        <section aria-label="Categoría del sorteo">
-          <h2 className="rf-step"><span>1</span> Categoría</h2>
-          <div className="rf-choices" role="radiogroup" aria-label="Categoría">
-            {categories.map((item) => <CategoryChoice key={item.id} category={item} prizes={prizes[item.id] ?? EMPTY} checked={item.id === categoryId}
-              disabled={locked} onSelect={() => void enter(item.id)} />)}
-          </div>
-        </section>
-        <section aria-label="Premio del sorteo">
-          <h2 className="rf-step"><span>2</span> Premio</h2>
-          {categoryPrizes.length === 0 ? (
-            <div className="rf-choice-empty">
-              <p><strong>Esta categoría no tiene premios.</strong></p>
-              <p>{canConfigure ? 'Agrégalos en Preparación para poder sortearla.' : 'Pide a Coordinación que los configure.'}</p>
-              {canConfigure && <Button variant="secondary" onClick={() => ctx.goTo('preparacion')}>Ir a Preparación</Button>}
-            </div>
-          ) : (
-            <div className="rf-choices" role="radiogroup" aria-label="Premio">
-              {categoryPrizes.map((item) => <PrizeChoice key={item.id} prize={item} pending={!!pending[item.id]} unverified={!!unverified[item.id]} checked={item.id === prizeId}
-                disabled={locked} onSelect={() => choosePrize(item.id)} />)}
-            </div>
-          )}
-          {unverifiedHere.length > 0 && (
-            <Alert tone="warning">
-              <div className="rf-alert-row">
-                <span>No se pudo comprobar si {unverifiedHere.length === 1 ? `«${unverifiedHere[0].name}» tiene` : `${unverifiedHere.length} premios tienen`} un ganador pendiente (sin conexión o error del servidor). Hasta comprobarlo no {unverifiedHere.length === 1 ? 'se puede sortear' : 'se pueden sortear'}, para no duplicar la selección.</span>
-                <Button variant="secondary" onClick={() => void recheck()} loading={checking}>Reintentar comprobación</Button>
-              </div>
-            </Alert>
-          )}
-        </section>
-        <section aria-label="Pantalla pública">
-          <h2 className="rf-step"><span>3</span> Pantalla pública</h2>
-          <PublicScreenBar screen={screen} onRehearse={() => setRehearsing(true)} />
-        </section>
+    <>
+      <div className="rf-stats" aria-label="Resumen del sorteo">
+        <div><strong>{totalLeft}</strong><span>{totalLeft === 1 ? 'premio por sortear' : 'premios por sortear'} de {totalUnits}</span></div>
+        <div><strong>{eligible}</strong><span>{eligible === 1 ? 'participante elegible' : 'participantes elegibles'}</span></div>
+        <div><strong>{openCategories}</strong><span>{openCategories === 1 ? 'categoría con premios' : 'categorías con premios'} de {categories.length}</span></div>
       </div>
+      <PublicScreenBar screen={screen} onRehearse={() => setRehearsing(true)} />
+      <div className="rf-run">
+        <div className="rf-pick">
+          <section aria-label="Premios por sortear">
+            <h2 className="rf-step">Elige el premio</h2>
+            <p className="rf-pick-hint">Sugerido: de los premios menores al mayor. Puedes elegir cualquiera.</p>
+            <div className="rf-board" role="radiogroup" aria-label="Premio">
+              {categories.map((item) => (
+                <div key={item.id} className="rf-board-group" data-tone={toneOf(item.name)} role="group" aria-label={`Premios de ${item.name}`}>
+                  <h3>{item.name}<small>{plural(item.pool_count ?? 0, 'elegible', 'elegibles')}</small></h3>
+                  {(prizes[item.id] ?? EMPTY).map((target) => (
+                    <PrizeCard key={target.id} category={item} prize={target} winners={winners} pending={!!pending[target.id]} unverified={!!unverified[target.id]}
+                      checked={target.id === prizeId} disabled={locked} onSelect={() => pick(item, target)} />
+                  ))}
+                  {(prizes[item.id] ?? EMPTY).length === 0 && <p className="rf-choice-empty">Sin premios registrados.</p>}
+                </div>
+              ))}
+            </div>
+            {ctx.plan.status !== 'ready' && ctx.plan.entries.some((entry) => !entry.prize) && (
+              <p className="rf-pick-hint">{canConfigure ? 'Faltan premios oficiales por registrar. ' : 'Faltan premios oficiales por registrar: avisa a Coordinación. '}
+                {canConfigure && <button type="button" className="rf-link" onClick={() => ctx.goTo('premios')}>Ir a Premios</button>}</p>
+            )}
+            {unverifiedHere.length > 0 && (
+              <Alert tone="warning">
+                <div className="rf-alert-row">
+                  <span>No se pudo comprobar si {unverifiedHere.length === 1 ? `«${unverifiedHere[0].name}» tiene` : `${unverifiedHere.length} premios tienen`} un ganador pendiente (sin conexión o error del servidor). Hasta comprobarlo no {unverifiedHere.length === 1 ? 'se puede sortear' : 'se pueden sortear'}, para no duplicar la selección.</span>
+                  <Button variant="secondary" onClick={() => void recheck()} loading={checking}>Reintentar comprobación</Button>
+                </div>
+              </Alert>
+            )}
+          </section>
+        </div>
 
-      <div className="rf-live">
-        {error && <Alert tone="error">{error}</Alert>}
-        <RaffleStage variant="panel" scope={scope} phase={phase} prize={prize} poolCount={poolCount} result={result} blocker={blocker}
-          notice={notice} categoryName={category?.name} onRevealDone={() => setRevealDone(true)} alreadyRevealed={revealDone}>
-          <RoundActions phase={phase} revealDone={revealDone} busy={busy} refreshing={prizesLoading} checking={checking} drawLabel={drawLabel}
-            blockerCode={blocker?.code} canDraw={!blocker && !!prize}
-            onDraw={() => void draw()} onConfirm={() => void confirm()} onNoShow={() => void noShow()} onNext={nextRound}
-            onVerify={() => { if (category && prize) void verify(prize, category); }} onRecheck={() => void recheck()} onRefresh={() => void ctx.refresh()}
-            onInvalidate={canConfigure ? () => setInvalidating(true) : undefined} />
-        </RaffleStage>
-        <p className="rf-live-help">Los participantes y el ganador los decide el servidor al sortear; esta pantalla solo los muestra. {phase === 'revealed' && 'Confirma la entrega cuando la persona se presente.'}</p>
+        <div className="rf-live">
+          {error && <Alert tone="error">{error}</Alert>}
+          <RaffleStage variant="panel" rehearsal={rehearsal} phase={phase} prize={prize} poolCount={poolCount} result={result} blocker={blocker}
+            notice={notice} categoryName={category?.name} onRevealDone={() => setRevealDone(true)} alreadyRevealed={revealDone}>
+            <RoundActions phase={phase} revealDone={revealDone} busy={busy} refreshing={prizesLoading} checking={checking} drawLabel={drawLabel}
+              blockerCode={blocker?.code} canDraw={!blocker && !!prize}
+              onDraw={() => void draw()} onConfirm={() => void confirm()} onNoShow={() => void noShow()} onNext={nextRound}
+              onVerify={() => { if (category && prize) void verify(prize, category); }} onRecheck={() => void recheck()} onRefresh={() => void ctx.refresh()}
+              onInvalidate={canConfigure ? () => setInvalidating(true) : undefined} />
+          </RaffleStage>
+          <p className="rf-live-help">El ganador lo decide el servidor al sortear; esta pantalla solo lo muestra. {phase === 'revealed' && 'Confirma la entrega cuando la persona se presente.'}</p>
+        </div>
+
+        {rehearsing && <RehearsalLayer state={publicState} alreadyRevealed={revealDone} onExit={() => setRehearsing(false)} onPrimary={primary} />}
+        {invalidating && result && (
+          <InvalidateModal winner={{ id: result.winnerId, prize_name: result.prizeName, display_name: result.name }} onClose={() => setInvalidating(false)}
+            onDone={() => { setInvalidating(false); setResult(null); setPhase('idle'); setRedraw('again'); setNotice('Ganador invalidado. El premio volvió al inventario: puedes volver a sortear.'); void ctx.refresh(); }} />
+        )}
       </div>
-
-      {rehearsing && <RehearsalLayer state={publicState} alreadyRevealed={revealDone} onExit={() => setRehearsing(false)} onPrimary={primary} />}
-      {invalidating && result && (
-        <InvalidateModal winner={{ id: result.winnerId, prize_name: result.prizeName, display_name: result.name }} onClose={() => setInvalidating(false)}
-          onDone={() => { setInvalidating(false); setResult(null); setPhase('idle'); setRedraw('again'); setNotice('Ganador invalidado. El premio volvió al inventario: puedes volver a sortear.'); void ctx.refresh(); }} />
-      )}
-    </div>
+    </>
   );
 }
 
@@ -343,8 +354,8 @@ function PublicScreenBar({ screen, onRehearse }: { screen: ReturnType<typeof use
         <p className="rf-public-help">
           {!screen.supported ? 'Este navegador no puede sincronizar ventanas: usa «Ensayar en esta pantalla».'
             : screen.blocked ? 'El navegador bloqueó la ventana. Permite las ventanas emergentes de este sitio e inténtalo de nuevo.'
-            : screen.connected ? 'Llévala al proyector y ponla en pantalla completa con doble clic. Ahí no hay controles: todo se maneja desde aquí.'
-            : 'Ábrela en otra ventana y arrástrala al proyector. Tú conservas aquí todos los controles.'}
+            : screen.connected ? 'Llévala al proyector y pon pantalla completa con doble clic. Ahí no hay controles.'
+            : 'Ábrela en otra ventana y llévala al proyector. Aquí conservas todos los controles.'}
         </p>
       </div>
       <div className="rf-public-actions">
@@ -355,30 +366,22 @@ function PublicScreenBar({ screen, onRehearse }: { screen: ReturnType<typeof use
   );
 }
 
-function CategoryChoice({ category, prizes, checked, disabled, onSelect }: { category: RaffleCategory; prizes: RafflePrize[]; checked: boolean; disabled: boolean; onSelect: () => void }) {
-  const pool = category.pool_count ?? 0;
-  const left = unitsLeft(prizes);
-  const flag = !category.is_active ? 'Inactiva' : prizes.length === 0 ? 'Sin premios' : left === 0 ? 'Agotada' : pool === 0 ? 'Sin elegibles' : null;
+function PrizeCard({ category, prize, winners, pending, unverified, checked, disabled, onSelect }: {
+  category: RaffleCategory; prize: RafflePrize; winners: RaffleContext['winners']; pending: boolean; unverified: boolean; checked: boolean; disabled: boolean; onSelect: () => void;
+}) {
+  const tally = prizeTally(prize, winners);
+  const done = tally.left === 0 && tally.waiting === 0 && !pending;
+  const flag = pending ? 'Ganador pendiente' : unverified ? 'Sin comprobar' : !prize.is_active ? 'Inactivo' : done ? 'Completo' : null;
   return (
-    <label className="rf-choice" data-checked={checked || undefined} data-muted={flag ? true : undefined}>
-      <input type="radio" name="rf-category" checked={checked} disabled={disabled} onChange={onSelect} />
-      <span className="rf-choice-body">
-        <span className="rf-choice-title">{category.name}{flag && <Badge tone="neutral">{flag}</Badge>}</span>
-        <span className="rf-choice-meta">{pool} {pool === 1 ? 'elegible' : 'elegibles'} · {left} {left === 1 ? 'premio' : 'premios'} por entregar</span>
-      </span>
-    </label>
-  );
-}
-
-function PrizeChoice({ prize, pending, unverified, checked, disabled, onSelect }: { prize: RafflePrize; pending: boolean; unverified: boolean; checked: boolean; disabled: boolean; onSelect: () => void }) {
-  const flag = pending ? 'Ganador pendiente' : unverified ? 'Sin comprobar' : !prize.is_active ? 'Inactivo' : !isDrawable(prize) ? 'Agotado' : null;
-  return (
-    <label className="rf-choice" data-checked={checked || undefined} data-muted={flag && !pending ? true : undefined}>
+    <label className="rf-pcard" data-checked={checked || undefined} data-done={done || undefined}>
       <input type="radio" name="rf-prize" checked={checked} disabled={disabled} onChange={onSelect} />
-      <span className="rf-choice-body">
-        <span className="rf-choice-title">{prize.name}{flag && <Badge tone={pending || unverified ? 'warning' : 'neutral'}>{flag}</Badge>}</span>
-        <span className="rf-choice-meta">{prize.available} de {prize.quantity} disponibles{prize.description && ` · ${prize.description}`}</span>
+      <span className="rf-prize-icon"><PrizeIcon kind={kindOf(category.name, prize.name)} /></span>
+      <span className="rf-pcard-body">
+        <span className="rf-pcard-title">{prize.name}</span>
+        <span className="rf-pcard-meta">{done ? deliveredText(tally.confirmed, tally.quantity) : `${tally.left} por sortear · ${deliveredText(tally.confirmed, tally.quantity)}`}</span>
+        <StockDots confirmed={tally.confirmed} waiting={tally.waiting} quantity={tally.quantity} />
       </span>
+      {flag && <Badge tone={pending || unverified ? 'warning' : 'neutral'}>{flag}</Badge>}
     </label>
   );
 }

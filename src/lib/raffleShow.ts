@@ -144,3 +144,23 @@ export function orbitTokens(pool: number): number[] {
   const middle = Math.round(total / 3);
   return [inner, middle, total - inner - middle];
 }
+
+/**
+ * Which set of server records the raffle works on. The server keeps two (`is_demo` false/true) and the screen never asks
+ * the operator to understand that: the edition's mode is what they see («Ensayo del evento» / «Sorteo oficial»).
+ * - Raffle staff: the server only lets them operate the set of the current mode (rehearsal → demo, official → real).
+ * - Coordinación, official operation: the real set.
+ * - Coordinación, rehearsal: the set where the rehearsal data is: whichever has candidates (only one of them, normally);
+ *   otherwise the one that has categories, preferring the server's rehearsal set. Decided once per visit, so it does not
+ *   flip while the pools empty out during a draw.
+ */
+export function pickDataSet(input: { rehearsal: boolean; canConfigure: boolean; categories: Pick<RaffleCategory, 'is_demo' | 'pool_count' | 'name'>[] }): RaffleScope {
+  const modeSet: RaffleScope = input.rehearsal ? 'demo' : 'real';
+  if (!input.canConfigure || !input.rehearsal) return modeSet;
+  const inSet = (set: RaffleScope) => input.categories.filter((category) => scopeOf(category) === set);
+  const pool = (set: RaffleScope) => inSet(set).reduce((sum, category) => sum + (category.pool_count ?? 0), 0);
+  if (pool('real') > 0 && pool('demo') === 0) return 'real';
+  if (pool('demo') > 0 && pool('real') === 0) return 'demo';
+  if (pool('demo') > 0 && pool('real') > 0) return 'demo';
+  return inSet('demo').length === 0 && inSet('real').length > 0 ? 'real' : 'demo';
+}
