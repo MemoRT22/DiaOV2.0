@@ -1,4 +1,4 @@
-import { Download, Eye, Pencil, Search, Upload, UserPlus } from 'lucide-react';
+import { Download, Pencil, Upload, UserPlus } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Alert, Badge, Button, buttonClasses, Spinner } from '../../components/ui';
@@ -8,6 +8,7 @@ import { hasRole, useAuth } from '../../lib/auth';
 import { friendlyError } from '../../lib/errors';
 import ParticipantCreate from './ParticipantCreate';
 import ParticipantForm, { type ParticipantValues } from './ParticipantForm';
+import { DataPanel, EmptyState, PageHeader, SearchField } from '../design/Primitives';
 
 type Hit = {
   id: string;
@@ -103,42 +104,18 @@ export default function Participants() {
   }, [q, browsing, revision]);
 
   return (
-    <div className="space-y-6">
-      <header className="flex flex-wrap items-end justify-between gap-3">
-        <div className="max-w-3xl">
-          <h1>Participantes</h1>
-          <p className="mt-2 text-sm text-ink-muted">
-            Busca por nombre, correo o teléfono. Corrige datos desde la lista o abre el expediente para gestionar su acceso.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {coordinacion && (
-            <>
-              <Button onClick={() => void openCreate()} loading={openingCreate}>
-                <UserPlus className="h-4 w-4" aria-hidden />Nuevo participante
-              </Button>
-              <Link to="importar" className={buttonClasses('secondary')}>
-                <Upload className="h-4 w-4" aria-hidden />Importar participantes
-              </Link>
-              <Link to="exportar" className={buttonClasses('secondary')}>
-                <Download className="h-4 w-4" aria-hidden />Exportar
-              </Link>
-            </>
-          )}
-        </div>
-      </header>
+    <div className="ad-page">
+      <PageHeader eyebrow="Gestión de registros" title="Participantes"
+        description="Consulta expedientes, corrige datos y gestiona el acceso de cada alumno."
+        action={coordinacion && <Button onClick={() => void openCreate()} loading={openingCreate}><UserPlus aria-hidden />Nuevo participante</Button>} />
 
-      <label className="relative block max-w-3xl">
-        <span className="mb-2 block text-sm font-semibold text-ink">Buscar participante</span>
-        <Search className="pointer-events-none absolute bottom-3.5 left-4 h-4 w-4 text-ink-muted" aria-hidden />
-        <input
-          autoFocus
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Ej. ana.lopez@correo.com, López o 998123"
-          className="h-11 w-full rounded-theme border border-line bg-surface pl-11 pr-3 text-sm text-ink placeholder:text-ink-muted/70 focus:border-secondary-400 focus:outline-none focus:ring-2 focus:ring-secondary-500/30"
-        />
-      </label>
+      <div className="ad-toolbar">
+        <SearchField label="Buscar participante" value={query} onChange={setQuery} autoFocus placeholder="Buscar por nombre, correo o teléfono" />
+        {coordinacion && <div className="ad-toolbar-actions">
+          <Link to="importar" className={buttonClasses('secondary')}><Upload aria-hidden />Importar participantes</Link>
+          <Link to="exportar" className={buttonClasses('secondary')}><Download aria-hidden />Exportar</Link>
+        </div>}
+      </div>
 
       {notice && <Alert tone="success">{notice}</Alert>}
       {error && <Alert tone="error">{error}</Alert>}
@@ -146,69 +123,59 @@ export default function Participants() {
       {editingId && <Spinner label="Cargando datos para editar" />}
       {searching && !hits && <Spinner label="Buscando" />}
       {browsing && hits && hits.length > 0 && (
-        <p className="-mb-3 text-xs font-semibold uppercase tracking-wide text-ink-muted">Registros más recientes</p>
+        <p className="ad-list-caption">Registros más recientes <span>{hits.length} mostrados</span></p>
       )}
       {browsing && hits && hits.length === 0 && !searching && (
-        <div className="card p-8 text-center text-sm text-ink-muted">Aún no hay participantes registrados en esta edición.</div>
+        <DataPanel><EmptyState title="Aún no hay participantes registrados en esta edición." description="Los registros aparecerán aquí en cuanto se incorporen a la edición." /></DataPanel>
       )}
       {!browsing && hits && hits.length === 0 && !searching && (
-        <div className="card p-8 text-center text-sm text-ink-muted">
-          <p>No hay ningún participante que coincida con <strong>{query.trim()}</strong>.</p>
-          <p className="mt-1">
-            Si dice que no puede entrar, quizá se registró con otro correo: prueba con su nombre o teléfono. Si no aparece, puede registrarse desde la pantalla de acceso.
-          </p>
-        </div>
+        <DataPanel><EmptyState title={<>No hay ningún participante que coincida con <strong>{query.trim()}</strong>.</>}
+          description="Si dice que no puede entrar, quizá se registró con otro correo: prueba con su nombre o teléfono. Si no aparece, puede registrarse desde la pantalla de acceso." /></DataPanel>
       )}
       {hits && hits.length > 0 && (
-        <div className={`card overflow-hidden transition-opacity ${searching ? 'opacity-60' : ''}`}>
-          <table className="admin-participant-table w-full min-w-[44rem] text-left text-sm">
-            <thead className="bg-surface-raised text-xs uppercase tracking-wide text-ink-muted">
+        <DataPanel className={`ad-participants ${searching ? 'opacity-60' : ''}`}>
+          <table className="w-full text-left text-sm">
+            <thead>
               <tr>
-                <th scope="col" className="px-4 py-3">Participante</th>
-                <th scope="col" className="hidden px-4 py-3 md:table-cell">Teléfono</th>
-                <th scope="col" className="hidden px-4 py-3 lg:table-cell">Carrera inicial</th>
-                <th scope="col" className="px-4 py-3">Estado</th>
-                <th scope="col" className="px-4 py-3 text-right">Acciones</th>
+                <th scope="col">Participante</th>
+                <th scope="col" className="ad-col-phone">Teléfono</th>
+                <th scope="col" className="ad-col-career">Carrera inicial</th>
+                <th scope="col">Estado</th>
+                <th scope="col" className="ad-col-actions">Acciones</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-line">
+            <tbody>
               {hits.map((h) => (
-                <tr key={h.id} className="transition-colors hover:bg-surface-raised">
-                  <td className="px-4 py-3">
-                    <Link to={h.id} className="font-semibold text-ink underline-offset-2 hover:text-fg-info hover:underline">
+                <tr key={h.id}>
+                  <td className="ad-participant-identity">
+                    <Link to={h.id} className="ad-person-link">
                       {h.full_name}
                     </Link>
-                    <p className="text-xs text-ink-muted">{h.email}</p>
+                    <p>{h.email}</p>
+                    <p className="ad-mobile-meta">{h.phone ?? 'Sin teléfono'}{h.career_name ? ` · ${h.career_name}` : ''}</p>
                   </td>
-                  <td className="hidden px-4 py-3 text-ink-muted md:table-cell">{h.phone ?? '—'}</td>
-                  <td className="hidden px-4 py-3 text-ink-muted lg:table-cell">{h.career_name ?? '—'}</td>
-                  <td className="px-4 py-3">
-                    <div className="flex flex-wrap gap-1.5">
-                      <Badge tone="neutral">{ORIGIN_LABELS[h.origin] ?? h.origin}</Badge>
-                      {h.is_demo && <Badge tone="warning">Prueba</Badge>}
-                      {!h.access_configured && <Badge tone="neutral">Acceso no configurado</Badge>}
-                      {!!h.pending_conflicts && <Badge tone="warning">Por revisar</Badge>}
-                      {h.has_logged_in && <Badge tone="success">Ya entró</Badge>}
-                    </div>
+                  <td className="ad-col-phone">{h.phone ?? '—'}</td>
+                  <td className="ad-col-career">{h.career_name ?? '—'}</td>
+                  <td className="ad-participant-status">
+                    <span className="ad-origin">{ORIGIN_LABELS[h.origin] ?? h.origin}{h.is_demo && ' · Prueba'}</span>
+                    {!!h.pending_conflicts ? <Badge tone="warning">Por revisar</Badge> : !h.access_configured ? <Badge tone="neutral">Acceso no configurado</Badge> : h.has_logged_in ? <Badge tone="success">Ya entró</Badge> : null}
                   </td>
-                  <td className="admin-participant-actions px-4 py-3">
-                    <div className="flex justify-end gap-2">
-                      <Link to={h.id} className="admin-action-link" aria-label={`Ver expediente de ${h.full_name}`}><Eye className="h-4 w-4" aria-hidden />Ver</Link>
-                      <button type="button" className="admin-action-link" data-primary="true" onClick={() => void openEdit(h.id)} disabled={!!editingId} aria-label={`Editar datos de ${h.full_name}`}>
-                        <Pencil className="h-4 w-4" aria-hidden />Editar
-                      </button>
-                    </div>
+                  <td className="ad-col-actions">
+                    <Link to={h.id} className="ad-row-action" aria-label={`Ver expediente de ${h.full_name}`}>Expediente</Link>
+                    <button type="button" className="ad-icon-action" onClick={() => void openEdit(h.id)} disabled={!!editingId} aria-label={`Editar datos de ${h.full_name}`} title="Editar datos">
+                      <Pencil size={16} aria-hidden />
+                    </button>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
           {hits.length === 50 && (
-            <p className="p-3 text-center text-xs text-ink-muted">
+            <p className="ad-table-footnote">
               {browsing ? 'Se muestran los 50 registros más recientes. Busca para encontrar a otros.' : 'Se muestran 50 resultados. Afina la búsqueda.'}
             </p>
           )}
-        </div>
+        </DataPanel>
       )}
       {creating && <ParticipantCreate careers={creating.careers} highSchools={creating.highSchools}
         onClose={() => setCreating(null)} onCreated={(id) => navigate(id, { state: { created: true } })} />}

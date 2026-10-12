@@ -11,6 +11,7 @@ vi.mock('../lib/raffleApi', async (importOriginal) => ({
   fetchWinners: m.winners,
   saveCategory: m.save,
 }));
+vi.mock('../edition/EditionProvider', () => ({ useEdition: () => ({ edition: { mode: 'operacion_real' } }) }));
 
 const category = (id: string, name: string, sort_order: number, rules: object[], pool_count: number) => ({
   id, name, sort_order, rules, pool_count, is_active: true, is_demo: false, visual_config: {},
@@ -35,17 +36,38 @@ beforeEach(() => {
 test('lists the official categories with their alternatives in stamps and their candidates', async () => {
   render(<RaffleAdmin />);
   expect(await screen.findByText('Universo')).toBeInTheDocument();
-  expect(screen.getByText(/3 académicos \+ 1 de Vida Universitaria, o 2 académicos \+ 2 de Vida Universitaria · 4 candidatos/)).toBeInTheDocument();
-  expect(screen.getByText(/2 académicos \+ 1 de Vida Universitaria, o 4 sellos en total · 1 candidato$/)).toBeInTheDocument();
-  expect(screen.getByText(/1 académico \+ 1 de Vida Universitaria · 0 candidatos/)).toBeInTheDocument();
+  const universe = within(screen.getByText('Universo').closest('.ad-data-row')!);
+  expect(universe.getByText('3 académicos + 1 de Vida Universitaria, o 2 académicos + 2 de Vida Universitaria')).toBeInTheDocument();
+  expect(universe.getByText('4')).toBeInTheDocument();
+  expect(screen.getByText('2 académicos + 1 de Vida Universitaria, o 4 sellos en total')).toBeInTheDocument();
+  expect(screen.getByText('1 académico + 1 de Vida Universitaria')).toBeInTheDocument();
   expect(document.body.textContent).not.toMatch(/liderazgo|tickets/i);
 });
 
 test('shows the stamp combinations that do not reach any category yet', async () => {
   render(<RaffleAdmin />);
-  expect(await screen.findByText('Sellos que todavía no alcanzan una categoría')).toBeInTheDocument();
-  expect(screen.getByText('3 académicos + 0 de Vida Universitaria')).toBeInTheDocument();
-  expect(screen.getByText('1 académico + 0 de Vida Universitaria')).toBeInTheDocument();
+  fireEvent.click(await screen.findByText(/Sellos que todavía no alcanzan una categoría/));
+  expect(screen.getByText(/3 académicos \+ 0 de Vida Universitaria/)).toBeInTheDocument();
+  expect(screen.getByText(/1 académico \+ 0 de Vida Universitaria/)).toBeInTheDocument();
+});
+
+test('keeps real and demo categories in separate contexts and creates in the selected one', async () => {
+  m.view.mockResolvedValue({ categories: [
+    category('real', 'Universo', 10, [{ total: 3 }], 12),
+    { ...category('demo', 'Universo', 10, [{ total: 3 }], 2), is_demo: true },
+  ], unassigned_combinations: [] });
+  render(<RaffleAdmin />);
+  expect(await screen.findByText('12')).toBeInTheDocument();
+  expect(screen.getAllByText('Universo')).toHaveLength(1);
+  fireEvent.click(screen.getByRole('button', { name: 'Datos de prueba' }));
+  expect(screen.getAllByText('Universo')).toHaveLength(1);
+  expect(screen.getByText('2')).toBeInTheDocument();
+  expect(screen.queryByText('12')).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Nueva categoría' }));
+  const dialog = within(screen.getByRole('dialog', { name: 'Nueva categoría de prueba' }));
+  fireEvent.change(dialog.getByRole('textbox', { name: 'Nombre' }), { target: { value: 'Estrella' } });
+  fireEvent.click(dialog.getByRole('button', { name: 'Guardar' }));
+  await waitFor(() => expect(m.save).toHaveBeenCalledWith(expect.objectContaining({ name: 'Estrella', is_demo: true })));
 });
 
 test('editing a category keeps every alternative and saves them as rules', async () => {
@@ -64,7 +86,7 @@ test('editing a category keeps every alternative and saves them as rules', async
 
   await waitFor(() => expect(m.save).toHaveBeenCalledTimes(1));
   expect(m.save).toHaveBeenCalledWith({
-    id: 'ga', name: 'Galaxia', sort_order: 20, is_active: true,
+    id: 'ga', name: 'Galaxia', sort_order: 20, is_active: true, is_demo: false,
     rules: [{ academic: 2, university_life: 1 }, { total: 5 }, { university_life: 3 }],
   });
 });

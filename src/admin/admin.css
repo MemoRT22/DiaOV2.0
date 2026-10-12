@@ -188,17 +188,6 @@ html[data-surface='admin'] table thead th {
 html[data-surface='admin'] table tbody tr { transition: background-color 0.12s; }
 html[data-surface='admin'] table tbody tr:hover { background: rgb(var(--surface-raised) / 0.7); }
 html[data-surface='admin'] .card:has(> table) { overflow-x: auto; }
-@media (max-width: 639px) {
-  html[data-surface='admin'] .admin-participant-table { display: block; min-width: 0; }
-  html[data-surface='admin'] .admin-participant-table thead { display: none; }
-  html[data-surface='admin'] .admin-participant-table tbody { display: block; }
-  html[data-surface='admin'] .admin-participant-table tbody tr { display: block; padding: 0.35rem 0; }
-  html[data-surface='admin'] .admin-participant-table tbody td { display: block; padding: 0.45rem 1rem; }
-  html[data-surface='admin'] .admin-participant-table tbody td:nth-child(2),
-  html[data-surface='admin'] .admin-participant-table tbody td:nth-child(3) { display: none; }
-  html[data-surface='admin'] .admin-participant-actions > div { justify-content: flex-start; }
-}
-
 /* Tab bars use one recognizable pattern across sections. */
 html[data-surface='admin'] [role='tablist'] {
   border: 0;

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Alert, Badge, Button, Field, LoadError, Modal, SelectField, Spinner } from '../components/ui';
 import { friendlyError } from '../lib/errors';
+import { useEdition } from '../edition/EditionProvider';
 import {
   categoryRules, fetchOperatorView, fetchPrizes, fetchWinners,
   invalidateWinner, saveCategory, savePrize,
@@ -8,11 +9,14 @@ import {
 } from '../lib/raffleApi';
 import { describeRule, describeRules, hasRequirement } from '../lib/raffleRules';
 import { useLoad } from '../lib/useLoad';
+import { DataPanel, EmptyState, PageHeader, RowAction, ScopeSwitch, SectionHeading, SectionTabs } from './design/Primitives';
 
 type Tab = 'categories' | 'prizes' | 'winners';
 
 export default function RaffleAdmin() {
+  const { edition } = useEdition();
   const [tab, setTab] = useState<Tab>('categories');
+  const [scope, setScope] = useState<'real' | 'demo'>('real');
   const { data, error, loading, reload } = useLoad(fetchOperatorView, []);
   const [categories, setCategories] = useState<RaffleCategory[]>([]);
   const [selectedCat, setSelectedCat] = useState<string>('');
@@ -27,13 +31,18 @@ export default function RaffleAdmin() {
   const [actionOk, setActionOk] = useState('');
 
   useEffect(() => {
-    if (data) { setCategories(data.categories); if (!selectedCat && data.categories.length) setSelectedCat(data.categories[0].id); }
+    if (data) { setCategories(data.categories); if (!selectedCat && data.categories.length) setSelectedCat(data.categories.find((category) => !category.is_demo)?.id ?? data.categories[0].id); }
   }, [data]);
 
   useEffect(() => {
-    if (!selectedCat) return;
+    if (!selectedCat) { setPrizes([]); return; }
+    let cancelled = false;
     setPrizesLoading(true);
-    fetchPrizes(selectedCat).then(setPrizes).catch((e) => setActionError(friendlyError(e))).finally(() => setPrizesLoading(false));
+    setPrizes([]);
+    fetchPrizes(selectedCat).then((items) => { if (!cancelled) setPrizes(items); })
+      .catch((cause) => { if (!cancelled) setActionError(friendlyError(cause)); })
+      .finally(() => { if (!cancelled) setPrizesLoading(false); });
+    return () => { cancelled = true; };
   }, [selectedCat]);
 
   const loadWinners = () => { setWinnersLoading(true); fetchWinners().then(setWinners).catch((e) => setActionError(friendlyError(e))).finally(() => setWinnersLoading(false)); };
@@ -44,93 +53,99 @@ export default function RaffleAdmin() {
 
   const opView = data as OperatorView;
   const unassigned = opView.unassigned_combinations as UnassignedCombo[];
-  const catBadge = (c: RaffleCategory) => (<>{c.is_demo && <Badge tone="warning">Prueba</Badge>}{!c.is_active && <Badge tone="neutral">Inactiva</Badge>}</>);
-  const tabs: { key: Tab; label: string }[] = [{ key: 'categories', label: 'Categorías' }, { key: 'prizes', label: 'Premios' }, { key: 'winners', label: 'Ganadores' }];
+  const unassignedScope = edition?.mode === 'preparacion' ? 'demo' : 'real';
+  const visibleCategories = categories.filter((category) => category.is_demo === (scope === 'demo'));
+  const activeCategory = visibleCategories.find((category) => category.id === selectedCat) ?? visibleCategories[0];
+  const visiblePrizes = prizes.filter((prize) => prize.category_id === activeCategory?.id);
+  const scopedWinners = winners.filter((winner) => visibleCategories.some((category) => category.id === winner.category_id));
+  const selectScope = (next: 'real' | 'demo') => {
+    setScope(next);
+    setSelectedCat(categories.find((category) => category.is_demo === (next === 'demo'))?.id ?? '');
+  };
+  const tabs: { value: Tab; label: string }[] = [{ value: 'categories', label: 'Categorías' }, { value: 'prizes', label: 'Premios' }, { value: 'winners', label: 'Ganadores' }];
 
   return (
-    <div className="space-y-6">
-      <header>
-        <h1 className="text-2xl font-extrabold">Sorteo final</h1>
-        <p className="mt-1 text-sm text-ink-muted">Configura las categorías del sorteo, los premios por categoría y revisa el historial de ganadores.</p>
-      </header>
-      <div className="flex gap-2">
-        {tabs.map((t) => (
-          <button key={t.key} onClick={() => { setTab(t.key); setActionError(''); setActionOk(''); }}
-            className={`rounded-full px-4 py-2 text-sm font-semibold transition-colors ${tab === t.key ? 'bg-primary-500 text-on-primary' : 'border border-line text-ink-muted hover:text-ink'}`}>{t.label}</button>
-        ))}
+    <div className="ad-page">
+      <PageHeader eyebrow="Operación / Sorteo" title="Sorteo final"
+        description="Configura categorías y premios; consulta después el historial de ganadores."
+        action={tab === 'categories' ? <Button onClick={() => setEditingCat({ is_demo: scope === 'demo', is_active: true, sort_order: 0, rules: [{ academic: 1, university_life: 1 }] })}>Nueva categoría</Button>
+          : tab === 'prizes' ? <Button onClick={() => setEditingPrize({ category_id: activeCategory?.id, quantity: 1, is_active: true, sort_order: 0 })} disabled={!activeCategory}>Nuevo premio</Button> : undefined} />
+      <SectionTabs label="Secciones del sorteo" tabs={tabs} value={tab} onChange={(next) => { setTab(next); setActionError(''); setActionOk(''); }} />
+      <div className="ad-context-bar">
+        <div><p className="ad-context-label">Entorno de datos</p><p className="ad-context-help">Categorías y resultados de {scope === 'real' ? 'la edición real' : 'prueba'}</p></div>
+        <ScopeSwitch label="Entorno del sorteo" value={scope} onChange={selectScope}
+          options={[{ value: 'real', label: 'Datos reales' }, { value: 'demo', label: 'Datos de prueba' }]} />
       </div>
       {actionError && <Alert tone="error">{actionError}</Alert>}
       {actionOk && <Alert tone="success">{actionOk}</Alert>}
       {tab === 'categories' && (
-        <section className="space-y-4">
-          <div className="flex justify-end"><Button variant="secondary" onClick={() => setEditingCat({ is_active: true, sort_order: 0, rules: [{ academic: 1, university_life: 1 }] })}>Nueva categoría</Button></div>
-          {unassigned.length > 0 && (
-            <div className="card border-warning-500/40 p-4">
-              <p className="text-sm font-semibold">Sellos que todavía no alcanzan una categoría</p>
-              <p className="mt-1 text-xs text-ink-muted">Estos participantes ya tienen sellos, pero no cumplen ninguna de las categorías activas.</p>
-              <ul className="mt-3 space-y-1">{unassigned.map((c, i) => (<li key={i} className="text-sm"><span className="font-semibold">{c.academic} {c.academic === 1 ? 'académico' : 'académicos'} + {c.university_life} de Vida Universitaria</span><span className="text-ink-muted"> · {c.count} participante{c.count !== 1 ? 's' : ''}</span></li>))}</ul>
-            </div>
+        <section className="ad-page">
+          <SectionHeading title={`${visibleCategories.length} ${visibleCategories.length === 1 ? 'categoría' : 'categorías'}`}
+            detail="Se asigna la categoría más alta cuyos requisitos de sellos cumple cada participante." />
+          <DataPanel>
+            {visibleCategories.map((category) => <div key={category.id} className="ad-data-row">
+              <div className="ad-row-main"><p className="ad-row-title">{category.name} {!category.is_active && <Badge tone="neutral">Inactiva</Badge>}</p>
+                <p className="ad-row-meta">{describeRules(categoryRules(category))}</p></div>
+              <div className="ad-metric"><strong>{category.pool_count ?? '—'}</strong><span>candidatos</span></div>
+              <RowAction onClick={() => setEditingCat(category)}>Editar</RowAction>
+            </div>)}
+            {visibleCategories.length === 0 && <EmptyState title={`Sin categorías ${scope === 'demo' ? 'de prueba' : 'reales'}.`}
+              description="Crea una categoría para definir los sellos necesarios y empezar a organizar el sorteo." />}
+          </DataPanel>
+          {scope === unassignedScope && unassigned.length > 0 && (
+            <details className="ad-inline-note"><summary>Sellos que todavía no alcanzan una categoría · {unassigned.reduce((sum, combo) => sum + combo.count, 0)} participantes</summary>
+              <p>Estos participantes ya tienen sellos, pero no cumplen ninguna categoría activa. Revisa la combinación antes de ajustar las reglas.</p>
+              <ul>{unassigned.map((combo, index) => <li key={index}>{combo.academic} {combo.academic === 1 ? 'académico' : 'académicos'} + {combo.university_life} de Vida Universitaria · {combo.count} participantes</li>)}</ul>
+            </details>
           )}
-          <p className="text-sm text-ink-muted">Las categorías se alcanzan con sellos (un taller de 60 minutos otorga 2). Cada participante entra solo a la categoría de mayor orden que alcance.</p>
-          <div className="card divide-y divide-line">
-            {categories.map((c) => (
-              <div key={c.id} className="flex items-center gap-3 p-4">
-                <div className="flex-1">
-                  <p className="font-semibold">{c.name} {catBadge(c)}</p>
-                  <p className="text-sm text-ink-muted">{describeRules(categoryRules(c))}{c.pool_count !== undefined && (<> · {c.pool_count} candidato{c.pool_count !== 1 ? 's' : ''}</>)}</p>
-                </div>
-                <button onClick={() => setEditingCat(c)} className="text-sm font-semibold text-fg-info hover:text-ink">Editar</button>
-              </div>
-            ))}
-            {categories.length === 0 && <p className="p-4 text-sm text-ink-muted">Sin categorías configuradas.</p>}
-          </div>
         </section>
       )}
       {tab === 'prizes' && (
-        <section className="space-y-4">
-          <div className="flex flex-wrap items-center gap-2">
-            {categories.map((c) => (<button key={c.id} onClick={() => setSelectedCat(c.id)} className={`rounded-full px-4 py-2 text-sm font-semibold transition-colors ${selectedCat === c.id ? 'bg-primary-500 text-on-primary' : 'border border-line text-ink-muted hover:text-ink'}`}>{c.name}</button>))}
+        <section className="ad-page">
+          <div className="ad-context-bar"><label className="ad-category-filter"><span>Categoría</span>
+            <select className="ad-select" value={activeCategory?.id ?? ''} onChange={(event) => setSelectedCat(event.target.value)} disabled={visibleCategories.length === 0}>
+              {visibleCategories.length === 0 && <option value="">Sin categorías</option>}
+              {visibleCategories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+            </select></label>
+            <span className="ad-context-help">{activeCategory ? describeRules(categoryRules(activeCategory)) : 'Crea primero una categoría.'}</span>
           </div>
-          <div className="flex justify-end"><Button variant="secondary" onClick={() => setEditingPrize({ category_id: selectedCat, quantity: 1, is_active: true, sort_order: 0 })} disabled={!selectedCat}>Nuevo premio</Button></div>
+          <SectionHeading title={activeCategory ? `Premios de ${activeCategory.name}` : 'Premios'}
+            detail={activeCategory ? `${visiblePrizes.length} premios configurados · ${visiblePrizes.reduce((sum, prize) => sum + prize.available, 0)} unidades disponibles` : undefined} />
           {prizesLoading ? <Spinner /> : (
-            <div className="card divide-y divide-line">
-              {prizes.map((p) => (
-                <div key={p.id} className="flex items-center gap-3 p-4">
-                  <div className="flex-1">
-                    <p className="font-semibold">{p.name} {!p.is_active && <Badge tone="neutral">Inactivo</Badge>}</p>
-                    <p className="text-sm text-ink-muted">{p.delivered} de {p.quantity} entregados · {p.available} disponibles</p>
-                    {p.description && <p className="mt-1 text-xs text-ink-muted">{p.description}</p>}
-                  </div>
-                  <button onClick={() => setEditingPrize(p)} className="text-sm font-semibold text-fg-info hover:text-ink">Editar</button>
+            <DataPanel>
+              {visiblePrizes.map((p) => (
+                <div key={p.id} className="ad-data-row">
+                  <div className="ad-row-main"><p className="ad-row-title">{p.name} {!p.is_active && <Badge tone="neutral">Inactivo</Badge>}</p>
+                    <p className="ad-row-meta">{p.description || `${p.delivered} de ${p.quantity} entregados`}</p></div>
+                  <div className="ad-metric"><strong>{p.available} / {p.quantity}</strong><span>disponibles</span></div>
+                  <RowAction onClick={() => setEditingPrize(p)}>Editar</RowAction>
                 </div>
               ))}
-              {prizes.length === 0 && <p className="p-4 text-sm text-ink-muted">Sin premios en esta categoría.</p>}
-            </div>
+              {visiblePrizes.length === 0 && <EmptyState title="Sin premios en esta categoría." description="Agrega un premio para configurar su cantidad disponible." />}
+            </DataPanel>
           )}
         </section>
       )}
       {tab === 'winners' && (
-        <section className="space-y-4">
+        <section className="ad-page">
+          <SectionHeading title="Historial de ganadores" detail={`Resultados de ${scope === 'demo' ? 'prueba' : 'la edición real'}`} />
           {winnersLoading ? <Spinner /> : (
-            <div className="card divide-y divide-line">
-              {winners.map((w) => (
-                <div key={w.id} className="flex items-center gap-3 p-4">
-                  <div className="flex-1">
-                    <p className="font-semibold">{w.display_name}</p>
-                    <p className="text-sm text-ink-muted">{w.prize_name} · {w.category_name}</p>
-                    <p className="text-xs text-ink-muted">{new Date(w.drawn_at).toLocaleString('es-MX')}{w.confirmed_at && ' · confirmado'}{w.invalidation_reason && ` · invalidado: ${w.invalidation_reason}`}</p>
-                  </div>
+            <DataPanel>
+              {scopedWinners.map((w) => (
+                <div key={w.id} className="ad-data-row">
+                  <div className="ad-row-main"><p className="ad-row-title">{w.display_name}</p>
+                    <p className="ad-row-meta">{w.prize_name} · {w.category_name} · {new Date(w.drawn_at).toLocaleString('es-MX')}{w.invalidation_reason && ` · invalidado: ${w.invalidation_reason}`}</p></div>
                   <Badge tone={w.status === 'confirmado' ? 'success' : w.status === 'invalidado' ? 'error' : w.status === 'no_presentado' ? 'neutral' : 'warning'}>{w.status}</Badge>
-                  {w.status === 'confirmado' && <button onClick={() => { setInvalidating(w); setActionError(''); }} className="text-sm font-semibold text-fg-error hover:text-fg-error">Invalidar</button>}
+                  {w.status === 'confirmado' && <RowAction danger onClick={() => { setInvalidating(w); setActionError(''); }}>Invalidar</RowAction>}
                 </div>
               ))}
-              {winners.length === 0 && <p className="p-4 text-sm text-ink-muted">Sin ganadores registrados.</p>}
-            </div>
+              {scopedWinners.length === 0 && <EmptyState title="Sin ganadores registrados." description="Cuando se confirmen resultados, aparecerán aquí." />}
+            </DataPanel>
           )}
         </section>
       )}
       {editingCat && <CategoryModal initial={editingCat} onClose={() => setEditingCat(null)} onSaved={() => { setEditingCat(null); reload(); setActionOk('Categoría guardada.'); }} />}
-      {editingPrize && <PrizeModal initial={editingPrize} categories={categories} onClose={() => setEditingPrize(null)} onSaved={() => { setEditingPrize(null); if (selectedCat) fetchPrizes(selectedCat).then(setPrizes).catch(() => {}); setActionOk('Premio guardado.'); }} />}
+      {editingPrize && <PrizeModal initial={editingPrize} categories={visibleCategories} onClose={() => setEditingPrize(null)} onSaved={() => { setEditingPrize(null); if (selectedCat) fetchPrizes(selectedCat).then(setPrizes).catch(() => {}); setActionOk('Premio guardado.'); }} />}
       {invalidating && <InvalidateModal winner={invalidating} onClose={() => setInvalidating(null)} onDone={() => { setInvalidating(null); loadWinners(); setActionOk('Ganador invalidado. El inventario fue restaurado.'); }} />}
     </div>
   );
@@ -184,12 +199,12 @@ function CategoryModal({ initial, onClose, onSaved }: { initial: Partial<RaffleC
     e.preventDefault();
     if (invalid) return;
     setBusy(true); setError('');
-    try { await saveCategory({ id: initial.id, name: name.trim(), sort_order: Number(sortOrder), rules: rules.map(fromDraft), is_active: active }); onSaved(); }
+    try { await saveCategory({ id: initial.id, name: name.trim(), sort_order: Number(sortOrder), rules: rules.map(fromDraft), is_active: active, is_demo: initial.is_demo }); onSaved(); }
     catch (cause) { setError(friendlyError(cause)); setBusy(false); }
   };
   return (
-    <Modal title={initial.id ? 'Editar categoría' : 'Nueva categoría'} onClose={onClose}>
-      <form onSubmit={submit} className="space-y-4">
+    <Modal title={initial.id ? 'Editar categoría' : initial.is_demo ? 'Nueva categoría de prueba' : 'Nueva categoría'} onClose={onClose}>
+      <form onSubmit={submit} className="ad-modal-form space-y-4">
         <div className="grid grid-cols-[1fr,7rem] gap-4">
           <Field label="Nombre" value={name} onChange={(e) => setName(e.target.value)} required />
           <Field label="Orden" type="number" value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} hint="Mayor = más alta" />
@@ -242,7 +257,7 @@ function PrizeModal({ initial, categories, onClose, onSaved }: { initial: Partia
   };
   return (
     <Modal title={initial.id ? 'Editar premio' : 'Nuevo premio'} onClose={onClose}>
-      <form onSubmit={submit} className="space-y-4">
+      <form onSubmit={submit} className="ad-modal-form space-y-4">
         <SelectField label="Categoría" value={catId} onChange={(e) => setCatId(e.target.value)} required>{categories.map((c) => (<option key={c.id} value={c.id}>{c.name}</option>))}</SelectField>
         <Field label="Nombre" value={name} onChange={(e) => setName(e.target.value)} required />
         <Field label="Descripción" value={desc} onChange={(e) => setDesc(e.target.value)} />
@@ -266,7 +281,7 @@ function InvalidateModal({ winner, onClose, onDone }: { winner: RaffleWinner; on
   };
   return (
     <Modal title="Invalidar ganador" onClose={onClose}>
-      <form onSubmit={submit} className="space-y-4">
+      <form onSubmit={submit} className="ad-modal-form space-y-4">
         <Alert tone="warning">Vas a invalidar el premio <strong>{winner.prize_name}</strong> de <strong>{winner.display_name}</strong>. El inventario se restaurará y el participante volverá al pool. Esta acción queda registrada en auditoría y no se puede deshacer.</Alert>
         <Field label="Motivo" value={reason} onChange={(e) => setReason(e.target.value)} minLength={5} required />
         {error && <Alert tone="error">{error}</Alert>}
