@@ -66,7 +66,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   m.fetchProgress.mockResolvedValue(progress());
   m.fetchDivisions.mockResolvedValue(divisions);
-  m.raffle.mockResolvedValue({ has_won: false, raffle_category_name: null, academic_tickets: 0, leadership_tickets: 0 });
+  m.raffle.mockResolvedValue({ has_won: false, raffle_category: null, raffle_category_name: null, academic_stamps: 0, university_life_stamps: 0, total_stamps: 0, categories: [] });
 });
 
 afterEach(() => vi.useRealTimers());

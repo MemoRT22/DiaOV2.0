@@ -7,14 +7,15 @@ Ejecutar **solo en una base local/descartable** con las migraciones actuales. No
 | Importación en `preparacion` y `oficial` | `regression_official_participant_import.sql` | `OFFICIAL_IMPORT_OK`, salida 0 |
 | Correo, contraseña, autorregistro, consentimiento y conciliación | `regression_participant_access.sql` | `PARTICIPANT_ACCESS_OK` |
 | Reservaciones, cupos, cambio/cancelación, tiempo y check-in flexible | `regression_student_flexibility.sql` | `STUDENT_FLEX_OK` |
-| Check-in con credencial por actividad, código manual inicial, permisos y regeneración | `regression_asistencia.sql` | `ASISTENCIA_OK`, salida 0 |
+| Check-in con credencial por actividad, código manual inicial, permisos y regeneración; sellos por duración (60 min = 2) en check-in, snapshot fijado al insertar, publicación, edición e importación | `regression_asistencia.sql` | `ASISTENCIA_OK` y `ASISTENCIA_SELLOS_OK`, salida 0 |
 | Recomendador y aislamiento DEMO/real | `regression_recommender.sql` | `RECOMMENDER_OK` |
-| Sorteo, permisos, no-show, idempotencia y selección pendiente | `regression_sorteo.sql` | `RAFFLE REGRESSION: ... 0 failed` |
+| Conciliación de sellos: eleva solo con horario histórico garantizado, nunca reduce, sin duplicados, idempotente, auditada, permisos, sin tocar ganadores | `regression_conciliacion_sellos.sql` | `CONCILIACION_SELLOS_OK`, salida 0 |
+| Sorteo: clasificación oficial por sellos (Universo, Galaxia, Sistema Solar), Bitácora = módulo administrativo, DEMO/real, administración de categorías (incluido el rechazo de alternativas sin requisitos por RPC, trigger y CHECK), permisos, no-show, invalidación, idempotencia y selección pendiente | `regression_sorteo.sql` | `RAFFLE REGRESSION: ... 0 failed` |
 | Centro de Operación | `regression_operaciones.sql` | `OPERACIONES REGRESSION: ... 0 failed` |
 | Intereses posteriores | `regression_post_event_interests.sql` | `... 0 fail` |
 | Talleres, publicación y edición | `regression_workshop_admin.sql`, `regression_workshop_intake.sql`, `regression_workshop_publishing.sql`, `regression_published_workshop_editing.sql`, `regression_workshops_single_flow_fixes.sql`, `regression_backend_legacy_cleanup.sql` | Marcador propio sin fallos |
 
-El harness HTTP `concurrency_reservations.mjs` y su `concurrency_fixture_setup.sql` / `concurrency_fixture_cleanup.sql` prueban clientes distintos, cupo y máximo. `concurrency_checkin.mjs` tiene setup/cleanup propios. Requieren **Supabase local completo** (Auth, Edge Functions y base), una contraseña DEMO en `CONCURRENCY_TEST_PASSWORD` y la URL local en `CONCURRENCY_TEST_SUPABASE_URL`; los scripts rechazan URLs fuera de localhost. `node --check` solo confirma sintaxis y no reemplaza la prueba concurrente.
+El harness HTTP `concurrency_reservations.mjs` y su `concurrency_fixture_setup.sql` / `concurrency_fixture_cleanup.sql` prueban clientes distintos, cupo y máximo. `concurrency_checkin.mjs` tiene setup/cleanup propios y usa una sesión de 60 minutos: 20 solicitudes simultáneas (QR y código) deben dejar una sola asistencia con 2 sellos. Requieren **Supabase local completo** (Auth, Edge Functions y base), una contraseña DEMO en `CONCURRENCY_TEST_PASSWORD` y la URL local en `CONCURRENCY_TEST_SUPABASE_URL`; los scripts rechazan URLs fuera de localhost. `node --check` solo confirma sintaxis y no reemplaza la prueba concurrente.
 
 ## Suites históricas fuera de la batería
 
