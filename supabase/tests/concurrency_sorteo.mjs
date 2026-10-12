@@ -74,12 +74,12 @@ async function main() {
     const start = `${ed.event_date}T${10 + i}:00:00-05:00`;
     const end = `${ed.event_date}T${10 + i}:45:00-05:00`;
     const { data: ses } = await admin.from('activity_sessions')
-      .upsert({ activity_id: actIds[i], starts_at: start, ends_at: end, capacity: 100, is_demo: true, status: 'activa', credits: 1 })
+      .upsert({ activity_id: actIds[i], starts_at: start, ends_at: end, capacity: 100, is_demo: true, status: 'activa' })
       .select('id').single();
     sessionIds.push(ses.id);
   }
 
-  // Create 20 demo participants with 3 academic attendances each
+  // Create 20 demo participants with 4 academic stamps each (4 sessions of 45 min = 1 stamp each) -> Galaxia (4 total)
   const emails = Array.from({ length: 20 }, (_, i) => `cs.${String(i + 1).padStart(2, '0')}@test.invalid`);
   const pIds = [];
   for (const email of emails) {
@@ -88,14 +88,14 @@ async function main() {
       .select('id').single();
     pIds.push(p.id);
     await admin.from('participant_profiles').upsert({ participant_id: p.id, display_name: `CS ${email}` });
-    for (let j = 0; j < 3; j++) {
+    for (let j = 0; j < 4; j++) {
       await admin.from('attendances').upsert({ participant_id: p.id, session_id: sessionIds[j], activity_id: actIds[j], credits_granted: 1, method: 'qr' });
     }
   }
 
   const { data: cat } = await admin.from('raffle_categories')
-    .select('id').eq('edition_id', ed.id).eq('name', 'Baja').eq('is_demo', true).single();
-  if (!cat) throw new Error('No demo Baja category');
+    .select('id').eq('edition_id', ed.id).eq('name', 'Galaxia').eq('is_demo', true).single();
+  if (!cat) throw new Error('No demo Galaxia category');
 
   // Create test prizes
   const { data: prize1 } = await admin.from('raffle_prizes')
@@ -237,7 +237,7 @@ async function main() {
   // --- Test 10: Demo/real isolation ---
   // Get a real prize and try to draw it as sorteo (in demo mode)
   const { data: realCat } = await admin.from('raffle_categories')
-    .select('id').eq('edition_id', ed.id).eq('name', 'Baja').eq('is_demo', false).single();
+    .select('id').eq('edition_id', ed.id).eq('name', 'Galaxia').eq('is_demo', false).single();
   if (realCat) {
     const { data: realPrize } = await admin.from('raffle_prizes')
       .upsert({ edition_id: ed.id, category_id: realCat.id, name: 'CS Real Prize', quantity: 1, is_active: true, sort_order: 94, is_demo: false })

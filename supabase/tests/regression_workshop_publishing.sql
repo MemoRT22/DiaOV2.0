@@ -92,9 +92,12 @@ BEGIN
     RAISE EXCEPTION 'SESSION_TIMESTAMPS_FAILED';
   END IF;
 
-  -- Check credits = 1
+  -- Sellos por duración oficial: sesiones de 30 min = 1 sello; sesiones de 60 min = 2 sellos.
   IF EXISTS (SELECT 1 FROM public.activity_sessions WHERE activity_id = v_act AND credits <> 1) THEN
     RAISE EXCEPTION 'CREDITS_FAILED';
+  END IF;
+  IF EXISTS (SELECT 1 FROM public.activity_sessions WHERE activity_id = v_act_single AND credits <> 2) THEN
+    RAISE EXCEPTION 'CREDITS_60_FAILED';
   END IF;
 
   SELECT count(*), max(encode(qr_token_hash, 'hex')) INTO v_sess_count, v_token_hash FROM public.activity_credentials WHERE activity_id = v_act;

@@ -1,4 +1,4 @@
-import { Camera, CircleAlert, Info, Keyboard, Loader2, MapPin, RotateCcw, ScanQrCode, Timer } from 'lucide-react';
+import { Camera, CircleAlert, Info, Keyboard, Loader2, MapPin, RotateCcw, ScanQrCode, Ticket, Timer } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import QRScanner from 'qr-scanner';
 import { Link } from 'react-router-dom';
@@ -7,6 +7,8 @@ import { fetchProgress, formatTime, type Progress } from '../lib/catalog';
 import { checkIn, type CheckInResult } from '../lib/checkin';
 import { friendlyError } from '../lib/errors';
 import { announceParticipantChange } from '../lib/participantSync';
+import { fetchMyRaffleStatus } from '../lib/raffleApi';
+import { nextTierHint, type MyRaffleStatus } from '../lib/raffleRules';
 import { fetchBoard } from '../lib/reservations';
 import { buildJourney, focusStop, type Stop } from '../lib/studentJourney';
 import { usePublicTheme } from '../theme/PublicThemeProvider';
@@ -31,6 +33,7 @@ export default function Scanner() {
   const [result, setResult] = useState<CheckInResult | null>(null);
   const [progress, setProgress] = useState<Progress | null>(null);
   const [next, setNext] = useState<Stop | null>(null);
+  const [raffle, setRaffle] = useState<MyRaffleStatus | null>(null);
   const [errorMsg, setErrorMsg] = useState('');
   const [manualCode, setManualCode] = useState('');
   const [cameraError, setCameraError] = useState(false);
@@ -84,6 +87,7 @@ export default function Scanner() {
       void Promise.resolve(fetchBoard())
         .then((board) => setNext(board ? (focusStop(buildJourney(board))?.stop ?? null) : null))
         .catch(() => undefined);
+      void Promise.resolve(fetchMyRaffleStatus()).then((status) => setRaffle(status ?? null)).catch(() => undefined);
     } catch (cause) {
       setErrorMsg(friendlyError(cause));
       setPhase('error');
@@ -101,6 +105,7 @@ export default function Scanner() {
     setResult(null);
     setProgress(null);
     setNext(null);
+    setRaffle(null);
     setErrorMsg('');
     setManualCode('');
     setPhase('scanning');
@@ -127,6 +132,7 @@ export default function Scanner() {
     const fraction = progress?.next ? Math.min(result.stamps / Math.max(progress.next.required_attendances, 1), 1) : progress ? 1 : null;
     const remainingStamps = progress?.next ? Math.max(progress.next.required_attendances - result.stamps, 0) : 0;
     const stampWord = term('stamp', result.credits_granted !== 1).toLowerCase();
+    const raffleHint = raffle && !raffle.has_won ? nextTierHint(raffle) : null;
     return (
       <div className="space-y-4">
         <section className={`space-card relative animate-fade-up overflow-hidden text-center ${repeated ? '' : 'border-success-500/40'}`}>
@@ -174,6 +180,25 @@ export default function Scanner() {
               <p className="text-xs text-ink-muted">{result.attended_workshops === 1 ? 'Misión completada' : 'Misiones completadas'}</p>
             </div>
           </div>
+
+          {/* Raffle standing after this attendance (server data; best effort — the check-in already succeeded). */}
+          {raffle && !raffle.has_won && (raffle.raffle_category_name || raffleHint) && (
+            <div className="mx-5 mb-4 flex items-start gap-3 rounded-theme border border-accent-500/40 bg-accent-500/10 p-3 text-left text-sm">
+              <Ticket className="mt-0.5 h-5 w-5 shrink-0 text-fg-accent" aria-hidden />
+              <p className="min-w-0">
+                <span className="block text-[11px] font-bold uppercase tracking-[0.16em] text-ink-muted">Sorteo</span>
+                {raffle.raffle_category_name ? (
+                  <strong className="block text-fg-accent">Categoría {raffle.raffle_category_name}</strong>
+                ) : (
+                  <strong className="block">Aún sin categoría</strong>
+                )}
+                <span className="block text-xs text-ink-muted">
+                  {raffle.academic_stamps} {raffle.academic_stamps === 1 ? 'académico' : 'académicos'} · {raffle.university_life_stamps} de Vida Universitaria
+                  {raffleHint ? ` · ${raffleHint.text}` : ''}
+                </span>
+              </p>
+            </div>
+          )}
 
           <div className="mx-5 mb-5 rounded-theme border border-primary-400/40 bg-primary-500/10 p-3 text-left">
             <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-ink-muted">{term('rank')} actual</p>

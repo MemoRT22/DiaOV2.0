@@ -46,7 +46,7 @@ El acceso nuevo está completamente desplegado. Las migraciones EXPAND `20261006
 
 ### Edición activa
 
-La migración `20261005003000_bootstrap_edition_and_coordinator` crea la edición "Día OV 2026" (`code = 'DIAOV2026'`) en modo `preparacion`, siembra las 6 categorías de sorteo (Baja, Media, Mayor en real y demo) y los 5 niveles de progreso con los requisitos del producto (ver «Producto administrativo»). Las ediciones nuevas reciben esos niveles automáticamente.
+La migración `20261005003000_bootstrap_edition_and_coordinator` crea la edición "Día OV 2026" (`code = 'DIAOV2026'`) en modo `preparacion`, siembra las 6 categorías de sorteo (tres en real y tres en demo; desde `20261012180100_raffle_official_categories` son Sistema Solar, Galaxia y Universo, ver «Sellos y sorteo») y los 5 niveles de progreso con los requisitos del producto (ver «Producto administrativo»). Las ediciones nuevas reciben esos niveles automáticamente.
 
 ### Primer Coordinador
 
@@ -116,9 +116,27 @@ El administrador se entiende con cinco áreas: **Inicio, Participantes, Talleres
 
 **Tema.** El tema configurable del Día OV es de la experiencia pública. `EditionProvider` entrega los datos de la edición (fecha, sede, modo, ventanas); `PublicThemeProvider` entrega el tema publicado. Solo `PublicSurface` (portal del alumno y formulario público) lo pinta en el documento; el administrador usa su propio sistema visual fijo (`src/admin/adminTheme.ts`, `AdminSurface`): fondo neutro, superficies claras, naranja Anáhuac como identidad, azul para información/acciones y verde, amarillo y rojo para estados. Los colores de texto de estado usan `text-fg-*`, que cada superficie resuelve con su propio tono legible.
 
-**Rangos.** El nivel depende solo de los sellos acumulados: cada taller completado sube un nivel, hasta cuatro (niveles 1 a 5 con 0, 1, 2, 3 y 4 sellos; `required_divisions = 0`). `seed_default_rank_levels` lo siembra por edición. Las divisiones visitadas no bloquean el progreso: `participant_visited_division_ids` es la única definición de «divisiones distintas» (incluye actividades multidivisión), la usan `my_progress` y `participant_rank_level`, y el Pasaporte las muestra de forma informativa. Ya no hay pantalla ni RPC para editar los requisitos.
+**Rangos.** El nivel depende solo de los sellos acumulados (niveles 1 a 5 con 0, 1, 2, 3 y 4 sellos; `required_divisions = 0`); un taller de 60 minutos aporta 2 sellos y cualquier otro 1 (ver «Sellos y sorteo»). `seed_default_rank_levels` lo siembra por edición. Las divisiones visitadas no bloquean el progreso: `participant_visited_division_ids` es la única definición de «divisiones distintas» (incluye actividades multidivisión), la usan `my_progress` y `participant_rank_level`, y el Pasaporte las muestra de forma informativa. Ya no hay pantalla ni RPC para editar los requisitos.
 
 **Orden de despliegue de la base.** `20261006170608_admin_simplification_compat` y `20261006172447_rank_rules_by_stamps_only` (corrige los requisitos de rangos) son compatibles con el frontend anterior (se pueden aplicar antes). `20261007010100_admin_simplification_retire` retira backend sin consumidores y debe aplicarse **después** de desplegar este frontend: `access_diagnosis`, `update_rank_rules`, `rank_levels.is_provisional` y el aceptar reglas técnicas en `update_reservation_settings`.
+
+## Sellos y sorteo
+
+**Sellos por duración.** Una sesión de exactamente 60 minutos otorga 2 sellos; cualquier otra duración, 1. La regla vive en una sola función (`session_stamp_credits`): un trigger mantiene `activity_sessions.credits` derivado del horario en todas las rutas (publicación, edición, importación) e ignora cualquier valor enviado, y `check_in` acredita ese mismo cálculo tanto con QR como con código manual. El alumno no envía ningún valor. `attendances.credits_granted` es el snapshot de lo acreditado: no cambia si después se edita la sesión, y reintentar el escaneo no suma.
+
+**Tipos de sello.** Los decide `activities.activity_type`: `academica` → académico (también los talleres académicos de una división o carrera llamada «Liderazgo»); `vida_universitaria` → Vida Universitaria, con cualquier `experience_category`; el tipo anterior `liderazgo` (solo datos DEMO antiguos) equivale a Vida Universitaria. `participant_stamps` es la única fuente para la Bitácora y el sorteo.
+
+**Categorías oficiales.** Siempre se asigna la más alta alcanzada, sin acumular:
+
+| Categoría | Se alcanza con |
+|---|---|
+| Universo | 3 académicos + 1 de Vida Universitaria, o 2 académicos + 2 de Vida Universitaria |
+| Galaxia | 2 académicos + 1 de Vida Universitaria, o 4 sellos en total |
+| Sistema Solar | 1 académico + 1 de Vida Universitaria |
+
+Cada categoría guarda sus alternativas en `raffle_categories.rules` (lista de mínimos `academic`, `university_life`, `total`; basta cumplir una). `participant_raffle_category` es la única definición de pertenencia y la usan por igual la Bitácora (`my_raffle_status`), los candidatos del módulo de Sorteo (`raffle_operator_view`, `raffle_pool_count`) y `draw_winner`. Coordinación edita las alternativas en Sorteo final → Categorías. `required_academic` y `required_leadership` se conservan solo como reflejo de la primera alternativa.
+
+**Conciliación.** `20261012180200_reconcile_attendance_credits` eleva al valor oficial únicamente las asistencias anteriores a la entrada en vigor de la regla (marca `attendance.credit_rule_installed` en auditoría) cuyo snapshot quedó por debajo; es idempotente, nunca reduce sellos, no toca premios ni ganadores y deja una entrada `attendance.credits_reconciled` por asistencia.
 
 ## Pruebas de regresión
 
@@ -139,7 +157,7 @@ La batería vigente está inventariada en [`supabase/tests/README.md`](supabase/
 - El método de la asistencia (`qr` o `codigo_manual`) lo infiere el servidor según la credencial que coincidió; el navegador no lo envía. Se guarda en la asistencia y en la auditoría, y un reintento posterior no lo cambia.
 - La respuesta del check-in incluye el rango actual calculado por `participant_rank_level()`, la misma función que usa el Pasaporte.
 - El check-in ya no depende de la hora programada: quien dirige el taller decide cuándo muestra el QR. Basta una reservación vigente o expirada (no cancelada) de la actividad, credencial válida y no tener ya asistencia (`CHECKIN_TOO_EARLY` y `CHECKIN_TOO_LATE` fueron retirados). Como la credencial es por actividad, la sesión se elige de forma determinista: en curso, si no la pasada más reciente, si no la futura más cercana. `checkin_open_before_minutes` y `checkin_close_after_minutes` se conservan en la edición pero ya no autorizan; `checkin_close_after_minutes` solo la lee el Centro de Operación.
-- Una asistencia por persona y sesión, con un snapshot de los créditos otorgados. Los rangos avanzan por sellos acumulados (suma de créditos), no por número de asistencias. El recordatorio de intereses sigue basado en talleres asistidos.
+- Una asistencia por persona y sesión, con un snapshot de los créditos otorgados (`attendances.credits_granted`). Los rangos avanzan por sellos acumulados (suma de créditos), no por número de asistencias. El recordatorio de intereses sigue basado en talleres asistidos.
 - Sesión oculta con reservación sigue permitiendo check-in. Sesión cancelada no valida. Reactivar no revive asistencias.
 - `attendances` y `activity_credentials` no tienen lectura directa para anon ni authenticated (RLS como defensa en profundidad); `session_credentials` quedó como tabla heredada vacía.
 - Coordinación y Staff tienen un módulo "Check-in" con lista de sesiones, conteos, QR en pantalla completa, vista imprimible y regeneración (solo Coordinación). Sorteo no tiene acceso.

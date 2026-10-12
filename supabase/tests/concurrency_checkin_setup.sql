@@ -15,8 +15,9 @@ BEGIN
   FROM editions e WHERE e.id=ed AND pp.participant_id=pid;
   INSERT INTO activities(edition_id,division_id,title,description,location,is_demo)
   VALUES (ed,div_id,'CC CHK','Fixture DEMO de concurrencia','Edificio CC',true) RETURNING id INTO act_id;
-  INSERT INTO activity_sessions(activity_id,starts_at,ends_at,capacity,location,status,is_demo,credits)
-  VALUES (act_id,now()-interval '5 minutes',now()+interval '25 minutes',30,'Edificio CC','activa',true,1)
+  -- Sesión de exactamente 60 minutos: la asistencia vale 2 sellos (los fija la base según la duración).
+  INSERT INTO activity_sessions(activity_id,starts_at,ends_at,capacity,location,status,is_demo)
+  VALUES (act_id,now()-interval '5 minutes',now()+interval '55 minutes',30,'Edificio CC','activa',true)
   RETURNING id INTO ses_id;
   PERFORM rotate_activity_credential(act_id);
   INSERT INTO reservations(participant_id,session_id,activity_id) VALUES (pid,ses_id,act_id);

@@ -1,6 +1,6 @@
 // Concurrency test for check-in: 20 simultaneous requests from the same participant
-// mixing QR token and manual code. Expected: 1 attendance, credits granted exactly once,
-// all other responses idempotent, and the stored method = the request that won the race.
+// mixing QR token and manual code, on a 60-minute session (2 stamps). Expected: 1 attendance, the 2 stamps
+// granted exactly once, all other responses idempotent, and the stored method = the request that won the race.
 // 1) run concurrency_checkin_setup.sql
 // 2) Get the activity credential token and code from the local DB:
 //    select pgp_sym_decrypt(qr_token_encrypted, credential_encryption_key()) as token,
@@ -12,6 +12,7 @@
 // 4) Verify in the DB (WINNER_METHOD printed by this script):
 //    select count(*), min(method), sum(credits_granted) from attendances at
 //    join participants p on p.id = at.participant_id where p.email = 'cc.check@test.invalid';
+//    -> 1 | <WINNER_METHOD> | 2
 // 5) run concurrency_checkin_cleanup.sql
 import { createClient } from '@supabase/supabase-js';
 
@@ -104,7 +105,7 @@ async function main() {
   check('sin errores inesperados', errorCount === 0, JSON.stringify(counts));
   check('metodo del ganador = credencial enviada', winnerMethod === winnerKind, `${winnerKind} -> ${winnerMethod}`);
   check('todas reportan el metodo del ganador', ok.every((d) => d.method === winnerMethod));
-  check('creditos una sola vez (sellos = 1 en todas)', ok.every((d) => d.stamps === 1 && d.credits_granted === 1));
+  check('sesion de 60 min: 2 sellos, una sola vez (sellos = 2 en todas)', ok.every((d) => d.stamps === 2 && d.credits_granted === 2));
   check('misma asistencia en todas', new Set(ok.map((d) => d.attendance_id)).size === 1);
   console.log(`WINNER_METHOD=${winnerMethod}`);
 

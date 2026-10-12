@@ -2,10 +2,11 @@ import { useEffect, useState } from 'react';
 import { Alert, Badge, Button, Field, LoadError, Modal, SelectField, Spinner } from '../components/ui';
 import { friendlyError } from '../lib/errors';
 import {
-  fetchOperatorView, fetchPrizes, fetchWinners,
+  categoryRules, fetchOperatorView, fetchPrizes, fetchWinners,
   invalidateWinner, saveCategory, savePrize,
-  type OperatorView, type RaffleCategory, type RafflePrize, type RaffleWinner, type UnassignedCombo,
+  type OperatorView, type RaffleCategory, type RafflePrize, type RaffleRule, type RaffleWinner, type UnassignedCombo,
 } from '../lib/raffleApi';
+import { describeRule, describeRules } from '../lib/raffleRules';
 import { useLoad } from '../lib/useLoad';
 
 type Tab = 'categories' | 'prizes' | 'winners';
@@ -62,20 +63,21 @@ export default function RaffleAdmin() {
       {actionOk && <Alert tone="success">{actionOk}</Alert>}
       {tab === 'categories' && (
         <section className="space-y-4">
-          <div className="flex justify-end"><Button variant="secondary" onClick={() => setEditingCat({ is_active: true, sort_order: 0, required_academic: 0, required_leadership: 0 })}>Nueva categoría</Button></div>
+          <div className="flex justify-end"><Button variant="secondary" onClick={() => setEditingCat({ is_active: true, sort_order: 0, rules: [{ academic: 1, university_life: 1 }] })}>Nueva categoría</Button></div>
           {unassigned.length > 0 && (
             <div className="card border-warning-500/40 p-4">
-              <p className="text-sm font-semibold">Combinaciones de tickets sin categoría</p>
-              <p className="mt-1 text-xs text-ink-muted">Estos participantes cumplen asistencias pero no encajan en ninguna categoría configurada.</p>
-              <ul className="mt-3 space-y-1">{unassigned.map((c, i) => (<li key={i} className="text-sm"><span className="font-semibold">{c.academic} académicos + {c.leadership} liderazgo</span><span className="text-ink-muted"> · {c.count} participante{c.count !== 1 ? 's' : ''}</span></li>))}</ul>
+              <p className="text-sm font-semibold">Sellos que todavía no alcanzan una categoría</p>
+              <p className="mt-1 text-xs text-ink-muted">Estos participantes ya tienen sellos, pero no cumplen ninguna de las categorías activas.</p>
+              <ul className="mt-3 space-y-1">{unassigned.map((c, i) => (<li key={i} className="text-sm"><span className="font-semibold">{c.academic} {c.academic === 1 ? 'académico' : 'académicos'} + {c.university_life} de Vida Universitaria</span><span className="text-ink-muted"> · {c.count} participante{c.count !== 1 ? 's' : ''}</span></li>))}</ul>
             </div>
           )}
+          <p className="text-sm text-ink-muted">Las categorías se alcanzan con sellos (un taller de 60 minutos otorga 2). Cada participante entra solo a la categoría de mayor orden que alcance.</p>
           <div className="card divide-y divide-line">
             {categories.map((c) => (
               <div key={c.id} className="flex items-center gap-3 p-4">
                 <div className="flex-1">
                   <p className="font-semibold">{c.name} {catBadge(c)}</p>
-                  <p className="text-sm text-ink-muted">{c.required_academic} académicos + {c.required_leadership} liderazgo{(c as RaffleCategory & { pool_count?: number }).pool_count !== undefined && (<> · {(c as RaffleCategory & { pool_count?: number }).pool_count} candidatos</>)}</p>
+                  <p className="text-sm text-ink-muted">{describeRules(categoryRules(c))}{c.pool_count !== undefined && (<> · {c.pool_count} candidato{c.pool_count !== 1 ? 's' : ''}</>)}</p>
                 </div>
                 <button onClick={() => setEditingCat(c)} className="text-sm font-semibold text-fg-info hover:text-ink">Editar</button>
               </div>
@@ -134,28 +136,67 @@ export default function RaffleAdmin() {
   );
 }
 
+type RuleDraft = { academic: string; university_life: string; total: string };
+
+const toDraft = (rule: RaffleRule): RuleDraft => ({
+  academic: String(rule.academic ?? 0), university_life: String(rule.university_life ?? 0), total: rule.total ? String(rule.total) : '',
+});
+
+/** Empty or zero fields are simply not part of the alternative. */
+const fromDraft = (draft: RuleDraft): RaffleRule => {
+  const rule: RaffleRule = {};
+  const academic = Math.trunc(Number(draft.academic) || 0);
+  const universityLife = Math.trunc(Number(draft.university_life) || 0);
+  const total = Math.trunc(Number(draft.total) || 0);
+  if (academic > 0) rule.academic = academic;
+  if (universityLife > 0) rule.university_life = universityLife;
+  if (total > 0) rule.total = total;
+  return rule;
+};
+
 function CategoryModal({ initial, onClose, onSaved }: { initial: Partial<RaffleCategory>; onClose: () => void; onSaved: () => void }) {
   const [name, setName] = useState(initial.name ?? '');
   const [sortOrder, setSortOrder] = useState(String(initial.sort_order ?? 0));
-  const [reqA, setReqA] = useState(String(initial.required_academic ?? 0));
-  const [reqL, setReqL] = useState(String(initial.required_leadership ?? 0));
+  const [rules, setRules] = useState<RuleDraft[]>(() =>
+    categoryRules({ rules: initial.rules ?? [], required_academic: initial.required_academic ?? 0, required_leadership: initial.required_leadership ?? 0 }).map(toDraft));
   const [active, setActive] = useState(initial.is_active ?? true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const setRule = (index: number, patch: Partial<RuleDraft>) => setRules((list) => list.map((r, i) => (i === index ? { ...r, ...patch } : r)));
   const submit = async (e: React.FormEvent) => {
     e.preventDefault(); setBusy(true); setError('');
-    try { await saveCategory({ id: initial.id, name: name.trim(), sort_order: Number(sortOrder), required_academic: Number(reqA), required_leadership: Number(reqL), is_active: active }); onSaved(); }
+    try { await saveCategory({ id: initial.id, name: name.trim(), sort_order: Number(sortOrder), rules: rules.map(fromDraft), is_active: active }); onSaved(); }
     catch (cause) { setError(friendlyError(cause)); setBusy(false); }
   };
   return (
     <Modal title={initial.id ? 'Editar categoría' : 'Nueva categoría'} onClose={onClose}>
       <form onSubmit={submit} className="space-y-4">
-        <Field label="Nombre" value={name} onChange={(e) => setName(e.target.value)} required />
-        <div className="grid grid-cols-3 gap-4">
-          <Field label="Orden" type="number" value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} hint="Mayor = más alto" />
-          <Field label="Tickets académicos" type="number" min={0} value={reqA} onChange={(e) => setReqA(e.target.value)} required />
-          <Field label="Tickets liderazgo" type="number" min={0} value={reqL} onChange={(e) => setReqL(e.target.value)} required />
+        <div className="grid grid-cols-[1fr,7rem] gap-4">
+          <Field label="Nombre" value={name} onChange={(e) => setName(e.target.value)} required />
+          <Field label="Orden" type="number" value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} hint="Mayor = más alta" />
         </div>
+        <fieldset className="space-y-3">
+          <legend className="text-sm font-semibold">Cómo se alcanza</legend>
+          <p className="text-xs text-ink-muted">Sellos mínimos. Si hay varias alternativas, basta con cumplir una. Deja «Total» vacío si no aplica.</p>
+          {rules.map((rule, i) => (
+            <div key={i} className="rounded-theme border border-line p-3">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">{i === 0 ? 'Alternativa 1' : `o alternativa ${i + 1}`} · {describeRule(fromDraft(rule))}</p>
+                {rules.length > 1 && (
+                  <button type="button" onClick={() => setRules((list) => list.filter((_, j) => j !== i))} className="text-xs font-semibold text-fg-error">Quitar</button>
+                )}
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <Field label="Académicos" type="number" min={0} max={999} value={rule.academic} onChange={(e) => setRule(i, { academic: e.target.value })} />
+                <Field label="Vida Universitaria" type="number" min={0} max={999} value={rule.university_life} onChange={(e) => setRule(i, { university_life: e.target.value })} />
+                <Field label="Total" type="number" min={0} max={999} value={rule.total} onChange={(e) => setRule(i, { total: e.target.value })} />
+              </div>
+            </div>
+          ))}
+          {rules.length < 10 && (
+            <Button type="button" variant="ghost" onClick={() => setRules((list) => [...list, { academic: '0', university_life: '0', total: '' }])}>Agregar alternativa</Button>
+          )}
+        </fieldset>
         <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} />Categoría activa</label>
         {error && <Alert tone="error">{error}</Alert>}
         <div className="flex justify-end gap-2"><Button type="button" variant="ghost" onClick={onClose}>Cancelar</Button><Button type="submit" loading={busy}>Guardar</Button></div>
