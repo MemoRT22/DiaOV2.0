@@ -2,6 +2,7 @@ import { useLayoutEffect } from 'react';
 import { Outlet } from 'react-router-dom';
 import { paintAdminSurface } from '../theme/surface';
 import './admin.css';
+import './design/system.css';
 
 /**
  * Layout route of the back office. It paints the fixed admin visual system on the document, so the configurable

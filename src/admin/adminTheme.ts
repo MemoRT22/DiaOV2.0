@@ -7,19 +7,19 @@ import type { ColorKey } from '../theme/types';
  * colours (success / warning / error) for states, alerts and charts.
  */
 export const ADMIN_COLORS: Record<ColorKey, string> = {
-  primary: '#BF4818',
+  primary: '#B94720',
   secondary: '#24536B',
   accent: '#23766B',
   success: '#15803D',
   warning: '#A65C09',
   error: '#B42318',
-  neutral: '#64748B',
-  background: '#F4F6FA',
+  neutral: '#687177',
+  background: '#F5F5F3',
   surface: '#FFFFFF',
-  surfaceRaised: '#EEF2F7',
-  ink: '#172238',
-  inkMuted: '#526174',
-  line: '#DCE3EC',
+  surfaceRaised: '#F8F8F6',
+  ink: '#252A2E',
+  inkMuted: '#687177',
+  line: '#E2E4E2',
 };
 
 export const ADMIN_LOGO = '/assets/images/Logo_A.png';

@@ -40,6 +40,7 @@ const ThemeEditor = lazy(() => import('./admin/theme/ThemeEditor'));
 const CheckinModule = lazy(() => import('./admin/CheckinModule'));
 const RaffleAdmin = lazy(() => import('./admin/RaffleAdmin'));
 const RaffleOperator = lazy(() => import('./admin/RaffleOperator'));
+const RaffleProjection = lazy(() => import('./admin/raffle/RaffleProjection'));
 const Scanner = lazy(() => import('./student/Scanner'));
 const Account = lazy(() => import('./admin/Account'));
 
@@ -98,6 +99,8 @@ export default function App() {
           </Route>
 
           <Route element={<AdminSurface />}>
+            {/* Public screen of the raffle: a window for the projector, fed by the console; it needs no account and has no controls. */}
+            <Route path="/coordinacion/sorteo-publico" element={<RaffleProjection />} />
             <Route path="/coordinacion" element={<AdminLayout />}>
               <Route index element={<AdminHome />} />
               <Route path="participantes" element={<Participants />} />

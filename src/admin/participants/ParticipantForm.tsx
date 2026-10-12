@@ -64,7 +64,7 @@ export default function ParticipantForm({ participantId, initial, careers, highS
 
   return (
     <Modal title="Corregir datos" onClose={onClose}>
-      <form onSubmit={submit} className="space-y-4">
+      <form onSubmit={submit} className="ad-modal-form space-y-4">
         <Alert tone="info">Los campos que cambies quedan marcados como corrección manual. Si vuelves a importar el CSV, no se reemplazarán.</Alert>
         <Field label="Correo" type="email" required value={values.email} onChange={set('email')} autoComplete="off" />
         {emailChanged && (

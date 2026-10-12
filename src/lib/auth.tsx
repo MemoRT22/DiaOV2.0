@@ -1,5 +1,5 @@
 import type { Session } from '@supabase/supabase-js';
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { supabase } from './supabase';
 
 export type ParticipantProfile = {
@@ -35,6 +35,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<ParticipantProfile | null>(null);
   const [staff, setStaff] = useState<StaffMember | null>(null);
   const [ready, setReady] = useState(false);
+  // The account whose identity is loaded. Supabase repeats SIGNED_IN for the SAME account when a tab regains focus or
+  // another tab of the app loads; that is not a new sign-in and must not tear the whole back office down.
+  const loadedUser = useRef<string | null>(null);
 
   const loadIdentity = useCallback(async (s: Session | null) => {
     if (!s) {
@@ -75,7 +78,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const { data: sub } = supabase.auth.onAuthStateChange((event, s) => {
       setSession(s);
+      if (event === 'SIGNED_IN' && s && loadedUser.current === s.user.id) return;
       if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN' || event === 'SIGNED_OUT') {
+        loadedUser.current = s?.user.id ?? null;
         setReady(false);
         (async () => {
           await loadIdentity(s);

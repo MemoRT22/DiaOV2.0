@@ -39,7 +39,7 @@ export default function ParticipantCreate({ careers, highSchools, onClose, onCre
 
   return (
     <Modal title="Nuevo participante" onClose={busy ? () => undefined : onClose}>
-      <form onSubmit={submit} className="space-y-4">
+      <form onSubmit={submit} className="ad-modal-form space-y-4">
         <Alert tone="info">
           Al entrar por primera vez, la persona configura su contraseña y acepta el Aviso de Privacidad. Si ya existe un participante con ese correo, no se crea otro.
         </Alert>
