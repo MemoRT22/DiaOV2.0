@@ -1,11 +1,12 @@
-import { ArrowLeftRight, Sparkles, Telescope, X } from 'lucide-react';
-import { useMemo } from 'react';
+import { ArrowLeftRight, Flag, Sparkles, Telescope, X } from 'lucide-react';
+import { useEffect, useMemo, useRef } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Alert, PageSkeleton } from '../components/ui';
 import { fetchDivisions, formatTime } from '../lib/catalog';
 import { recommendationReason } from '../lib/recommendationReason';
 import { fetchRecommendedActivities } from '../lib/recommendationsApi';
 import { belongsToDivision, type BoardSession } from '../lib/reservations';
+import { experienceCategoriesIn, isUniversityLife, UNIVERSITY_LIFE, universityLifeCategory, universityLifeLabel } from '../lib/universityLife';
 import { workshopDivisionIds } from '../lib/workshopDiscovery';
 import { useLoad } from '../lib/useLoad';
 import { useParticipantSync } from '../lib/useParticipantSync';
@@ -20,7 +21,10 @@ import { PageHeader } from './ui/PageHeader';
 import { RouteMeter } from './ui/RouteMeter';
 import { EmptyState, ErrorState } from './ui/States';
 
-type Filter = { kind: 'all' } | { kind: 'foryou' } | { kind: 'live' } | { kind: 'division'; id: string };
+type Filter =
+  | { kind: 'all' } | { kind: 'foryou' } | { kind: 'live' } | { kind: 'division'; id: string }
+  /** Vida Universitaria (by official activity type), optionally narrowed to one experience category. */
+  | { kind: 'life'; category?: string };
 
 /** Misiones — the catalogue of Día OV workshops. One mission per card; the detail owns every session and booking action. */
 export default function Missions() {
@@ -38,15 +42,29 @@ export default function Missions() {
   const filter: Filter = params.get('f') === 'foryou' ? { kind: 'foryou' }
     : params.get('f') === 'live' ? { kind: 'live' }
     : params.get('f') === 'division' && params.get('d') ? { kind: 'division', id: params.get('d')! }
+    : params.get('f') === 'life' ? { kind: 'life', ...(params.get('c') ? { category: params.get('c')! } : {}) }
     : { kind: 'all' };
+  // Filters live in the URL only: choosing one never touches the board, the reservations or the catalogue state.
   const setFilter = (next: Filter) => {
     const updated = new URLSearchParams(params);
     updated.delete('f');
     updated.delete('d');
+    updated.delete('c');
     if (next.kind !== 'all') updated.set('f', next.kind);
     if (next.kind === 'division') updated.set('d', next.id);
+    if (next.kind === 'life' && next.category) updated.set('c', next.category);
     setParams(updated);
   };
+
+  // The chosen filter stays in sight: arriving from a link (or the back button) with a chip that is off to the side
+  // scrolls its row to it. Only the chip rows move, never the page.
+  const chipRows = useRef<HTMLDivElement>(null);
+  const filterKey = params.get('f') + '|' + params.get('d') + '|' + params.get('c');
+  useEffect(() => {
+    chipRows.current?.querySelectorAll<HTMLElement>('[aria-pressed="true"]').forEach((chip) => {
+      chip.scrollIntoView?.({ inline: 'center', block: 'nearest' });
+    });
+  }, [filterKey, board === null]);
 
   const replacing = useMemo(() => {
     const id = params.get('cambiar');
@@ -80,12 +98,21 @@ export default function Missions() {
   const anyLive = workshops.some((w) => w.some((s) => s.in_progress));
   // «Todos» is always the starting filter and the student is never moved to «Para ti» automatically. If the chip they chose
   // stops applying (e.g. the ranking came back empty), they simply see the whole catalogue.
+  // Vida Universitaria missions and the experience categories that actually have some (one entry per mission).
+  const lifeCategories = experienceCategoriesIn(workshops.map((w) => w[0]));
+  const anyLife = lifeCategories.length > 0;
   const current: Filter =
-    (filter.kind === 'foryou' && recommendedIds.size === 0) || (filter.kind === 'live' && !anyLive) ? { kind: 'all' } : filter;
+    (filter.kind === 'foryou' && recommendedIds.size === 0) || (filter.kind === 'live' && !anyLive) || (filter.kind === 'life' && !anyLife)
+      ? { kind: 'all' }
+      // A category without missions (e.g. an old link) falls back to the whole of Vida Universitaria.
+      : filter.kind === 'life' && filter.category && !lifeCategories.some((c) => c.value === filter.category)
+        ? { kind: 'life' }
+        : filter;
   const visible = workshops.filter((w) => {
     if (current.kind === 'foryou') return recommendedIds.has(w[0].activity_id);
     if (current.kind === 'live') return w.some((s) => s.in_progress);
     if (current.kind === 'division') return belongsToDivision(w[0], current.id);
+    if (current.kind === 'life') return current.category ? universityLifeCategory(w[0]) === current.category : isUniversityLife(w[0]);
     return true;
   });
   const active = board.active_reservation_count;
@@ -138,7 +165,8 @@ export default function Missions() {
         </Alert>
       )}
 
-      <div className="no-scrollbar sticky top-[calc(3rem+env(safe-area-inset-top))] z-20 -mx-4 flex gap-2 overflow-x-auto overscroll-x-contain bg-surface-sunken/90 px-4 py-2 backdrop-blur" aria-label="Filtrar misiones" role="group">
+      <div ref={chipRows} className="sticky top-[calc(3rem+env(safe-area-inset-top))] z-20 -mx-4 bg-surface-sunken/90 backdrop-blur">
+      <div className="no-scrollbar flex gap-2 overflow-x-auto overscroll-x-contain px-4 py-2" aria-label="Filtrar misiones" role="group">
         <button className={chip(isFilter({ kind: 'all' }))} aria-pressed={isFilter({ kind: 'all' })} onClick={() => setFilter({ kind: 'all' })}>
           Todos
         </button>
@@ -154,12 +182,40 @@ export default function Missions() {
             En curso
           </button>
         )}
+        {/* Vida Universitaria is a first-class filter, right next to the personal ones and before the divisions. */}
+        {anyLife && (
+          <button className={chip(current.kind === 'life')} aria-pressed={current.kind === 'life'} onClick={() => setFilter({ kind: 'life' })}>
+            <Flag className="h-4 w-4" aria-hidden />
+            {UNIVERSITY_LIFE}
+          </button>
+        )}
         {divisions.data.map((d) => (
           <button key={d.id} className={chip(isFilter({ kind: 'division', id: d.id }))} aria-pressed={isFilter({ kind: 'division', id: d.id })} onClick={() => setFilter({ kind: 'division', id: d.id })}>
             <span className="h-2.5 w-2.5 rounded-full" style={{ background: divisionColor(theme, d) }} aria-hidden />
             {d.name}
           </button>
         ))}
+      </div>
+      {/* Kinds of experience: only while Vida Universitaria is selected, and only when there is more than one. */}
+      {current.kind === 'life' && lifeCategories.length > 1 && (
+        <div className="no-scrollbar flex gap-2 overflow-x-auto overscroll-x-contain px-4 pb-2" aria-label="Tipo de experiencia" role="group">
+          {[{ value: undefined as string | undefined, label: 'Todas' }, ...lifeCategories].map((c) => {
+            const on = current.category === c.value;
+            return (
+              <button
+                key={c.value ?? 'all'}
+                aria-pressed={on}
+                onClick={() => setFilter({ kind: 'life', ...(c.value ? { category: c.value } : {}) })}
+                className={`inline-flex min-h-11 shrink-0 items-center rounded-full border px-3.5 text-[13px] font-semibold transition-colors duration-200 ${
+                  on ? 'border-secondary-400 bg-secondary-500/20 text-ink' : 'border-line/70 bg-transparent text-ink-muted hover:text-ink'
+                }`}
+              >
+                {c.label}
+              </button>
+            );
+          })}
+        </div>
+      )}
       </div>
 
       {current.kind === 'foryou' && (
@@ -187,6 +243,9 @@ export default function Missions() {
             const ids = workshopDivisionIds(first);
             const divisionNames = ids.map((id) => divisionById.get(id)?.name).filter((name): name is string => !!name);
             const onlyDivision = ids.length === 1 ? divisionById.get(ids[0]) : null;
+            // Vida Universitaria by its official type. Only a backend that does not report the type yet falls back to
+            // the old reading (a mission without any division).
+            const lifeCategory = universityLifeCategory(first) ?? (first.activity_type === undefined && ids.length === 0 ? 'vida_universitaria' : null);
             const rec = recommendations.find((r) => r.activity_id === first.activity_id);
             const why = rec ? recommendationReason(rec) : null;
             return (
@@ -195,8 +254,8 @@ export default function Missions() {
                 board={board}
                 sessions={sessions}
                 replacing={replacing}
-                divisionLabel={divisionNames.length ? divisionNames.join(' · ') : 'Vida Universitaria'}
-                divisionName={onlyDivision?.name ?? (divisionNames.length ? undefined : 'Vida Universitaria')}
+                divisionLabel={lifeCategory ? universityLifeLabel(lifeCategory) : divisionNames.length ? divisionNames.join(' · ') : 'Taller académico'}
+                divisionName={lifeCategory ? UNIVERSITY_LIFE : onlyDivision?.name}
                 color={divisionColor(theme, onlyDivision)}
                 reason={why?.reason || null}
                 recommended={!!rec && !rec.already_attended}

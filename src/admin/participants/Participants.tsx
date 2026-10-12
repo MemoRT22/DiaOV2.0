@@ -1,11 +1,12 @@
-import { Download, Eye, Pencil, Search, Upload } from 'lucide-react';
+import { Download, Eye, Pencil, Search, Upload, UserPlus } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { Alert, Badge, buttonClasses, Spinner } from '../../components/ui';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Alert, Badge, Button, buttonClasses, Spinner } from '../../components/ui';
 import { ORIGIN_LABELS, rpc } from '../../lib/adminApi';
 import { fetchCareers, fetchHighSchools, type Career, type HighSchool } from '../../lib/catalog';
 import { hasRole, useAuth } from '../../lib/auth';
 import { friendlyError } from '../../lib/errors';
+import ParticipantCreate from './ParticipantCreate';
 import ParticipantForm, { type ParticipantValues } from './ParticipantForm';
 
 type Hit = {
@@ -38,6 +39,19 @@ export default function Participants() {
   const [editData, setEditData] = useState<EditData | null>(null);
   const [editError, setEditError] = useState('');
   const editRequest = useRef(0);
+  const navigate = useNavigate();
+  // Set by the participant file after a deletion.
+  const notice = (useLocation().state as { notice?: string } | null)?.notice;
+  const [creating, setCreating] = useState<{ careers: Career[]; highSchools: HighSchool[] } | null>(null);
+  const [openingCreate, setOpeningCreate] = useState(false);
+  const openCreate = async () => {
+    setOpeningCreate(true); setEditError('');
+    try {
+      const [careers, highSchools] = await Promise.all([fetchCareers(), fetchHighSchools()]);
+      setCreating({ careers, highSchools });
+    } catch (cause) { setEditError(friendlyError(cause)); }
+    finally { setOpeningCreate(false); }
+  };
 
   const closeEdit = () => { editRequest.current += 1; setEditingId(null); setEditData(null); setEditError(''); };
   const openEdit = async (id: string) => {
@@ -100,6 +114,9 @@ export default function Participants() {
         <div className="flex flex-wrap gap-2">
           {coordinacion && (
             <>
+              <Button onClick={() => void openCreate()} loading={openingCreate}>
+                <UserPlus className="h-4 w-4" aria-hidden />Nuevo participante
+              </Button>
               <Link to="importar" className={buttonClasses('secondary')}>
                 <Upload className="h-4 w-4" aria-hidden />Importar participantes
               </Link>
@@ -123,8 +140,9 @@ export default function Participants() {
         />
       </label>
 
+      {notice && <Alert tone="success">{notice}</Alert>}
       {error && <Alert tone="error">{error}</Alert>}
-      {editError && <Alert tone="error">No se pudo abrir la edición: {editError}</Alert>}
+      {editError && <Alert tone="error">No se pudo abrir el formulario: {editError}</Alert>}
       {editingId && <Spinner label="Cargando datos para editar" />}
       {searching && !hits && <Spinner label="Buscando" />}
       {browsing && hits && hits.length > 0 && (
@@ -192,6 +210,8 @@ export default function Participants() {
           )}
         </div>
       )}
+      {creating && <ParticipantCreate careers={creating.careers} highSchools={creating.highSchools}
+        onClose={() => setCreating(null)} onCreated={(id) => navigate(id, { state: { created: true } })} />}
       {editData && <ParticipantForm key={editData.id} participantId={editData.id} initial={editData.initial}
         careers={editData.careers} highSchools={editData.highSchools} canEditHighSchool={coordinacion}
         onClose={closeEdit} onSaved={() => { closeEdit(); setRevision((value) => value + 1); }} />}

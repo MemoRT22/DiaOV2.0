@@ -9,6 +9,8 @@ const MESSAGES: Record<string, string> = {
   INVALID_ASSET_PATH: 'Las rutas de imágenes deben empezar con /assets/ o https://.',
   NO_DRAFT: 'No hay un borrador para publicar.',
   NOT_FOUND: 'No se encontró el elemento.',
+  AUTH_UNAVAILABLE: 'No se pudo consultar la cuenta de acceso en este momento, así que no se eliminó nada. Inténtalo de nuevo en unos segundos.',
+  AUTH_DELETE_FAILED: 'No se pudo retirar la cuenta de acceso, así que no se eliminó nada. Inténtalo de nuevo.',
   INVALID_TRANSITION: 'El estado de la propuesta cambió. Actualiza la página e inténtalo de nuevo.',
   VALIDATION_FAILED: 'Revisa los campos del taller antes de guardar.',
   INVALID_PAYLOAD: 'Los datos del taller no son válidos. Actualiza la página e inténtalo de nuevo.',

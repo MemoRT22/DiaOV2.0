@@ -5,7 +5,7 @@ import { friendlyError } from '../../lib/errors';
 import { fetchWorkshopIntakeCatalog } from '../../lib/workshopIntakeApi';
 import {
   ACTIVITY_TYPES, EXPERIENCE_CATEGORIES, LIMITS, durationsFor, ROOM_TBD,
-  copyFor, validateForm, type FieldErrors, type FormState,
+  copyFor, emptyForm, validateForm, type FieldErrors, type FormState,
 } from '../../lib/workshopForm';
 import { useLoad } from '../../lib/useLoad';
 import { groupForStatus, workshopAdminApi, type WorkshopDetail } from '../../lib/workshopAdminApi';
@@ -26,36 +26,45 @@ export function formFromDetail(detail: WorkshopDetail): FormState {
   };
 }
 
-function Editor({ detail, catalog }: { detail: WorkshopDetail; catalog: Awaited<ReturnType<typeof fetchWorkshopIntakeCatalog>> }) {
+/** One form for both jobs: correcting an existing workshop (`detail`) or creating a new one from the panel (no `detail`). */
+function Editor({ detail, catalog }: { detail?: WorkshopDetail; catalog: Awaited<ReturnType<typeof fetchWorkshopIntakeCatalog>> }) {
   const navigate = useNavigate();
-  const [form, setForm] = useState(() => formFromDetail(detail));
+  const [form, setForm] = useState(() => (detail ? formFromDetail(detail) : emptyForm()));
   const [errors, setErrors] = useState<FieldErrors>({});
-  const [saving, setSaving] = useState(false);
+  const [saving, setSaving] = useState<false | 'save' | 'publish'>(false);
   const savingRef = useRef(false);
   const [failure, setFailure] = useState('');
+  const back = detail ? `/coordinacion/talleres/${detail.id}` : '/coordinacion/talleres';
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) => {
     setForm((f) => ({ ...f, [key]: value }));
     setErrors((e) => { const next = { ...e }; delete next[key]; return next; });
   };
-  const submit = async (event: FormEvent) => {
-    event.preventDefault();
+  const save = async (publish: boolean) => {
     if (savingRef.current) return;
     const result = validateForm(form);
     if (!result.payload) { setErrors(result.errors); return; }
-    savingRef.current = true; setSaving(true); setFailure('');
+    savingRef.current = true; setSaving(publish ? 'publish' : 'save'); setFailure('');
     try {
-      await workshopAdminApi.edit(detail.id, result.payload);
-      navigate(`/coordinacion/talleres/${detail.id}`, { replace: true });
+      if (detail) {
+        await workshopAdminApi.edit(detail.id, result.payload);
+        navigate(back, { replace: true });
+      } else {
+        const created = await workshopAdminApi.create(result.payload, publish);
+        navigate(`/coordinacion/talleres/${created.submission_id}`, { replace: true });
+      }
     } catch (cause) { setFailure(friendlyError(cause)); }
     finally { savingRef.current = false; setSaving(false); }
   };
+  const submit = (event: FormEvent) => { event.preventDefault(); void save(false); };
   const copy = copyFor(form.activity_type);
   return <div className="space-y-6">
-    <Link to={`/coordinacion/talleres/${detail.id}`} className="text-sm font-semibold underline">Volver al taller</Link>
-    <header className="admin-feature-card p-5 sm:p-6"><p className="text-xs font-semibold uppercase tracking-wider text-ink-muted">Taller · edición</p><h1 className="mt-1 text-2xl font-extrabold">Editar taller</h1><p className="mt-1 text-sm text-ink-muted">{detail.title}. Revisa cada sección y guarda al finalizar.</p></header>
+    <Link to={back} className="text-sm font-semibold underline">{detail ? 'Volver al taller' : 'Volver a Talleres'}</Link>
+    {detail
+      ? <header className="admin-feature-card p-5 sm:p-6"><p className="text-xs font-semibold uppercase tracking-wider text-ink-muted">Taller · edición</p><h1 className="mt-1 text-2xl font-extrabold">Editar taller</h1><p className="mt-1 text-sm text-ink-muted">{detail.title}. Revisa cada sección y guarda al finalizar.</p></header>
+      : <header className="admin-feature-card p-5 sm:p-6"><p className="text-xs font-semibold uppercase tracking-wider text-ink-muted">Taller · alta</p><h1 className="mt-1 text-2xl font-extrabold">Nuevo taller</h1><p className="mt-1 text-sm text-ink-muted">Académico o de Vida Universitaria. Puedes dejarlo pendiente de revisión o publicarlo de inmediato para los alumnos.</p></header>}
     {failure && <Alert tone="error">{failure}</Alert>}
     {Object.keys(errors).length > 0 && <Alert tone="error">Revisa los campos marcados antes de guardar.</Alert>}
-    <form onSubmit={(event) => void submit(event)} noValidate className="space-y-6">
+    <form onSubmit={submit} noValidate className="space-y-6">
       <section className="card admin-editor-section space-y-4 p-5"><h2 data-step="01" className="text-lg font-bold">Responsable</h2>
         <TextField field="facilitator_name" label="Nombre completo" required value={form.facilitator_name} onChange={(v) => set('facilitator_name', v)} error={errors.facilitator_name} />
         <TextField field="facilitator_email" label="Correo electrónico" required type="email" value={form.facilitator_email} onChange={(v) => set('facilitator_email', v)} error={errors.facilitator_email} />
@@ -87,8 +96,14 @@ function Editor({ detail, catalog }: { detail: WorkshopDetail; catalog: Awaited<
       {form.activity_type === 'academica' && <section className="card admin-editor-section space-y-4 p-5"><h2 data-step="05" className="text-lg font-bold">Carreras relacionadas</h2>
         <CareerPicker catalog={catalog} value={form.career_ids} onChange={(v) => set('career_ids', v)} error={errors.career_ids} />
       </section>}
-      <div className="admin-form-actions flex flex-wrap items-center justify-end gap-3"><Link to={`/coordinacion/talleres/${detail.id}`} className="admin-action-link">Cancelar</Link>
-        <Button type="submit" loading={saving} disabled={saving}>Guardar cambios</Button></div>
+      <div className="admin-form-actions flex flex-wrap items-center justify-end gap-3"><Link to={back} className="admin-action-link">Cancelar</Link>
+        {detail
+          ? <Button type="submit" loading={saving === 'save'} disabled={!!saving}>Guardar cambios</Button>
+          : <>
+            <Button type="submit" variant="secondary" loading={saving === 'save'} disabled={!!saving}>Guardar como pendiente</Button>
+            <Button type="button" loading={saving === 'publish'} disabled={!!saving} onClick={() => void save(true)}>Crear y publicar</Button>
+          </>}
+      </div>
     </form>
   </div>;
 }
@@ -103,4 +118,12 @@ export default function WorkshopEdit() {
   if (!data) return <Alert tone="error">{friendlyError(error)} <button onClick={reload} className="underline">Reintentar</button></Alert>;
   if (groupForStatus(data.detail.status) === 'archived') return <Alert tone="warning">Este taller está descartado. <Link to={`/coordinacion/talleres/${id}`} className="underline">Ver taller</Link></Alert>;
   return <Editor key={id} detail={data.detail} catalog={data.catalog} />;
+}
+
+/** Alta de un taller desde el panel. Usa el mismo modelo, la misma validación y el mismo formulario que la edición. */
+export function WorkshopCreate() {
+  const { data, error, loading, reload } = useLoad(fetchWorkshopIntakeCatalog, []);
+  if (loading && !data) return <Spinner label="Cargando formulario" />;
+  if (!data) return <Alert tone="error">{friendlyError(error)} <button onClick={reload} className="underline">Reintentar</button></Alert>;
+  return <Editor catalog={data} />;
 }

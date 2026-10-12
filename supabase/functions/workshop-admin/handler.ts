@@ -1,10 +1,11 @@
-// Frontera HTTP de revisión. Las dependencias con service_role viven solo en index.ts.
+// Frontera HTTP de administración de talleres (Coordinación): listar, consultar, crear, editar, publicar, descartar y
+// eliminar. Las dependencias con service_role viven solo en index.ts.
 import { validateSubmission } from '../workshop-intake/validation.ts';
 export type DbError = { code?: string; message?: string };
 export type AuthResult = { kind: 'ok'; userId: string } | { kind: 'unauthorized' | 'forbidden' };
 export type Deps = {
   authorize: (token: string) => Promise<AuthResult>;
-  rpc: (name: 'workshop_admin_list_internal' | 'workshop_admin_get_internal' | 'workshop_admin_edit_internal' | 'workshop_review_transition_internal' | 'publish_workshop_submission_internal', args: Record<string, unknown>) => Promise<{ data: unknown; error: DbError | null }>;
+  rpc: (name: 'workshop_admin_list_internal' | 'workshop_admin_get_internal' | 'workshop_admin_edit_internal' | 'workshop_review_transition_internal' | 'publish_workshop_submission_internal' | 'workshop_admin_create_internal' | 'workshop_admin_delete_internal' | 'workshop_admin_legacy_list_internal' | 'workshop_admin_activity_delete_internal', args: Record<string, unknown>) => Promise<{ data: unknown; error: DbError | null }>;
   log?: (event: string, code?: string) => void;
 };
 
@@ -18,7 +19,7 @@ const CORS = {
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const STATUSES = new Set(['pending', 'published', 'archived']);
 const TYPES = new Set(['academica', 'vida_universitaria']);
-const MUTATIONS = new Set(['archive', 'edit', 'approve_publish']);
+const MUTATIONS = new Set(['archive', 'edit', 'approve_publish', 'delete']);
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { ...CORS, 'Content-Type': 'application/json; charset=utf-8' } });
@@ -79,6 +80,30 @@ export async function handleRequest(req: Request, deps: Deps): Promise<Response>
       return error ? dbFailure(error, deps) : json(data);
     }
 
+    // Alta desde el panel: misma validación que el formulario público; `publish` la deja publicada en la misma operación.
+    if (body.action === 'create') {
+      if (body.publish !== undefined && typeof body.publish !== 'boolean') return json({ error: 'INVALID_INPUT' }, 400);
+      const checked = validateSubmission(body.payload);
+      if (!checked.ok) return json({ error: 'VALIDATION_FAILED', errors: checked.kind === 'invalid' ? checked.errors : [] }, 422);
+      const { data, error } = await deps.rpc('workshop_admin_create_internal', {
+        p_actor: caller.userId, p_payload: checked.value, p_publish: body.publish === true,
+      });
+      return error ? dbFailure(error, deps) : json({ submission: data }, 201);
+    }
+
+    // Talleres que existen solo como actividad, sin expediente (datos de prueba heredados): se consultan y se
+    // eliminan uno por uno por su actividad.
+    if (body.action === 'list_legacy') {
+      const { data, error } = await deps.rpc('workshop_admin_legacy_list_internal', {});
+      return error ? dbFailure(error, deps) : json({ items: Array.isArray(data) ? data : [] });
+    }
+    if (body.action === 'delete_legacy') {
+      const activityId = body.activity_id;
+      if (typeof activityId !== 'string' || !UUID.test(activityId)) return json({ error: 'INVALID_INPUT' }, 400);
+      const { data, error } = await deps.rpc('workshop_admin_activity_delete_internal', { p_actor: caller.userId, p_activity_id: activityId });
+      return error ? dbFailure(error, deps) : json(data);
+    }
+
     const id = body.submission_id;
     if (typeof id !== 'string' || !UUID.test(id)) return json({ error: 'INVALID_INPUT' }, 400);
     if (body.action === 'get') {
@@ -94,6 +119,11 @@ export async function handleRequest(req: Request, deps: Deps): Promise<Response>
         p_actor: caller.userId, p_submission_id: id, p_payload: checked.value,
       });
       return error ? dbFailure(error, deps) : json({ submission: data });
+    }
+    // Eliminación definitiva, en cualquier estado, con sus sesiones, reservaciones, asistencias y credencial.
+    if (body.action === 'delete') {
+      const { data, error } = await deps.rpc('workshop_admin_delete_internal', { p_actor: caller.userId, p_submission_id: id });
+      return error ? dbFailure(error, deps) : json(data);
     }
     if (body.action === 'approve_publish') {
       const { data, error } = await deps.rpc('publish_workshop_submission_internal', {

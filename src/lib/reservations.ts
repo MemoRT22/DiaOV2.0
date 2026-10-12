@@ -13,6 +13,10 @@ export type BoardSession = {
   division_id: string | null;
   /** EVERY division the workshop belongs to (a workshop can relate to several; `division_id` is only the legacy singular one). */
   division_ids?: string[];
+  /** Official type of the mission (`academica`, `vida_universitaria`…). Absent on a backend that does not report it yet. */
+  activity_type?: string | null;
+  /** Kind of experience of a Vida Universitaria mission (`deportiva`, `liderazgo`…); null for academic ones. */
+  experience_category?: string | null;
   starts_at: string;
   ends_at: string;
   location: string;
