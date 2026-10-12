@@ -1,10 +1,11 @@
-import { ArrowLeft, Copy, Pencil } from 'lucide-react';
+import { ArrowLeft, Copy, Pencil, Trash2 } from 'lucide-react';
 import { useRef, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Alert, Badge, Button, Modal, Spinner } from '../../components/ui';
 import { friendlyError } from '../../lib/errors';
 import { formatEventDateTime, formatEventTime } from '../../lib/eventTime';
 import { useLoad } from '../../lib/useLoad';
+import PhraseConfirmModal from '../PhraseConfirmModal';
 import {
   CATEGORY_LABELS, GROUP_LABELS, TYPE_LABELS, groupForStatus, workshopAdminApi,
   type WorkshopCareer, type WorkshopDetail as Detail,
@@ -35,6 +36,26 @@ function Operational({ detail }: { detail: Detail }) {
   </Section>;
 }
 
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+/** What goes away with the workshop, so the confirmation is explicit about related data. */
+function DeleteSummary({ detail }: { detail: Detail }) {
+  const published = groupForStatus(detail.status) === 'published';
+  const d = detail.dependents ?? { sessions: detail.sessions?.length ?? 0, reservations: 0, attendances: 0, participants: 0 };
+  const related = d.reservations + d.attendances > 0;
+  return <>
+    <p>Vas a eliminar definitivamente <strong className="text-ink">{detail.title}</strong>. Esta acción no se puede deshacer.</p>
+    {published ? <>
+      <p>Dejará de aparecer para los alumnos de inmediato. Junto con el taller se eliminan:</p>
+      <ul className="list-disc space-y-1 pl-5" aria-label="Datos que se eliminarán">
+        <li>{plural(d.sessions, 'horario', 'horarios')} y su código QR de asistencia</li>
+        <li>{plural(d.reservations, 'reservación', 'reservaciones')}</li>
+        <li>{plural(d.attendances, 'asistencia registrada', 'asistencias registradas')}, con los sellos que otorgaron</li>
+      </ul>
+      {related && <p className="font-semibold text-fg-warning">{plural(d.participants, 'alumno perderá', 'alumnos perderán')} su reservación o sus sellos de este taller.</p>}
+    </> : <p>El taller no está publicado: no tiene horarios, reservaciones ni asistencias.</p>}
+  </>;
+}
+
 export default function WorkshopDetail() {
   const { id = '' } = useParams();
   const { data, error, loading, reload } = useLoad(() => workshopAdminApi.get(id), [id]);
@@ -43,6 +64,8 @@ export default function WorkshopDetail() {
   const [notice, setNotice] = useState('');
   const [actionError, setActionError] = useState('');
   const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const navigate = useNavigate();
 
   const run = async (action: 'approve' | 'discard') => {
     if (busyRef.current) return;
@@ -72,7 +95,10 @@ export default function WorkshopDetail() {
     <Link to="/coordinacion/talleres" className="inline-flex items-center gap-2 text-sm text-ink-muted hover:text-ink"><ArrowLeft className="h-4 w-4" />Volver a Talleres</Link>
     <header className="admin-feature-card space-y-4 p-5 sm:p-6">
       <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="mb-1 text-xs font-semibold uppercase tracking-wider text-ink-muted">{TYPE_LABELS[data.activity_type]}</p><h1 className="text-2xl font-extrabold">{data.title}</h1><p className="mt-2 text-sm text-ink-muted">Recibido el {formatDate(data.submitted_at)}</p></div><Badge tone={group === 'published' ? 'success' : group === 'archived' ? 'neutral' : 'warning'}>{GROUP_LABELS[group]}</Badge></div>
-      {group !== 'archived' && <div className="border-t border-line pt-4"><Link to={`/coordinacion/talleres/${id}/editar`} className="admin-action-link" data-primary="true"><Pencil className="h-4 w-4" aria-hidden />Editar taller</Link></div>}
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4">
+        {group !== 'archived' ? <Link to={`/coordinacion/talleres/${id}/editar`} className="admin-action-link" data-primary="true"><Pencil className="h-4 w-4" aria-hidden />Editar taller</Link> : <span />}
+        <button type="button" className="admin-action-link text-fg-error" onClick={() => { setActionError(''); setConfirmDelete(true); }}><Trash2 className="h-4 w-4" aria-hidden />Eliminar taller</button>
+      </div>
     </header>
     {notice && <Alert tone="success">{notice} <Link to="/coordinacion/talleres" className="font-semibold underline">Volver a Talleres</Link></Alert>}
     {actionError && <Alert tone="error">{actionError}</Alert>}
@@ -112,6 +138,14 @@ export default function WorkshopDetail() {
         <Button variant="danger" disabled={!!busy} onClick={() => setConfirmDiscard(true)}>Descartar</Button>
       </div>
     </section>}
+    {confirmDelete && <PhraseConfirmModal title="Eliminar taller" phrase="ELIMINAR" confirmLabel="Eliminar definitivamente" danger
+      onClose={() => setConfirmDelete(false)}
+      onConfirm={async () => {
+        await workshopAdminApi.remove(id);
+        navigate('/coordinacion/talleres', { replace: true, state: { notice: `Taller «${data.title}» eliminado.` } });
+      }}>
+      <DeleteSummary detail={data} />
+    </PhraseConfirmModal>}
     {confirmDiscard && <Modal title="Descartar taller" onClose={() => { if (!busyRef.current) setConfirmDiscard(false); }}>
       <p className="mb-5 text-sm text-ink-muted">El taller se conservará en Descartados y no estará disponible para alumnos.</p>
       <div className="flex justify-end gap-3"><Button variant="secondary" disabled={!!busy} onClick={() => setConfirmDiscard(false)}>Cancelar</Button>

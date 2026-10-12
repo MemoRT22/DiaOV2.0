@@ -107,8 +107,8 @@ El administrador se entiende con cinco áreas: **Inicio, Participantes, Talleres
 
 | Área | Qué contiene |
 |---|---|
-| Participantes | Buscar, consultar, importar el padrón (con la revisión de lo que requiere decisión), corregir datos, restablecer contraseñas y exportar. No hay alta manual: los participantes llegan por el Forms oficial o se registran solos. |
-| Talleres | Bandeja única de propuestas pendientes, publicadas y descartadas; edición, aprobación/publicación atómica y descarte. |
+| Participantes | Buscar, consultar, importar el padrón (con la revisión de lo que requiere decisión), dar de alta a mano, corregir datos, restablecer contraseñas, eliminar y exportar. |
+| Talleres | Bandeja única de talleres pendientes, publicados y descartados; alta desde el panel, edición, aprobación/publicación atómica, descarte y eliminación. |
 | Operación | Centro de Operación, Check-in y Sorteo final. |
 | Configuración | Personal, Experiencia del alumno y Catálogos académicos / Datos maestros. |
 
@@ -119,6 +119,20 @@ El administrador se entiende con cinco áreas: **Inicio, Participantes, Talleres
 **Rangos.** El nivel depende solo de los sellos acumulados (niveles 1 a 5 con 0, 1, 2, 3 y 4 sellos; `required_divisions = 0`); un taller de 60 minutos aporta 2 sellos y cualquier otro 1 (ver «Sellos y sorteo»). `seed_default_rank_levels` lo siembra por edición. Las divisiones visitadas no bloquean el progreso: `participant_visited_division_ids` es la única definición de «divisiones distintas» (incluye actividades multidivisión), la usan `my_progress` y `participant_rank_level`, y el Pasaporte las muestra de forma informativa. Ya no hay pantalla ni RPC para editar los requisitos.
 
 **Orden de despliegue de la base.** `20261006170608_admin_simplification_compat` y `20261006172447_rank_rules_by_stamps_only` (corrige los requisitos de rangos) son compatibles con el frontend anterior (se pueden aplicar antes). `20261007010100_admin_simplification_retire` retira backend sin consumidores y debe aplicarse **después** de desplegar este frontend: `access_diagnosis`, `update_rank_rules`, `rank_levels.is_provisional` y el aceptar reglas técnicas en `update_reservation_settings`.
+
+## CRUD administrativo (etapa de pruebas)
+
+Coordinación puede crear, consultar, editar y **eliminar definitivamente** talleres, participantes y divisiones. Día OV 2026 aún no opera: la eliminación arrastra los datos de prueba relacionados en lugar de bloquearse (no existen `HAS_RESERVATIONS` / `HAS_ATTENDANCES`). Nada se limpia solo: cada eliminación la inicia Coordinación sobre un registro, muestra antes lo que se verá afectado, pide escribir `ELIMINAR` y queda en auditoría.
+
+| Entidad | Alta | Eliminación |
+|---|---|---|
+| Taller (académico o Vida Universitaria) | Talleres → «Nuevo taller». Mismo modelo y validación que el formulario público (`workshop_admin_create_internal` → `create_workshop_submission_internal`); puede quedar pendiente o publicarse en la misma transacción. | `workshop_admin_delete_internal`: en cualquier estado. Elimina expediente, actividad, sesiones, reservaciones, asistencias (y sus sellos) y credencial QR. Bloquea las sesiones antes de borrar, así que una reservación o un check-in simultáneos esperan y luego ya no encuentran la sesión. Los catálogos abiertos de los alumnos se actualizan. |
+| Participante | Participantes → «Nuevo participante» (`admin_create_participant`). Solo correo y nombre son obligatorios; no admite correos duplicados ni alias de otra persona. **No registra consentimiento**: el Aviso de Privacidad lo acepta el participante al entrar, donde también configura su contraseña. Los campos capturados quedan como corrección manual frente a una importación posterior de Forms. | Edge Function `participant-admin` (`delete`, solo Coordinación): primero retira la identidad de Supabase Auth —únicamente si es de participante— y luego `participant_delete_internal` elimina al participante con reservaciones, asistencias, intereses, alias de correo, conflictos de importación y registros de sorteo. Una cuenta de Staff o Coordinación vinculada por error **nunca** se elimina: solo se desvincula. Si Auth falla no se elimina nada y la operación se repite. |
+| División | Configuración → Catálogos académicos (`save_division`). | `delete_division`: elimina sus carreras; retira esas carreras de los intereses iniciales (la segunda opción pasa a primera) y posteriores (se renumeran); un taller cuyas carreras son todas de la división se elimina completo; un taller compartido con otras divisiones se conserva con ellas. `division_delete_preview` informa todo esto antes de confirmar. |
+
+Las vistas previas (`dependents` del expediente del taller, `participant_delete_preview`, `division_delete_preview`) las calcula el servidor. Los talleres DEMO heredados que no tienen expediente no aparecen en Talleres; se retiran con la purga de datos de prueba.
+
+**Vida Universitaria en Misiones.** `my_reservation_board()` expone `activity_type` y `experience_category` por sesión. El catálogo del alumno ofrece «Vida Universitaria» como filtro propio —por el tipo oficial `vida_universitaria`, no por la ausencia de división, y sin crear una división artificial— y, dentro de él, las categorías de experiencia que tengan misiones (Liderazgo, Deportiva, Artística y cultural, Vida Universitaria, Otras experiencias). El filtro vive en la URL y no toca reservaciones ni el estado del catálogo.
 
 ## Sellos y sorteo
 
@@ -178,4 +192,4 @@ La batería vigente está inventariada en [`supabase/tests/README.md`](supabase/
 
 `supabase/tests/regression_participant_access.sql` funciona igual (todo se revierte, fixtures propios, no ejecuta el reinicio de preparación) y cubre estados de acceso, vinculación de identidades, autorregistro (campos, validaciones, duplicados, compensación, consentimiento), importación con grado y periodo (sin fecha de nacimiento, conciliación con autorregistros), edición administrativa, roles y PII, exportación, auditoría de restablecimiento sin contraseña y la selección de identidades del reinicio (correo real, sintético, nunca Staff). Con la migración de contrato aplicada valida además el retiro (`retired = true`).
 
-Pruebas de las Edge Functions: `node --test supabase/functions/student-access/handler.test.ts supabase/functions/participant-admin/handler.test.ts`.
+Pruebas de las Edge Functions: `node --test supabase/functions/student-access/handler.test.ts supabase/functions/participant-admin/handler.test.ts supabase/functions/workshop-admin/handler.test.ts`.

@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
-import { ArrowUpRight, MapPin, Pencil, Search, Shapes } from 'lucide-react';
-import { Link } from 'react-router-dom';
-import { Alert, Badge, Button, SelectField, Spinner } from '../../components/ui';
+import { ArrowUpRight, MapPin, Pencil, Plus, Search } from 'lucide-react';
+import { Link, useLocation } from 'react-router-dom';
+import { Alert, Badge, Button, buttonClasses, SelectField, Spinner } from '../../components/ui';
 import { friendlyError } from '../../lib/errors';
 import { useLoad } from '../../lib/useLoad';
 import {
@@ -20,15 +20,18 @@ export default function WorkshopInbox() {
   const [page, setPage] = useState(1);
   const { data, error, loading, reload } = useLoad(() => workshopAdminApi.list({ status, type, search, page }), [status, type, search, page]);
   const submitSearch = (event: FormEvent) => { event.preventDefault(); setPage(1); setSearch(searchDraft.trim()); };
+  // Set by the detail screen after a deletion, so the result is confirmed where the workshop used to be listed.
+  const notice = (useLocation().state as { notice?: string } | null)?.notice;
 
   return <div className="space-y-6">
     <header className="flex flex-wrap items-start justify-between gap-4">
       <div>
       <h1>Talleres</h1>
-      <p className="mt-2 text-sm text-ink-muted">Revisa propuestas, edita talleres desde esta lista y consulta los publicados.</p>
+      <p className="mt-2 text-sm text-ink-muted">Crea talleres, revisa propuestas, edítalos desde esta lista y consulta los publicados.</p>
       </div>
-      <span className="admin-feature-icon" aria-hidden><Shapes className="h-5 w-5" strokeWidth={1.8} /></span>
+      <Link to="/coordinacion/talleres/nuevo" className={buttonClasses('primary')}><Plus className="h-4 w-4" aria-hidden />Nuevo taller</Link>
     </header>
+    {notice && <Alert tone="success">{notice}</Alert>}
     <div className="grid grid-cols-3 gap-2 sm:gap-3" aria-label="Estados de talleres">
       {GROUPS.map((group) => <button key={group} type="button" onClick={() => { setStatus(group); setPage(1); }}
         aria-pressed={status === group}

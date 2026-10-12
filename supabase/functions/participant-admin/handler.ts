@@ -2,7 +2,12 @@
 // verifica el rol del llamante, genera o recibe la contraseña, la aplica en Supabase Auth y deja una auditoría mínima
 // (quién, a quién, cuándo). La contraseña NO se guarda, NO se audita y NO se registra; solo se devuelve al operador
 // cuando fue generada aquí. No envía correos, códigos ni enlaces.
-export type AuthResult = { kind: 'ok'; userId: string } | { kind: 'unauthorized' | 'forbidden' };
+//
+// Eliminar un participante (solo Coordinación): primero se retira su identidad de Supabase Auth —únicamente si es una
+// identidad de participante; jamás una cuenta de Staff o Coordinación— y después la base elimina al participante con
+// todo lo suyo en una transacción. Si algo falla a medias, repetir la operación la termina: nunca queda una cuenta de
+// acceso sin participante.
+export type AuthResult = { kind: 'ok'; userId: string; coordinator?: boolean } | { kind: 'unauthorized' | 'forbidden' };
 export type RpcResult = { data: unknown; error: { code?: string; message: string } | null };
 export type ParticipantRow = { id: string; email: string; auth_user_id: string | null };
 export type AuthUserInfo = { id: string; email: string | null; kind: string | null };
@@ -77,6 +82,43 @@ async function applyPassword(deps: Deps, participant: ParticipantRow, password: 
   return 'ok';
 }
 
+type DeletePlan = { participant_id?: string; auth_user_id?: string | null; linked_non_participant_account?: boolean };
+
+const rpcStatus = (message: string): [string, number] =>
+  message.includes('NOT_FOUND') ? ['NOT_FOUND', 404] : message.includes('NOT_AUTHORIZED') ? ['NOT_AUTHORIZED', 403] : ['SERVER_ERROR', 500];
+
+async function deleteParticipant(deps: Deps, actor: string, participantId: string): Promise<Response> {
+  const plan = await deps.rpc('participant_delete_plan_internal', { p_actor: actor, p_participant: participantId });
+  if (plan.error) return fail(...rpcStatus(plan.error.message));
+  const { auth_user_id: authUserId, linked_non_participant_account: foreignAccount } = (plan.data ?? {}) as DeletePlan;
+
+  let account: 'none' | 'deleted' | 'kept_not_participant' = foreignAccount ? 'kept_not_participant' : 'none';
+  if (typeof authUserId === 'string' && UUID.test(authUserId)) {
+    const identity = await deps.getUser(authUserId);
+    if (identity && !isParticipantIdentity(identity)) {
+      // La base ya lo descarta; segunda barrera con lo que dice Auth. La cuenta se conserva y solo se desvincula.
+      deps.log('identity_not_participant');
+      account = 'kept_not_participant';
+    } else if (identity) {
+      try {
+        await deps.deleteUser(identity.id);
+      } catch {
+        // Nada se eliminó todavía: el participante sigue completo y la operación puede repetirse.
+        deps.log('auth_delete_failed');
+        return fail('AUTH_DELETE_FAILED', 502);
+      }
+      account = 'deleted';
+    }
+  }
+
+  const removed = await deps.rpc('participant_delete_internal', { p_actor: actor, p_participant: participantId });
+  if (removed.error) {
+    deps.log('participant_delete_failed', removed.error.code);
+    return fail(...rpcStatus(removed.error.message));
+  }
+  return json({ ok: true, account, removed: (removed.data as { removed?: unknown } | null)?.removed ?? {} });
+}
+
 export async function handleRequest(req: Request, deps: Deps): Promise<Response> {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers });
   if (req.method !== 'POST') return fail('METHOD_NOT_ALLOWED', 405);
@@ -86,8 +128,13 @@ export async function handleRequest(req: Request, deps: Deps): Promise<Response>
     const caller = await deps.authorize(token);
     if (caller.kind !== 'ok') return fail('NOT_AUTHORIZED', caller.kind === 'forbidden' ? 403 : 401);
     const body = await req.json().catch(() => null);
-    if (!body || typeof body !== 'object' || body.action !== 'reset_password') return fail('INVALID_ACTION', 400);
+    if (!body || typeof body !== 'object' || (body.action !== 'reset_password' && body.action !== 'delete')) return fail('INVALID_ACTION', 400);
     if (typeof body.participant_id !== 'string' || !UUID.test(body.participant_id)) return fail('INVALID_INPUT', 400);
+    if (body.action === 'delete') {
+      // Staff puede restablecer contraseñas, pero eliminar es exclusivo de Coordinación.
+      if (!caller.coordinator) return fail('NOT_AUTHORIZED', 403);
+      return await deleteParticipant(deps, caller.userId, body.participant_id);
+    }
     const manual = body.password !== undefined && body.password !== null && body.password !== '';
     if (manual && !validPassword(body.password)) return fail('INVALID_PASSWORD', 400);
 

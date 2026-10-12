@@ -33,6 +33,7 @@ const CatalogImport = lazy(() => import('./admin/catalog/CatalogImport'));
 const WorkshopInbox = lazy(() => import('./admin/workshops/WorkshopInbox'));
 const WorkshopDetail = lazy(() => import('./admin/workshops/WorkshopDetail'));
 const WorkshopEdit = lazy(() => import('./admin/workshops/WorkshopEdit'));
+const WorkshopCreate = lazy(() => import('./admin/workshops/WorkshopEdit').then((m) => ({ default: m.WorkshopCreate })));
 const StaffAccounts = lazy(() => import('./admin/staff/StaffAccounts'));
 const OperationsCenter = lazy(() => import('./admin/OperationsCenter'));
 const ThemeEditor = lazy(() => import('./admin/theme/ThemeEditor'));
@@ -119,6 +120,7 @@ export default function App() {
                 <Route path="talleres" element={<WorkshopInbox />} />
                 <Route path="talleres/programa" element={to('/coordinacion/talleres')} />
                 <Route path="talleres/programa/importar" element={to('/coordinacion/talleres')} />
+                <Route path="talleres/nuevo" element={<WorkshopCreate />} />
                 <Route path="talleres/:id" element={<WorkshopDetail />} />
                 <Route path="talleres/:id/editar" element={<WorkshopEdit />} />
 

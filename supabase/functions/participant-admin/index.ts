@@ -22,7 +22,7 @@ const deps: Deps = {
     if (staffError) throw staffError;
     const roles = ((staff?.staff_roles ?? []) as { role: string }[]).map((r) => r.role);
     if (!staff?.is_active || !roles.some((role) => role === 'coordinacion' || role === 'staff')) return { kind: 'forbidden' };
-    return { kind: 'ok', userId: data.user.id };
+    return { kind: 'ok', userId: data.user.id, coordinator: roles.includes('coordinacion') };
   },
   participant: async (id) => {
     const { data: edition, error: editionError } = await need().from('editions').select('id').eq('is_active', true).maybeSingle();
@@ -57,7 +57,8 @@ const deps: Deps = {
     return { ok: false, code: emailTaken(error) ? 'EMAIL_TAKEN' : 'AUTH_ERROR' };
   },
   deleteUser: async (id) => {
-    await need().auth.admin.deleteUser(id);
+    const { error } = await need().auth.admin.deleteUser(id);
+    if (error) throw new Error('AUTH_ERROR');
   },
   randomBytes: (length) => crypto.getRandomValues(new Uint8Array(length)),
   // Solo códigos de evento: nunca contraseñas ni datos personales.

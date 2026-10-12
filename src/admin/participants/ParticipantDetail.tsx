@@ -1,15 +1,17 @@
-import { ArrowLeft, Pencil } from 'lucide-react';
+import { ArrowLeft, Pencil, Trash2 } from 'lucide-react';
 import { useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { Alert, Badge, Button, Spinner } from '../../components/ui';
 import { hasRole, useAuth } from '../../lib/auth';
 import { FIELD_LABELS, ORIGIN_LABELS, rpc } from '../../lib/adminApi';
 import { fetchCareers, fetchHighSchools, formatDateTime } from '../../lib/catalog';
 import { fold } from '../../lib/csv';
 import { friendlyError } from '../../lib/errors';
+import { deleteParticipant, fetchParticipantDeletePreview, type ParticipantDeletePreview } from '../../lib/participantAdminApi';
 import { gradeLabel, periodLabel } from '../../lib/participantFields';
 import { useLoad } from '../../lib/useLoad';
 import ConflictReview from '../imports/ConflictReview';
+import PhraseConfirmModal from '../PhraseConfirmModal';
 import ParticipantForm from './ParticipantForm';
 import PasswordAccess from './PasswordAccess';
 import { EmailHistory, FormsExtra, type EmailHistoryEntry, type FormsExtraEntry } from './ParticipantExtraSections';
@@ -56,6 +58,17 @@ export default function ParticipantDetail() {
   const { staff } = useAuth();
   const [editing, setEditing] = useState(false);
   const [saved, setSaved] = useState(false);
+  const navigate = useNavigate();
+  const justCreated = (useLocation().state as { created?: boolean } | null)?.created === true;
+  const [deleting, setDeleting] = useState<ParticipantDeletePreview | null>(null);
+  const [openingDelete, setOpeningDelete] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
+  const openDelete = async () => {
+    setOpeningDelete(true); setDeleteError('');
+    try { setDeleting(await fetchParticipantDeletePreview(id)); }
+    catch (cause) { setDeleteError(friendlyError(cause)); }
+    finally { setOpeningDelete(false); }
+  };
   const { data, error, loading, reload } = useLoad(async () => {
     const [detail, careers, highSchools] = await Promise.all([rpc<Detail>('get_participant', { p_id: id }), fetchCareers(true), fetchHighSchools(true)]);
     if (!detail || typeof detail.id !== 'string') throw new Error('NOT_FOUND');
@@ -112,12 +125,24 @@ export default function ParticipantDetail() {
             {p.has_logged_in ? <Badge tone="success">Ya entró a la plataforma</Badge> : <Badge tone="neutral">Aún no entra</Badge>}
           </div>
         </div>
-        <Button variant="secondary" onClick={() => setEditing(true)}>
-          <Pencil className="h-4 w-4" aria-hidden />
-          Corregir datos
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="secondary" onClick={() => setEditing(true)}>
+            <Pencil className="h-4 w-4" aria-hidden />
+            Corregir datos
+          </Button>
+          {hasRole(staff, 'coordinacion') && (
+            <Button variant="danger" onClick={() => void openDelete()} loading={openingDelete}>
+              <Trash2 className="h-4 w-4" aria-hidden />
+              Eliminar participante
+            </Button>
+          )}
+        </div>
       </header>
 
+      {justCreated && !saved && (
+        <Alert tone="success">Participante creado. Aún no tiene acceso configurado: puede configurarlo al entrar con su correo, o puedes generarle una contraseña aquí abajo.</Alert>
+      )}
+      {deleteError && <Alert tone="error">No se pudo preparar la eliminación: {deleteError}</Alert>}
       {saved && <Alert tone="success">Cambios guardados.</Alert>}
       <PasswordAccess
         participantId={p.id}
@@ -192,6 +217,18 @@ export default function ParticipantDetail() {
         </div>
       </section>
 
+      {deleting && (
+        <PhraseConfirmModal title="Eliminar participante" phrase="ELIMINAR" confirmLabel="Eliminar definitivamente" danger
+          onClose={() => setDeleting(null)}
+          onConfirm={async () => {
+            const result = await deleteParticipant(p.id);
+            navigate('..', { relative: 'path', replace: true, state: { notice: result.account === 'kept_not_participant'
+              ? `${p.full_name} fue eliminado. La cuenta vinculada no era de participante y se conservó.`
+              : `${p.full_name} fue eliminado.` } });
+          }}>
+          <DeleteSummary preview={deleting} />
+        </PhraseConfirmModal>
+      )}
       {editing && (
         <ParticipantForm
           participantId={p.id}
@@ -217,5 +254,37 @@ export default function ParticipantDetail() {
         />
       )}
     </div>
+  );
+}
+
+const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+/** Everything that is removed with the participant, as counted by the server. */
+function DeleteSummary({ preview: d }: { preview: ParticipantDeletePreview }) {
+  const interests = d.initial_interests + d.post_event_interests;
+  const lines = [
+    d.reservations > 0 && count(d.reservations, 'reservación', 'reservaciones'),
+    d.attendances > 0 && `${count(d.attendances, 'asistencia', 'asistencias')} (${count(d.stamps, 'sello', 'sellos')})`,
+    interests > 0 && count(interests, 'interés vocacional', 'intereses vocacionales'),
+    d.email_aliases > 0 && count(d.email_aliases, 'correo anterior', 'correos anteriores'),
+    d.import_conflicts > 0 && count(d.import_conflicts, 'dato de importación por revisar', 'datos de importación por revisar'),
+    d.raffle_records > 0 && `${count(d.raffle_records, 'registro de sorteo', 'registros de sorteo')}${d.raffle_confirmed > 0 ? ' (incluye un premio confirmado, que volverá a estar disponible)' : ''}`,
+    d.has_account && d.account_will_be_deleted && 'Su cuenta de acceso (ya no podrá entrar)',
+  ].filter((line): line is string => !!line);
+  return (
+    <>
+      <p>Vas a eliminar definitivamente a <strong className="text-ink">{d.full_name}</strong> ({d.email}). Esta acción no se puede deshacer.</p>
+      {lines.length > 0 ? (
+        <>
+          <p>Junto con su expediente se eliminan:</p>
+          <ul className="list-disc space-y-1 pl-5" aria-label="Datos que se eliminarán">{lines.map((line) => <li key={line}>{line}</li>)}</ul>
+        </>
+      ) : (
+        <p>No tiene reservaciones, asistencias, intereses ni cuenta de acceso.</p>
+      )}
+      {d.has_account && !d.account_will_be_deleted && (
+        <p className="font-semibold text-fg-warning">La cuenta vinculada no es de participante (por ejemplo, de Staff): se conservará intacta y solo se desvincula.</p>
+      )}
+    </>
   );
 }
