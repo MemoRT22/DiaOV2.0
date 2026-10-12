@@ -19,7 +19,7 @@ export default function SessionTable({ rows, now, timeZone, label }: { rows: Row
         return (
           <section key={block.key} aria-label={`Bloque ${formatTime(block.startsAt)}`}>
             {showDay && <p className="bg-surface-sunken px-4 py-1.5 text-xs font-bold uppercase tracking-wider text-ink-muted">{dayLabel(block.day)}</p>}
-            <div className="sticky top-14 z-10 flex items-center gap-2.5 border-b border-line/70 bg-surface-sunken/90 px-5 py-1.5 text-xs font-bold text-ink-muted backdrop-blur lg:top-0">
+            <div className="admin-session-block-heading sticky z-10 flex items-center gap-2.5 border-b border-line/70 bg-surface-sunken/90 px-5 py-1.5 text-xs font-bold text-ink-muted backdrop-blur">
               <span aria-hidden className="h-2 w-2 rounded-full bg-primary-500 ring-4 ring-primary-500/15" />
               <span className="tabular-nums text-sm text-ink">{formatTime(block.startsAt)}</span>
               <span>{block.rows.length} {block.rows.length === 1 ? 'sesión' : 'sesiones'}</span>

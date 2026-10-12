@@ -1,10 +1,12 @@
-import { FileSpreadsheet, Search, Upload } from 'lucide-react';
-import { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Download, Eye, Pencil, Search, Upload } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Alert, Badge, buttonClasses, Spinner } from '../../components/ui';
 import { ORIGIN_LABELS, rpc } from '../../lib/adminApi';
+import { fetchCareers, fetchHighSchools, type Career, type HighSchool } from '../../lib/catalog';
 import { hasRole, useAuth } from '../../lib/auth';
 import { friendlyError } from '../../lib/errors';
+import ParticipantForm, { type ParticipantValues } from './ParticipantForm';
 
 type Hit = {
   id: string;
@@ -20,14 +22,45 @@ type Hit = {
   pending_conflicts?: number;
 };
 
+type EditableParticipant = ParticipantValues & { id: string; phone: string | null; high_school: string | null;
+  high_school_id: string | null; high_school_grade: string | null; entry_period: string | null; initial_career_id: string | null };
+type EditData = { id: string; initial: ParticipantValues; careers: Career[]; highSchools: HighSchool[] };
+
 export default function Participants() {
-  const navigate = useNavigate();
   const { staff } = useAuth();
   const coordinacion = hasRole(staff, 'coordinacion');
   const [query, setQuery] = useState('');
   const [hits, setHits] = useState<Hit[] | null>(null);
   const [error, setError] = useState('');
   const [searching, setSearching] = useState(false);
+  const [revision, setRevision] = useState(0);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editData, setEditData] = useState<EditData | null>(null);
+  const [editError, setEditError] = useState('');
+  const editRequest = useRef(0);
+
+  const closeEdit = () => { editRequest.current += 1; setEditingId(null); setEditData(null); setEditError(''); };
+  const openEdit = async (id: string) => {
+    const request = ++editRequest.current;
+    setEditingId(id); setEditData(null); setEditError('');
+    try {
+      const [detail, careers, highSchools] = await Promise.all([
+        rpc<EditableParticipant>('get_participant', { p_id: id }), fetchCareers(true), fetchHighSchools(true),
+      ]);
+      if (!detail || typeof detail.id !== 'string') throw new Error('NOT_FOUND');
+      if (request !== editRequest.current) return;
+      setEditData({ id, careers, highSchools, initial: {
+        email: detail.email, full_name: detail.full_name, phone: detail.phone ?? '',
+        high_school: detail.high_school ?? '', high_school_id: detail.high_school_id ?? '',
+        high_school_grade: detail.high_school_grade ?? '', entry_period: detail.entry_period ?? '',
+        initial_career_id: detail.initial_career_id ?? '',
+      } });
+    } catch (cause) {
+      if (request === editRequest.current) setEditError(friendlyError(cause));
+    } finally {
+      if (request === editRequest.current) setEditingId(null);
+    }
+  };
 
   const q = query.trim();
   // Without a search the screen lists the most recent registrations (newest first), so a student who just signed up
@@ -53,46 +86,46 @@ export default function Participants() {
       cancelled = true;
       clearTimeout(t);
     };
-  }, [q, browsing]);
+  }, [q, browsing, revision]);
 
   return (
     <div className="space-y-6">
       <header className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-extrabold">Participantes</h1>
-          <p className="mt-1 text-sm text-ink-muted">
-            Aquí aparecen los registros más recientes; busca por nombre, correo o teléfono. Desde su expediente puedes corregir sus datos y restablecer su contraseña.
+        <div className="max-w-3xl">
+          <h1>Participantes</h1>
+          <p className="mt-2 text-sm text-ink-muted">
+            Busca por nombre, correo o teléfono. Corrige datos desde la lista o abre el expediente para gestionar su acceso.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
           {coordinacion && (
             <>
               <Link to="importar" className={buttonClasses('secondary')}>
-                <Upload className="h-4 w-4" aria-hidden />
-                Importar participantes
+                <Upload className="h-4 w-4" aria-hidden />Importar participantes
               </Link>
               <Link to="exportar" className={buttonClasses('secondary')}>
-                <FileSpreadsheet className="h-4 w-4" aria-hidden />
-                Exportar
+                <Download className="h-4 w-4" aria-hidden />Exportar
               </Link>
             </>
           )}
         </div>
       </header>
 
-      <label className="relative block">
-        <span className="sr-only">Buscar participante</span>
-        <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-ink-muted" aria-hidden />
+      <label className="relative block max-w-3xl">
+        <span className="mb-2 block text-sm font-semibold text-ink">Buscar participante</span>
+        <Search className="pointer-events-none absolute bottom-3.5 left-4 h-4 w-4 text-ink-muted" aria-hidden />
         <input
           autoFocus
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Ej. ana.lopez@correo.com, López o 998123"
-          className="h-14 w-full rounded-theme border border-line bg-surface-raised pl-12 pr-4 text-base text-ink placeholder:text-ink-muted/70 focus:border-secondary-400 focus:outline-none focus:ring-2 focus:ring-secondary-500/30"
+          className="h-11 w-full rounded-theme border border-line bg-surface pl-11 pr-3 text-sm text-ink placeholder:text-ink-muted/70 focus:border-secondary-400 focus:outline-none focus:ring-2 focus:ring-secondary-500/30"
         />
       </label>
 
       {error && <Alert tone="error">{error}</Alert>}
+      {editError && <Alert tone="error">No se pudo abrir la edición: {editError}</Alert>}
+      {editingId && <Spinner label="Cargando datos para editar" />}
       {searching && !hits && <Spinner label="Buscando" />}
       {browsing && hits && hits.length > 0 && (
         <p className="-mb-3 text-xs font-semibold uppercase tracking-wide text-ink-muted">Registros más recientes</p>
@@ -110,20 +143,21 @@ export default function Participants() {
       )}
       {hits && hits.length > 0 && (
         <div className={`card overflow-hidden transition-opacity ${searching ? 'opacity-60' : ''}`}>
-          <table className="w-full text-left text-sm">
+          <table className="admin-participant-table w-full min-w-[44rem] text-left text-sm">
             <thead className="bg-surface-raised text-xs uppercase tracking-wide text-ink-muted">
               <tr>
-                <th className="px-4 py-3">Nombre</th>
-                <th className="hidden px-4 py-3 md:table-cell">Teléfono</th>
-                <th className="hidden px-4 py-3 lg:table-cell">Carrera inicial</th>
-                <th className="px-4 py-3">Estado</th>
+                <th scope="col" className="px-4 py-3">Participante</th>
+                <th scope="col" className="hidden px-4 py-3 md:table-cell">Teléfono</th>
+                <th scope="col" className="hidden px-4 py-3 lg:table-cell">Carrera inicial</th>
+                <th scope="col" className="px-4 py-3">Estado</th>
+                <th scope="col" className="px-4 py-3 text-right">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-line">
               {hits.map((h) => (
-                <tr key={h.id} className="cursor-pointer transition-colors hover:bg-surface-raised" onClick={() => navigate(h.id)}>
+                <tr key={h.id} className="transition-colors hover:bg-surface-raised">
                   <td className="px-4 py-3">
-                    <Link to={h.id} className="font-semibold hover:text-fg-info" onClick={(e) => e.stopPropagation()}>
+                    <Link to={h.id} className="font-semibold text-ink underline-offset-2 hover:text-fg-info hover:underline">
                       {h.full_name}
                     </Link>
                     <p className="text-xs text-ink-muted">{h.email}</p>
@@ -139,6 +173,14 @@ export default function Participants() {
                       {h.has_logged_in && <Badge tone="success">Ya entró</Badge>}
                     </div>
                   </td>
+                  <td className="admin-participant-actions px-4 py-3">
+                    <div className="flex justify-end gap-2">
+                      <Link to={h.id} className="admin-action-link" aria-label={`Ver expediente de ${h.full_name}`}><Eye className="h-4 w-4" aria-hidden />Ver</Link>
+                      <button type="button" className="admin-action-link" data-primary="true" onClick={() => void openEdit(h.id)} disabled={!!editingId} aria-label={`Editar datos de ${h.full_name}`}>
+                        <Pencil className="h-4 w-4" aria-hidden />Editar
+                      </button>
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -150,6 +192,9 @@ export default function Participants() {
           )}
         </div>
       )}
+      {editData && <ParticipantForm key={editData.id} participantId={editData.id} initial={editData.initial}
+        careers={editData.careers} highSchools={editData.highSchools} canEditHighSchool={coordinacion}
+        onClose={closeEdit} onSaved={() => { closeEdit(); setRevision((value) => value + 1); }} />}
     </div>
   );
 }

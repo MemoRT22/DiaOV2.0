@@ -19,6 +19,7 @@ const list = (items: WorkshopSummary[], counts: WorkshopList['counts'] = { pendi
 const show = () => render(<MemoryRouter initialEntries={['/coordinacion/talleres']}><Routes>
   <Route path="/coordinacion/talleres" element={<WorkshopInbox />} />
   <Route path="/coordinacion/talleres/:id" element={<div>Detalle abierto</div>} />
+  <Route path="/coordinacion/talleres/:id/editar" element={<div>Editor abierto</div>} />
 </Routes></MemoryRouter>);
 beforeEach(() => vi.clearAllMocks());
 
@@ -30,10 +31,12 @@ test.each([
   fireEvent.click(screen.getByRole('button', { name: new RegExp(button) }));
   expect(await screen.findByText('Exploración de medicina')).toBeInTheDocument();
   expect(workshopAdminApi.list).toHaveBeenLastCalledWith(expect.objectContaining({ status: group as WorkshopGroup }));
-  const card = screen.getByRole('link', { name: /Exploración de medicina/ });
+  const card = screen.getByRole('heading', { name: 'Exploración de medicina' }).closest('a')!;
   expect(within(card).getByText('Ana Ruiz')).toBeInTheDocument();
   expect(within(card).getByText('Medicina, Enfermería')).toBeInTheDocument();
   expect(within(card).getByText('Edificio A · Salón 1')).toBeInTheDocument();
+  if (group !== 'archived') expect(screen.getByRole('link', { name: 'Editar taller Exploración de medicina' })).toHaveAttribute('href', `/coordinacion/talleres/${academic.id}/editar`);
+  else expect(screen.queryByRole('link', { name: 'Editar taller Exploración de medicina' })).not.toBeInTheDocument();
   expect(screen.queryByRole('link', { name: 'Programa' })).not.toBeInTheDocument();
   expect(screen.queryByRole('link', { name: 'Propuestas' })).not.toBeInTheDocument();
 });
@@ -45,8 +48,16 @@ test('searches and paginates without loading the complete Forms payload', async 
   fireEvent.change(screen.getByLabelText('Buscar talleres'), { target: { value: 'ana@' } });
   fireEvent.click(screen.getByRole('button', { name: 'Buscar' }));
   await waitFor(() => expect(workshopAdminApi.list).toHaveBeenLastCalledWith(expect.objectContaining({ search: 'ana@' })));
-  fireEvent.click(screen.getByRole('link', { name: /Exploración de medicina/ }));
+  fireEvent.click(screen.getByRole('heading', { name: 'Exploración de medicina' }).closest('a')!);
   expect(screen.getByText('Detalle abierto')).toBeInTheDocument();
+});
+
+test('edits a workshop from the list without opening its detail first', async () => {
+  vi.mocked(workshopAdminApi.list).mockResolvedValue(list([academic]));
+  show();
+  await screen.findByRole('heading', { name: 'Exploración de medicina' });
+  fireEvent.click(screen.getByRole('link', { name: 'Editar taller Exploración de medicina' }));
+  expect(screen.getByText('Editor abierto')).toBeInTheDocument();
 });
 
 test('a long inbox keeps 25 compact rows per page and moves to the next page', async () => {
@@ -57,9 +68,9 @@ test('a long inbox keeps 25 compact rows per page and moves to the next page', a
   }));
   show();
   expect(await screen.findByText('Taller 1-24')).toBeInTheDocument();
-  expect(screen.getAllByRole('link', { name: /Taller 1-/ })).toHaveLength(25);
+  expect(screen.getAllByRole('heading', { name: /Taller 1-/ })).toHaveLength(25);
   fireEvent.click(screen.getByRole('button', { name: 'Siguiente' }));
   expect(await screen.findByText('Taller 2-4')).toBeInTheDocument();
-  expect(screen.getAllByRole('link', { name: /Taller 2-/ })).toHaveLength(5);
+  expect(screen.getAllByRole('heading', { name: /Taller 2-/ })).toHaveLength(5);
   expect(workshopAdminApi.list).toHaveBeenLastCalledWith(expect.objectContaining({ page: 2, status: 'pending' }));
 });

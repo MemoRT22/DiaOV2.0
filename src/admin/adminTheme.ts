@@ -7,19 +7,19 @@ import type { ColorKey } from '../theme/types';
  * colours (success / warning / error) for states, alerts and charts.
  */
 export const ADMIN_COLORS: Record<ColorKey, string> = {
-  primary: '#F25C05',
-  secondary: '#5B6B86',
-  accent: '#4D7C68',
-  success: '#16A34A',
-  warning: '#D97706',
-  error: '#DC2626',
-  neutral: '#78716C',
-  background: '#F6F5F2',
+  primary: '#BF4818',
+  secondary: '#24536B',
+  accent: '#23766B',
+  success: '#15803D',
+  warning: '#A65C09',
+  error: '#B42318',
+  neutral: '#64748B',
+  background: '#F4F6FA',
   surface: '#FFFFFF',
-  surfaceRaised: '#FAF9F7',
-  ink: '#1C1917',
-  inkMuted: '#5C564F',
-  line: '#E7E4DE',
+  surfaceRaised: '#EEF2F7',
+  ink: '#172238',
+  inkMuted: '#526174',
+  line: '#DCE3EC',
 };
 
 export const ADMIN_LOGO = '/assets/images/Logo_A.png';
@@ -28,7 +28,7 @@ export const ADMIN_PRODUCT_NAME = 'Día OV';
 export function adminCssVars(): Record<string, string> {
   return {
     ...paletteCssVars(ADMIN_COLORS, 700),
-    '--font-display': "'Plus Jakarta Sans', 'Montserrat', system-ui, sans-serif",
+    '--font-display': "'Inter', system-ui, sans-serif",
     '--font-body': "'Inter', system-ui, sans-serif",
     '--radius': '10px',
   };

@@ -137,7 +137,7 @@ test('a cancelled session with affected reservations appears in Atención', asyn
   ]));
   expect(await screen.findByRole('tab', { name: /Atención/ })).toHaveTextContent('1');
   fireEvent.click(tab(/Atención/));
-  const atencion = screen.getByRole('region', { name: 'Atención' });
+  const atencion = screen.getByRole('tabpanel', { name: 'Atención' });
   expect(within(atencion).getByText('Cancelada · 17 participantes con reservación')).toBeInTheDocument();
   expect(within(atencion).queryByText('Normal')).not.toBeInTheDocument();
 });
@@ -148,7 +148,7 @@ test('an upcoming session without location is attention when close, a configurat
     session(EVENT_DAY, { title: 'Sin lugar lejano', location: null, starts_at: at(EVENT_DAY, 60 * 24 * 2), ends_at: at(EVENT_DAY, 60 * 24 * 2 + 30) }),
   ]));
   fireEvent.click(await screen.findByRole('tab', { name: /Atención/ }));
-  const atencion = screen.getByRole('region', { name: 'Atención' });
+  const atencion = screen.getByRole('tabpanel', { name: 'Atención' });
   expect(within(atencion).getByText('Sin ubicación · inicia en 20 min')).toBeInTheDocument();
   expect(within(atencion).queryByText('Sin lugar lejano')).not.toBeInTheDocument();
   fireEvent.click(tab('Próximas'));
@@ -175,7 +175,7 @@ test('a finished session with reservations and no check-ins inside the window sh
     session(EVENT_DAY, { title: 'Ya escaneado', reserved: 12, attended: 7, starts_at: at(EVENT_DAY, -40), ends_at: at(EVENT_DAY, -10) }),
   ]));
   fireEvent.click(await screen.findByRole('tab', { name: /Atención/ }));
-  const atencion = screen.getByRole('region', { name: 'Atención' });
+  const atencion = screen.getByRole('tabpanel', { name: 'Atención' });
   expect(within(atencion).getByText('Check-in pendiente · terminó hace 10 min')).toBeInTheDocument();
   expect(within(atencion).queryByText('Ya escaneado')).not.toBeInTheDocument();
 });
@@ -204,7 +204,7 @@ test('on the event day it prioritizes Now: in-progress and soon-starting session
     session(EVENT_DAY, { title: 'Más tarde', starts_at: at(EVENT_DAY, 200), ends_at: at(EVENT_DAY, 230) }),
   ], { mode: 'operacion_real' }));
   expect(await screen.findByRole('tab', { name: 'Ahora' })).toHaveAttribute('aria-selected', 'true');
-  const ahora = screen.getByRole('region', { name: 'Ahora' });
+  const ahora = screen.getByRole('tabpanel', { name: 'Ahora' });
   expect(within(ahora).getByText('En marcha')).toBeInTheDocument();
   expect(within(ahora).getByText('Empieza pronto')).toBeInTheDocument();
   expect(within(ahora).queryByText('Más tarde')).not.toBeInTheDocument();
@@ -214,6 +214,15 @@ test('on the event day it prioritizes Now: in-progress and soon-starting session
   }
   expect(within(kpis).queryByText('Aceptaron aviso')).not.toBeInTheDocument();
   expect(screen.queryByText('Operación real')).not.toBeInTheDocument();
+});
+
+test('view tabs can be changed with arrow keys', async () => {
+  show(overview(BEFORE, [session(BEFORE)]));
+  const upcoming = await screen.findByRole('tab', { name: 'Próximas' });
+  upcoming.focus();
+  fireEvent.keyDown(upcoming, { key: 'ArrowLeft' });
+  expect(screen.getByRole('tab', { name: /Atención/ })).toHaveAttribute('aria-selected', 'true');
+  expect(screen.getByRole('tabpanel', { name: 'Atención' })).toBeInTheDocument();
 });
 
 test('Now never renders an empty panel: it says so and points at what is next', async () => {

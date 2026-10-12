@@ -25,7 +25,7 @@ export default function DivisionsTab() {
   return (
     <section className="space-y-4">
       <div className="flex justify-end">
-        <Button variant="secondary" onClick={() => setEditing({ sort_order: data.length + 1, is_demo: false })}>
+        <Button onClick={() => setEditing({ sort_order: data.length + 1, is_demo: false })}>
           <Plus className="h-4 w-4" aria-hidden />
           Nueva división
         </Button>
@@ -39,8 +39,8 @@ export default function DivisionsTab() {
               <p className="text-xs text-ink-muted">{d.code}</p>
             </div>
             {d.is_demo && <Badge tone="warning">Prueba</Badge>}
-            <button onClick={() => setEditing(d)} className="rounded-full p-2 text-ink-muted hover:bg-surface-raised hover:text-ink" aria-label={`Editar ${d.name}`}>
-              <Pencil className="h-4 w-4" />
+            <button onClick={() => setEditing(d)} className="admin-action-link" aria-label={`Editar ${d.name}`}>
+              <Pencil className="h-4 w-4" aria-hidden />Editar
             </button>
           </li>
         ))}

@@ -71,18 +71,6 @@ export default function StaffAccounts() {
                   </p>
                   <p className="mt-0.5 break-all text-xs text-ink-muted">{a.email}</p>
                 </div>
-                <div className="-mr-1 -mt-1 flex shrink-0 gap-0.5">
-                  <button onClick={() => setEditing(a)} className="rounded-full p-2 text-ink-muted transition-colors hover:bg-neutral-500/10 hover:text-ink" aria-label={`Editar ${a.full_name}`}>
-                    <Pencil className="h-4 w-4" />
-                  </button>
-                  <button
-                    onClick={() => setResetting(a)}
-                    className="rounded-full p-2 text-ink-muted transition-colors hover:bg-neutral-500/10 hover:text-ink"
-                    aria-label={`Cambiar contraseña de ${a.full_name}`}
-                  >
-                    <KeyRound className="h-4 w-4" />
-                  </button>
-                </div>
               </div>
               <div className="flex flex-wrap gap-1.5">
                 {a.roles.map((r) => (
@@ -92,6 +80,14 @@ export default function StaffAccounts() {
                 ))}
                 {!a.is_active && <Badge tone="error">Desactivada</Badge>}
                 {a.is_demo && <Badge tone="warning">Prueba</Badge>}
+              </div>
+              <div className="mt-auto flex flex-wrap gap-2 border-t border-line pt-4">
+                <button onClick={() => setEditing(a)} className="admin-action-link" data-primary="true" aria-label={`Editar ${a.full_name}`}>
+                  <Pencil className="h-4 w-4" aria-hidden />Editar cuenta
+                </button>
+                <button onClick={() => setResetting(a)} className="admin-action-link" aria-label={`Cambiar contraseña de ${a.full_name}`}>
+                  <KeyRound className="h-4 w-4" aria-hidden />Cambiar contraseña
+                </button>
               </div>
             </li>
           ))}

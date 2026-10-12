@@ -256,7 +256,7 @@ export default function ThemeEditor() {
           </fieldset>
         </div>
 
-        <aside className="space-y-4 lg:sticky lg:top-6 lg:self-start">
+        <aside className="admin-theme-preview-sticky space-y-4 lg:sticky lg:self-start">
           <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Vista previa</p>
           <ThemePreview config={config} />
           {issues.length > 0 ? (

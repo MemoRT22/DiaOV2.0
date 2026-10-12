@@ -1,5 +1,5 @@
-import { CheckCircle2, RefreshCw, Search } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { CheckCircle2, QrCode, RefreshCw, Search, SlidersHorizontal, X } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { Alert, Button, LoadError, PageSkeleton } from '../components/ui';
 import { formatTime } from '../lib/catalog';
@@ -18,8 +18,8 @@ const TICK_MS = 15_000;
 
 const VIEWS: { key: OperationsView; label: string }[] = [
   { key: 'ahora', label: 'Ahora' },
-  { key: 'proximas', label: 'Próximas' },
   { key: 'atencion', label: 'Atención' },
+  { key: 'proximas', label: 'Próximas' },
   { key: 'programa', label: 'Programa completo' },
 ];
 
@@ -91,11 +91,23 @@ export default function OperationsCenter() {
   };
   const tz = data.timezone;
   const searching = filters.query.trim() !== '' || filters.divisionId !== '';
+  const hasFilters = searching || filters.moment !== '' || filters.demand !== '';
   const unlocated = unlocatedUpcoming(rows);
+  const onViewKeyDown = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
+    let next = index;
+    if (event.key === 'ArrowRight') next = (index + 1) % VIEWS.length;
+    else if (event.key === 'ArrowLeft') next = (index - 1 + VIEWS.length) % VIEWS.length;
+    else if (event.key === 'Home') next = 0;
+    else if (event.key === 'End') next = VIEWS.length - 1;
+    else return;
+    event.preventDefault();
+    setView(VIEWS[next].key);
+    document.getElementById(`operation-tab-${VIEWS[next].key}`)?.focus();
+  };
 
   return (
-    <div className="space-y-5">
-      <header className="flex flex-wrap items-start justify-between gap-3">
+    <div className="space-y-8">
+      <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-extrabold">Centro de Operación</h1>
           <p className="mt-1.5 flex items-center gap-2 text-sm text-ink-muted">
@@ -103,19 +115,57 @@ export default function OperationsCenter() {
             {formatUpdatedAgo(elapsed)}
           </p>
         </div>
-        <Button variant="secondary" onClick={load} loading={loading} className="min-h-10">
-          <RefreshCw className="h-4 w-4" aria-hidden />
-          Actualizar
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Link to="/coordinacion/checkin" className="admin-action-link"><QrCode className="h-4 w-4" aria-hidden />Panel de check-in</Link>
+          <Button variant="secondary" onClick={load} loading={loading} className="min-h-10">
+            <RefreshCw className="h-4 w-4" aria-hidden />Actualizar
+          </Button>
+        </div>
       </header>
 
       {!!error && <Alert tone="warning">No se pudo actualizar; se muestran los últimos datos recibidos.</Alert>}
 
-      <ProgramPulse summary={data.summary} />
-      <SummaryStrip items={summaryItems(phase, data.summary, counts)} />
+      <section aria-label="Resumen de operación" className="space-y-4">
+        <div><h2 className="text-lg font-bold">Panorama del evento</h2><p className="mt-1 text-sm text-ink-muted">Aforo, participación y datos que cambian durante la jornada.</p></div>
+        <ProgramPulse summary={data.summary} />
+        <SummaryStrip items={summaryItems(phase, data.summary, counts)} />
+      </section>
+
+      <section aria-label="Explorar sesiones" className="space-y-4">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div><h2 className="text-lg font-bold">Sesiones</h2><p className="mt-1 text-sm text-ink-muted">Elige qué necesitas atender y filtra el programa.</p></div>
+        {hasFilters && <button type="button" className="admin-action-link" onClick={() => setFilters(NO_FILTERS)}><X className="h-4 w-4" aria-hidden />Limpiar filtros</button>}
+      </div>
+
+      <div role="tablist" aria-label="Vistas del Centro de Operación" className="admin-operation-tabs no-scrollbar flex max-w-full gap-1 overflow-x-auto p-1">
+        {VIEWS.map(({ key, label }, index) => {
+          const selected = active === key;
+          return (
+            <button
+              key={key}
+              id={`operation-tab-${key}`}
+              role="tab"
+              aria-controls="operation-results"
+              aria-selected={selected}
+              tabIndex={selected ? 0 : -1}
+              onClick={() => setView(key)}
+              onKeyDown={(event) => onViewKeyDown(event, index)}
+              className="flex min-h-11 items-center gap-2 whitespace-nowrap px-4 text-sm font-semibold transition-colors focus-visible:outline-none"
+            >
+              {label}
+              {key === 'atencion' && attentionCount > 0 && (
+                <span className="rounded-full bg-warning-500/20 px-2 py-0.5 text-xs font-bold text-fg-warning" aria-label={`${attentionCount} por atender`}>
+                  {attentionCount}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
 
       <div className="card space-y-3 p-3 sm:p-4">
       <div className="flex flex-wrap items-center gap-2">
+        <SlidersHorizontal className="hidden h-4 w-4 text-ink-muted sm:block" aria-hidden />
         <label className="relative min-w-[14rem] flex-1">
           <span className="sr-only">Buscar taller, lugar o división</span>
           <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-muted" aria-hidden />
@@ -140,30 +190,6 @@ export default function OperationsCenter() {
         )}
       </div>
 
-      <div role="tablist" aria-label="Vistas del Centro de Operación" className="no-scrollbar flex max-w-full gap-1 self-start overflow-x-auto rounded-xl bg-neutral-500/10 p-1 [width:fit-content]">
-        {VIEWS.map(({ key, label }) => {
-          const selected = active === key;
-          return (
-            <button
-              key={key}
-              role="tab"
-              aria-selected={selected}
-              onClick={() => setView(key)}
-              className={`flex items-center gap-2 whitespace-nowrap rounded-lg px-4 py-2 text-sm font-semibold transition-all duration-200 focus-visible:outline-none ${
-                selected ? 'bg-surface text-ink shadow-sm ring-1 ring-line' : 'text-ink-muted hover:text-ink'
-              }`}
-            >
-              {label}
-              {key === 'atencion' && attentionCount > 0 && (
-                <span className="rounded-full bg-warning-500/20 px-2 py-0.5 text-xs font-bold text-fg-warning" aria-label={`${attentionCount} por atender`}>
-                  {attentionCount}
-                </span>
-              )}
-            </button>
-          );
-        })}
-      </div>
-
       {active === 'programa' && (
         <div className="flex flex-wrap gap-2">
           <label>
@@ -183,6 +209,7 @@ export default function OperationsCenter() {
         </div>
       )}
       </div>
+      </section>
 
       {unlocated.length > 0 && active !== 'atencion' && (
         <Alert tone="info">
@@ -191,7 +218,7 @@ export default function OperationsCenter() {
         </Alert>
       )}
 
-      <section aria-label={VIEWS.find((v) => v.key === active)?.label}>
+      <section id="operation-results" role="tabpanel" tabIndex={0} aria-label={VIEWS.find((v) => v.key === active)?.label}>
         {active === 'ahora' && <NowView views={views.ahora} rows={filtered} now={now} tz={tz} searching={searching} />}
         {active === 'proximas' && (
           views.proximas.length

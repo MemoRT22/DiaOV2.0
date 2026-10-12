@@ -1,4 +1,4 @@
-import { ArrowLeft, Copy } from 'lucide-react';
+import { ArrowLeft, Copy, Pencil } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { Alert, Badge, Button, Modal, Spinner } from '../../components/ui';
@@ -20,7 +20,7 @@ const groupCareers = (careers: WorkshopCareer[]) => {
   return [...groups];
 };
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return <section className="card space-y-4 p-5"><h2 className="text-lg font-bold">{title}</h2>{children}</section>;
+  return <section className="card admin-detail-section space-y-4 p-5"><h2 className="text-lg font-bold">{title}</h2>{children}</section>;
 }
 function Item({ label, children }: { label: string; children: React.ReactNode }) {
   return <div><dt className="text-xs font-semibold uppercase tracking-wide text-ink-muted">{label}</dt><dd className="mt-1 whitespace-pre-wrap text-sm">{children}</dd></div>;
@@ -70,9 +70,9 @@ export default function WorkshopDetail() {
   const life = data.activity_type === 'vida_universitaria';
   return <div className="space-y-6">
     <Link to="/coordinacion/talleres" className="inline-flex items-center gap-2 text-sm text-ink-muted hover:text-ink"><ArrowLeft className="h-4 w-4" />Volver a Talleres</Link>
-    <header className="space-y-2">
-      <div className="flex flex-wrap items-start justify-between gap-3"><h1 className="text-2xl font-extrabold">{data.title}</h1><Badge tone={group === 'published' ? 'success' : group === 'archived' ? 'neutral' : 'warning'}>{GROUP_LABELS[group]}</Badge></div>
-      <p className="text-sm text-ink-muted">Recibido el {formatDate(data.submitted_at)}</p>
+    <header className="admin-feature-card space-y-4 p-5 sm:p-6">
+      <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="mb-1 text-xs font-semibold uppercase tracking-wider text-ink-muted">{TYPE_LABELS[data.activity_type]}</p><h1 className="text-2xl font-extrabold">{data.title}</h1><p className="mt-2 text-sm text-ink-muted">Recibido el {formatDate(data.submitted_at)}</p></div><Badge tone={group === 'published' ? 'success' : group === 'archived' ? 'neutral' : 'warning'}>{GROUP_LABELS[group]}</Badge></div>
+      {group !== 'archived' && <div className="border-t border-line pt-4"><Link to={`/coordinacion/talleres/${id}/editar`} className="admin-action-link" data-primary="true"><Pencil className="h-4 w-4" aria-hidden />Editar taller</Link></div>}
     </header>
     {notice && <Alert tone="success">{notice} <Link to="/coordinacion/talleres" className="font-semibold underline">Volver a Talleres</Link></Alert>}
     {actionError && <Alert tone="error">{actionError}</Alert>}
@@ -105,13 +105,13 @@ export default function WorkshopDetail() {
         <p className="mt-1 text-sm text-ink-muted">{careers.join(', ')}</p></div>)}</Section>}
 
     {group === 'published' && <Operational detail={data} />}
-    {(pending || group === 'published') && <div className="card flex flex-wrap gap-3 p-5" aria-label="Acciones del taller">
-      <Link to={`/coordinacion/talleres/${id}/editar`} className="inline-flex min-h-11 items-center rounded-full border border-line px-5 text-sm font-semibold hover:border-secondary-400">Editar</Link>
-      {pending && <>
+    {pending && <section className="card space-y-3 p-5" aria-label="Decisión sobre el taller">
+      <div><h2 className="text-lg font-bold">Decisión sobre la propuesta</h2><p className="mt-1 text-sm text-ink-muted">Verifica los datos anteriores antes de publicar o descartar.</p></div>
+      <div className="flex flex-wrap gap-3">
         <Button loading={busy === 'approve'} disabled={!!busy} onClick={() => void run('approve')}>Aprobar</Button>
         <Button variant="danger" disabled={!!busy} onClick={() => setConfirmDiscard(true)}>Descartar</Button>
-      </>}
-    </div>}
+      </div>
+    </section>}
     {confirmDiscard && <Modal title="Descartar taller" onClose={() => { if (!busyRef.current) setConfirmDiscard(false); }}>
       <p className="mb-5 text-sm text-ink-muted">El taller se conservará en Descartados y no estará disponible para alumnos.</p>
       <div className="flex justify-end gap-3"><Button variant="secondary" disabled={!!busy} onClick={() => setConfirmDiscard(false)}>Cancelar</Button>

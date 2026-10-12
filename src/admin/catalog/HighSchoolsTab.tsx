@@ -21,15 +21,15 @@ export default function HighSchoolsTab() {
         <p className="text-sm font-semibold">{active} activas</p>
         <p className="text-xs text-ink-muted">Las inactivas siguen visibles en los expedientes históricos.</p>
       </div>
-      <Button variant="secondary" onClick={() => setEditing({ is_active: true })}><Plus className="h-4 w-4" aria-hidden /> Nueva preparatoria</Button>
+      <Button onClick={() => setEditing({ is_active: true })}><Plus className="h-4 w-4" aria-hidden /> Nueva preparatoria</Button>
     </div>
     <Field label="Buscar preparatorias" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Nombre o plantel" />
     <ul className="card max-h-[36rem] divide-y divide-line overflow-y-auto">
       {filtered.map((school) => <li key={school.id} className="flex items-center gap-3 px-5 py-3">
         <span className={`flex-1 text-sm font-semibold ${school.is_active ? '' : 'text-ink-muted line-through'}`}>{school.name}</span>
         {!school.is_active && <Badge tone="neutral">Inactiva</Badge>}
-        <button type="button" onClick={() => setEditing(school)} aria-label={`Editar ${school.name}`} className="rounded-full p-2 text-ink-muted hover:bg-surface-raised hover:text-ink">
-          <Pencil className="h-4 w-4" />
+        <button type="button" onClick={() => setEditing(school)} aria-label={`Editar ${school.name}`} className="admin-action-link">
+          <Pencil className="h-4 w-4" aria-hidden />Editar
         </button>
       </li>)}
       {!filtered.length && <li className="p-5 text-sm text-ink-muted">Sin coincidencias.</li>}

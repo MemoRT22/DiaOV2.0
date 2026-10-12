@@ -13,7 +13,7 @@ function Ring({ value }: { value: number }) {
           <stop offset="100%" stopColor="rgb(var(--c-primary-600))" />
         </linearGradient>
       </defs>
-      <circle cx="60" cy="60" r={r} fill="none" stroke="rgb(var(--c-neutral-500) / 0.14)" strokeWidth="11" />
+      <circle cx="60" cy="60" r={r} fill="none" stroke="rgb(255 255 255 / 0.2)" strokeWidth="11" />
       <circle
         cx="60" cy="60" r={r} fill="none" stroke="url(#pulse-ring)" strokeWidth="11" strokeLinecap="round"
         strokeDasharray={`${(c * value) / 100} ${c}`} style={{ transition: 'stroke-dasharray 0.9s cubic-bezier(0.22, 1, 0.36, 1)' }}
@@ -29,7 +29,7 @@ function Meter({ label, value, detail, bar }: { label: string; value: number; de
         <span className="font-semibold">{label}</span>
         <span className="tabular-nums text-ink-muted"><span className="font-display font-extrabold text-ink">{value}%</span> · {detail}</span>
       </div>
-      <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-neutral-500/15" aria-hidden>
+      <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-white/20" aria-hidden>
         <div className={`h-full rounded-full bg-gradient-to-r ${bar}`} style={{ width: `${value}%`, transition: 'width 0.9s cubic-bezier(0.22, 1, 0.36, 1)' }} />
       </div>
     </div>

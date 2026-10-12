@@ -3,10 +3,12 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { rpc } from '../../lib/adminApi';
+import { fetchCareers, fetchHighSchools } from '../../lib/catalog';
 import { useAuth, type StaffRole } from '../../lib/auth';
 import Participants from './Participants';
 
 vi.mock('../../lib/adminApi', async (importOriginal) => ({ ...await importOriginal<typeof import('../../lib/adminApi')>(), rpc: vi.fn() }));
+vi.mock('../../lib/catalog', async (importOriginal) => ({ ...await importOriginal<typeof import('../../lib/catalog')>(), fetchCareers: vi.fn(), fetchHighSchools: vi.fn() }));
 vi.mock('../../lib/auth', async (importOriginal) => ({ ...await importOriginal<typeof import('../../lib/auth')>(), useAuth: vi.fn() }));
 
 const hit = (over: Record<string, unknown>) => ({
@@ -25,7 +27,29 @@ const show = () => render(<MemoryRouter initialEntries={['/coordinacion/particip
 beforeEach(() => {
   vi.clearAllMocks();
   role(['coordinacion']);
+  vi.mocked(fetchCareers).mockResolvedValue([]);
+  vi.mocked(fetchHighSchools).mockResolvedValue([]);
   vi.mocked(rpc).mockImplementation(async (name: string) => (name === 'search_participants' ? [hit({})] : undefined) as never);
+});
+
+test('edits participant data directly from the list and refreshes the result', async () => {
+  vi.mocked(rpc).mockImplementation((async (name: string) => {
+    if (name === 'search_participants') return [hit({})];
+    if (name === 'get_participant') return {
+      id: 'p-1', email: 'ana@correo.com', full_name: 'Ana López', phone: null, high_school: null,
+      high_school_id: null, high_school_grade: null, entry_period: null, initial_career_id: null,
+    };
+    if (name === 'update_participant') return null;
+    return undefined;
+  }) as never);
+  show();
+  await screen.findByText('Ana López');
+  await userEvent.click(screen.getByRole('button', { name: 'Editar datos de Ana López' }));
+  const dialog = await screen.findByRole('dialog', { name: 'Corregir datos' });
+  await userEvent.clear(within(dialog).getByRole('textbox', { name: 'Nombre completo' }));
+  await userEvent.type(within(dialog).getByRole('textbox', { name: 'Nombre completo' }), 'Ana María López');
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Guardar cambios' }));
+  expect(vi.mocked(rpc)).toHaveBeenCalledWith('update_participant', { p_id: 'p-1', p: { full_name: 'Ana María López' } });
 });
 
 test('Participantes is the single place for search, import and export: nobody is registered by hand any more', async () => {

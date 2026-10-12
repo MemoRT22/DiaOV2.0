@@ -1,423 +1,302 @@
-/* ==========================================================================================================
-   Back office visual system. Everything is scoped to `data-surface="admin"` (set by paintAdminSurface) or to
-   `.admin-*` classes only used in the back office, so the configurable public theme is never affected.
-   Pure presentation: no markup contract or behaviour depends on it.
-   ========================================================================================================== */
+/* Admin-only design system. Public and student surfaces keep their own theme. */
 html[data-surface='admin'] {
-  --admin-shadow-xs: 0 1px 2px rgb(28 25 23 / 0.05);
-  --admin-shadow-sm: 0 1px 2px rgb(28 25 23 / 0.05), 0 6px 18px -10px rgb(28 25 23 / 0.16);
-  --admin-shadow-md: 0 2px 4px rgb(28 25 23 / 0.04), 0 18px 38px -18px rgb(28 25 23 / 0.28);
-  --admin-shadow-lg: 0 30px 70px -24px rgb(28 25 23 / 0.45);
-  --admin-ring: 0 0 0 4px rgb(var(--c-primary-500) / 0.16);
-  --admin-ease: cubic-bezier(0.22, 1, 0.36, 1);
-  scroll-behavior: smooth;
+  --admin-focus: 0 0 0 3px rgb(var(--c-primary-500) / 0.18);
+  color-scheme: light;
 }
 
 html[data-surface='admin'] body {
-  background-color: rgb(var(--surface-sunken));
-  background-image:
-    radial-gradient(1000px 560px at 108% -14%, rgb(var(--c-primary-500) / 0.06), transparent 62%),
-    radial-gradient(800px 520px at -10% 112%, rgb(var(--c-neutral-500) / 0.06), transparent 62%);
-  background-attachment: fixed;
-}
-html[data-surface='admin'] ::selection {
-  background: rgb(var(--c-primary-500) / 0.22);
-}
-html[data-surface='admin'] :focus-visible {
-  outline: none;
-  box-shadow: var(--admin-ring);
-  border-radius: 10px;
+  background: rgb(var(--surface-sunken));
 }
 
-/* Typography */
+html[data-surface='admin'] :focus-visible {
+  outline: 2px solid rgb(var(--c-primary-500));
+  outline-offset: 2px;
+}
+
 html[data-surface='admin'] h1 {
-  letter-spacing: -0.025em;
-  font-weight: 800;
+  color: rgb(var(--ink));
+  font-size: clamp(1.75rem, 1.4rem + 1.2vw, 2.2rem);
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  line-height: 1.14;
 }
-html[data-surface='admin'] main :not(.admin-hero) > h1 {
-  font-size: clamp(1.75rem, 1.2rem + 1.6vw, 2.35rem);
-  line-height: 1.1;
-}
+
 html[data-surface='admin'] h2,
 html[data-surface='admin'] h3 {
-  letter-spacing: -0.015em;
-}
-html[data-surface='admin'] p.text-xs.font-bold.uppercase.text-fg-brand {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.55rem;
-}
-html[data-surface='admin'] p.text-xs.font-bold.uppercase.text-fg-brand::before {
-  content: '';
-  width: 1.4rem;
-  height: 3px;
-  border-radius: 999px;
-  background: linear-gradient(90deg, rgb(var(--c-primary-500)), rgb(var(--c-primary-300)));
+  color: rgb(var(--ink));
+  font-weight: 650;
+  letter-spacing: -0.025em;
 }
 
-/* Surfaces */
-html[data-surface='admin'] .card {
-  border-radius: calc(var(--radius) + 6px);
-  border-color: rgb(var(--line) / 0.9);
-  background: rgb(var(--surface));
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.9), var(--admin-shadow-sm);
-  transition: transform 0.35s var(--admin-ease), box-shadow 0.35s var(--admin-ease), border-color 0.2s, background-color 0.2s;
+/* Sticky content uses the same height as the persistent workspace bar. */
+.admin-shell { --admin-topbar-height: 4.25rem; background: radial-gradient(circle at 84% -16%, rgb(var(--c-secondary-300) / 0.16), transparent 32rem), rgb(var(--surface-sunken)); }
+.admin-sidebar { background: linear-gradient(165deg, rgb(var(--surface)), rgb(var(--surface-raised) / 0.64)); }
+.admin-workspace { min-width: 0; }
+.admin-topbar { height: var(--admin-topbar-height); background: rgb(var(--surface) / 0.9); backdrop-filter: blur(18px); }
+.admin-skip-link { position: fixed; z-index: 70; left: 1rem; top: -4rem; border-radius: 0.65rem; background: rgb(var(--ink)); color: white; padding: 0.65rem 1rem; font-weight: 700; }
+.admin-skip-link:focus { top: 0.5rem; }
+.admin-session-block-heading { top: var(--admin-topbar-height, 4rem); }
+@media (min-width: 1024px) {
+  .admin-theme-preview-sticky { top: calc(var(--admin-topbar-height, 4rem) + 1.5rem); }
 }
+.admin-brand-mark { background: rgb(var(--surface-raised)); border: 1px solid rgb(var(--line)); }
+.admin-login-intro { position: relative; overflow: hidden; background: radial-gradient(circle at 78% 22%, rgb(var(--c-primary-500) / 0.25), transparent 28%), linear-gradient(155deg, rgb(var(--c-secondary-950)), rgb(var(--c-secondary-700))); color: white; }
+.admin-login-intro::after { content: ''; position: absolute; right: -10rem; top: -8rem; width: 32rem; height: 32rem; border: 1px solid rgb(255 255 255 / 0.2); border-radius: 50%; box-shadow: 0 0 0 4rem rgb(255 255 255 / 0.035), 0 0 0 8rem rgb(255 255 255 / 0.025); pointer-events: none; }
+.admin-login-intro > * { position: relative; z-index: 1; }
+html[data-surface='admin'] .admin-login-intro h2,
+html[data-surface='admin'] .admin-login-intro .text-ink { color: white; }
+html[data-surface='admin'] .admin-login-intro .text-ink-muted { color: rgb(255 255 255 / 0.75); }
+.admin-nav-heading {
+  color: rgb(var(--ink-muted));
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.11em;
+  line-height: 1.5;
+  text-transform: uppercase;
+}
+.admin-nav-link {
+  display: flex;
+  min-height: 2.9rem;
+  align-items: center;
+  gap: 0.75rem;
+  border-radius: 10px;
+  padding: 0.65rem 0.8rem;
+  color: rgb(var(--ink-muted));
+  font-size: 0.875rem;
+  font-weight: 550;
+  transition: background-color 0.15s, color 0.15s;
+}
+.admin-nav-link:hover,
+.admin-account-link:hover,
+.admin-signout:hover { background: rgb(var(--surface-raised)); color: rgb(var(--ink)); }
+.admin-nav-link[data-active='true'] {
+  background: linear-gradient(100deg, rgb(var(--c-primary-500) / 0.13), rgb(var(--c-primary-500) / 0.035));
+  box-shadow: inset 3px 0 0 rgb(var(--c-primary-600));
+  color: rgb(var(--ink));
+  font-weight: 700;
+}
+.admin-nav-icon { color: rgb(var(--c-secondary-600)); }
+.admin-nav-link[data-active='true'] .admin-nav-icon { color: rgb(var(--c-primary-700)); }
+.admin-nav-active-dot { width: 0.38rem; height: 0.38rem; border-radius: 50%; background: rgb(var(--c-primary-600)); }
+.admin-account-link,
+.admin-signout { border-radius: 8px; padding: 0.65rem 0.75rem; transition: background-color 0.15s, color 0.15s; }
+.admin-avatar { background: rgb(var(--surface-raised)); border: 1px solid rgb(var(--line)); color: rgb(var(--ink)); }
+.admin-signout { color: rgb(var(--ink-muted)); text-align: left; }
+.admin-icon-button {
+  display: inline-flex;
+  min-width: 2.5rem;
+  min-height: 2.5rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  color: rgb(var(--ink));
+}
+.admin-icon-button:hover { background: rgb(var(--surface-raised)); }
+
+/* Page surfaces stay quiet so content and status are easier to scan. */
+html[data-surface='admin'] .card {
+  border: 1px solid rgb(var(--line));
+  border-radius: 16px;
+  background: linear-gradient(155deg, rgb(var(--surface)), rgb(var(--surface-raised) / 0.54));
+  box-shadow: 0 1px 2px rgb(23 34 56 / 0.055), 0 12px 34px -28px rgb(23 34 56 / 0.28);
+}
+html[data-surface='admin'] a.card,
+html[data-surface='admin'] button.card { transition: border-color 0.15s, background-color 0.15s, box-shadow 0.15s; }
 html[data-surface='admin'] a.card:hover,
 html[data-surface='admin'] button.card:hover {
-  transform: translateY(-3px);
-  border-color: rgb(var(--c-primary-500) / 0.35);
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.9), var(--admin-shadow-md);
+  border-color: rgb(var(--c-secondary-500) / 0.48);
+  background: rgb(var(--surface));
+  box-shadow: 0 12px 30px -18px rgb(23 34 56 / 0.24);
 }
 
-/* Tables */
-html[data-surface='admin'] table thead th {
-  font-size: 0.68rem;
-  font-weight: 700;
-  letter-spacing: 0.09em;
-  color: rgb(var(--ink-muted));
-  background: linear-gradient(180deg, rgb(var(--surface-raised)), rgb(var(--surface)));
-  border-bottom: 1px solid rgb(var(--line));
-}
-html[data-surface='admin'] table tbody tr {
-  transition: background-color 0.15s;
-}
-html[data-surface='admin'] table tbody tr:hover {
-  background-color: rgb(var(--c-primary-500) / 0.035);
-}
-
-/* Buttons */
 html[data-surface='admin'] .btn {
   min-height: 2.75rem;
-  border-radius: 12px;
-  padding-inline: 1.2rem;
-  font-weight: 600;
-  letter-spacing: -0.005em;
-  transition: transform 0.2s var(--admin-ease), box-shadow 0.25s var(--admin-ease), background-color 0.2s, border-color 0.2s, color 0.2s;
+  border-radius: 10px;
+  padding: 0.65rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 650;
+  line-height: 1.2;
+  letter-spacing: 0;
+  box-shadow: none;
+  transition: background-color 0.15s, border-color 0.15s, color 0.15s, box-shadow 0.15s;
 }
-html[data-surface='admin'] .btn:hover:not(:disabled) {
-  transform: translateY(-1px);
-}
-html[data-surface='admin'] .btn:active:not(:disabled) {
-  transform: translateY(0) scale(0.985);
-}
+html[data-surface='admin'] .btn:active:not(:disabled) { transform: none; }
+html[data-surface='admin'] .btn > svg { width: 1rem; height: 1rem; stroke-width: 1.8; }
 html[data-surface='admin'] .btn-primary {
-  background-image: linear-gradient(180deg, rgb(var(--c-primary-400)), rgb(var(--c-primary-500)) 55%, rgb(var(--c-primary-600)));
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.35), 0 8px 20px -8px rgb(var(--c-primary-600) / 0.75);
+  border: 1px solid rgb(var(--c-primary-600));
+  background: linear-gradient(135deg, rgb(var(--c-primary-600)), rgb(var(--c-primary-700)));
+  color: white;
+  box-shadow: 0 7px 16px -9px rgb(var(--c-primary-700) / 0.7);
 }
-html[data-surface='admin'] .btn-primary:hover:not(:disabled) {
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.4), 0 14px 28px -10px rgb(var(--c-primary-600) / 0.85);
-  filter: saturate(1.08);
-}
+html[data-surface='admin'] .btn-primary:hover:not(:disabled) { background: rgb(var(--c-primary-700)); border-color: rgb(var(--c-primary-700)); }
 html[data-surface='admin'] .btn-secondary {
-  background: rgb(var(--surface));
   border: 1px solid rgb(var(--line));
-  box-shadow: var(--admin-shadow-xs);
-}
-html[data-surface='admin'] .btn-secondary:hover:not(:disabled) {
-  border-color: rgb(var(--c-primary-500) / 0.45);
-  box-shadow: var(--admin-shadow-sm);
-}
-html[data-surface='admin'] .btn-ghost:hover:not(:disabled) {
-  background: rgb(var(--c-neutral-500) / 0.1);
-}
-html[data-surface='admin'] .btn-danger {
-  background-image: linear-gradient(180deg, rgb(var(--c-error-500)), rgb(var(--c-error-600)));
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.25), 0 8px 18px -8px rgb(var(--c-error-600) / 0.7);
-}
-
-/* Fields */
-html[data-surface='admin'] .field-input {
-  height: 2.9rem;
-  border-radius: 12px;
   background: rgb(var(--surface));
-  border-color: rgb(var(--line));
-  box-shadow: var(--admin-shadow-xs);
-  transition: border-color 0.2s, box-shadow 0.25s var(--admin-ease), background-color 0.2s;
+  color: rgb(var(--ink));
+  box-shadow: 0 1px 2px rgb(23 34 56 / 0.05);
 }
-html[data-surface='admin'] .field-input:hover:not(:disabled) {
-  border-color: rgb(var(--c-neutral-400));
-}
-html[data-surface='admin'] .field-input:focus {
-  border-color: rgb(var(--c-primary-500));
-  box-shadow: var(--admin-ring);
-}
-html[data-surface='admin'] select.field-input {
-  appearance: none;
-  padding-right: 2.5rem;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%235C564F' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 0.9rem center;
-}
+html[data-surface='admin'] .btn-secondary:hover:not(:disabled) { background: rgb(var(--surface-raised)); border-color: rgb(var(--c-neutral-400)); }
+html[data-surface='admin'] .btn-ghost { color: rgb(var(--c-secondary-700)); }
+html[data-surface='admin'] .btn-ghost:hover:not(:disabled) { background: rgb(var(--surface-raised)); color: rgb(var(--ink)); }
+html[data-surface='admin'] .btn-danger { background: rgb(var(--c-error-600)); border: 1px solid rgb(var(--c-error-600)); color: white; }
+html[data-surface='admin'] .btn-danger:hover:not(:disabled) { background: rgb(var(--c-error-700)); }
 
-/* Inputs that do not use <Field> (search boxes, inline selects, text areas) get the same finish */
-html[data-surface='admin'] main input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='file']):not(.field-input),
-html[data-surface='admin'] main textarea,
-html[data-surface='admin'] main select:not(.field-input) {
-  border-radius: 12px;
+html[data-surface='admin'] .field-input,
+html[data-surface='admin'] .admin-content input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='file']),
+html[data-surface='admin'] .admin-content textarea,
+html[data-surface='admin'] .admin-content select {
+  border-radius: 8px;
   border-color: rgb(var(--line));
   background-color: rgb(var(--surface));
-  box-shadow: var(--admin-shadow-xs);
-  transition: border-color 0.2s, box-shadow 0.25s var(--admin-ease);
+  box-shadow: none;
+  color-scheme: light;
 }
-html[data-surface='admin'] main input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='file']):not(.field-input):focus,
-html[data-surface='admin'] main textarea:focus,
-html[data-surface='admin'] main select:not(.field-input):focus {
-  outline: none;
+html[data-surface='admin'] .admin-content .text-error-300 { color: rgb(var(--c-error-700)); }
+html[data-surface='admin'] .field-input:focus,
+html[data-surface='admin'] .admin-content input:focus,
+html[data-surface='admin'] .admin-content textarea:focus,
+html[data-surface='admin'] .admin-content select:focus {
   border-color: rgb(var(--c-primary-500));
-  box-shadow: var(--admin-ring);
+  box-shadow: var(--admin-focus);
+  outline: none;
 }
 html[data-surface='admin'] input[type='checkbox'],
 html[data-surface='admin'] input[type='radio'],
-html[data-surface='admin'] input[type='range'] {
-  accent-color: rgb(var(--c-primary-500));
-}
+html[data-surface='admin'] input[type='range'] { accent-color: rgb(var(--c-primary-600)); }
 
-/* Badges and alerts */
 html[data-surface='admin'] .badge {
-  gap: 0.4rem;
-  padding: 0.25rem 0.7rem;
-  letter-spacing: 0.01em;
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor 18%, transparent);
+  border-radius: 6px;
+  padding: 0.25rem 0.55rem;
+  font-size: 0.72rem;
+  font-weight: 650;
+  box-shadow: none;
 }
-html[data-surface='admin'] .badge::before {
-  content: '';
-  width: 0.4rem;
-  height: 0.4rem;
-  border-radius: 999px;
-  background: currentColor;
-  flex: none;
-}
-html[data-surface='admin'] .alert {
-  border-radius: calc(var(--radius) + 2px);
-  border-left-width: 4px;
-  box-shadow: var(--admin-shadow-xs);
-}
-html[data-surface='admin'] .alert-info { border-left-color: rgb(var(--c-secondary-500)); }
-html[data-surface='admin'] .alert-success { border-left-color: rgb(var(--c-success-500)); }
-html[data-surface='admin'] .alert-warning { border-left-color: rgb(var(--c-warning-500)); }
-html[data-surface='admin'] .alert-error { border-left-color: rgb(var(--c-error-500)); }
+html[data-surface='admin'] .alert { border-radius: 8px; box-shadow: none; }
+html[data-surface='admin'] .modal-backdrop { background: rgb(31 41 51 / 0.42); backdrop-filter: none; }
+html[data-surface='admin'] .modal-panel { border-radius: 18px; box-shadow: 0 24px 64px rgb(31 41 51 / 0.2); }
 
-/* Dialogs */
-html[data-surface='admin'] .modal-backdrop {
-  background: rgb(28 25 23 / 0.45);
-  -webkit-backdrop-filter: blur(10px) saturate(1.2);
-  backdrop-filter: blur(10px) saturate(1.2);
+html[data-surface='admin'] table { border-collapse: separate; border-spacing: 0; }
+html[data-surface='admin'] table thead th {
+  border-bottom: 1px solid rgb(var(--line));
+  background: rgb(var(--surface-raised));
+  color: rgb(var(--ink-muted));
+  font-size: 0.72rem;
+  font-weight: 650;
+  letter-spacing: 0.025em;
+  text-transform: none;
 }
-html[data-surface='admin'] .modal-panel {
-  border-radius: 22px;
-  background: rgb(var(--surface));
-  box-shadow: var(--admin-shadow-lg);
-  border-color: rgb(var(--line) / 0.6);
+html[data-surface='admin'] table tbody tr { transition: background-color 0.12s; }
+html[data-surface='admin'] table tbody tr:hover { background: rgb(var(--surface-raised) / 0.7); }
+html[data-surface='admin'] .card:has(> table) { overflow-x: auto; }
+@media (max-width: 639px) {
+  html[data-surface='admin'] .admin-participant-table { display: block; min-width: 0; }
+  html[data-surface='admin'] .admin-participant-table thead { display: none; }
+  html[data-surface='admin'] .admin-participant-table tbody { display: block; }
+  html[data-surface='admin'] .admin-participant-table tbody tr { display: block; padding: 0.35rem 0; }
+  html[data-surface='admin'] .admin-participant-table tbody td { display: block; padding: 0.45rem 1rem; }
+  html[data-surface='admin'] .admin-participant-table tbody td:nth-child(2),
+  html[data-surface='admin'] .admin-participant-table tbody td:nth-child(3) { display: none; }
+  html[data-surface='admin'] .admin-participant-actions > div { justify-content: flex-start; }
 }
 
-/* Scrollbars */
-html[data-surface='admin'] ::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+/* Tab bars use one recognizable pattern across sections. */
+html[data-surface='admin'] [role='tablist'] {
+  border: 0;
+  border-bottom: 1px solid rgb(var(--line));
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 0;
 }
-html[data-surface='admin'] ::-webkit-scrollbar-thumb {
-  background: rgb(var(--c-neutral-400) / 0.45);
-  border-radius: 999px;
-  border: 3px solid transparent;
-  background-clip: content-box;
+html[data-surface='admin'] [role='tab'] {
+  min-height: 2.65rem;
+  border-radius: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: rgb(var(--ink-muted));
+  box-shadow: none;
+  font-size: 0.875rem;
+  font-weight: 550;
 }
-html[data-surface='admin'] ::-webkit-scrollbar-thumb:hover {
-  background: rgb(var(--c-neutral-500) / 0.7);
-  background-clip: content-box;
-}
-
-/* Sidebar: warm paper white, one orange accent */
-.admin-sidebar {
-  background:
-    radial-gradient(360px 220px at -10% -8%, rgb(var(--c-primary-500) / 0.07), transparent 70%),
-    linear-gradient(180deg, #ffffff 0%, #fbfaf8 100%);
+html[data-surface='admin'] [role='tab']:hover { color: rgb(var(--ink)); background: rgb(var(--surface-raised)); }
+html[data-surface='admin'] [role='tab'][aria-selected='true'] {
+  border-bottom-color: rgb(var(--c-primary-600));
+  background: transparent;
   color: rgb(var(--ink));
+  box-shadow: none;
+  font-weight: 700;
 }
-.admin-nav-link {
-  position: relative;
-  transition: background-color 0.2s, color 0.2s, transform 0.25s var(--admin-ease, ease);
+.admin-area-tabs { display: flex; max-width: 100%; gap: 1.25rem; overflow-x: auto; border-bottom: 1px solid rgb(var(--line)); }
+.admin-area-tab { display: inline-flex; min-height: 2.7rem; flex: none; align-items: center; border-bottom: 2px solid transparent; color: rgb(var(--ink-muted)); font-size: 0.875rem; font-weight: 550; white-space: nowrap; }
+.admin-area-tab:hover { color: rgb(var(--ink)); }
+.admin-area-tab[aria-current='page'] { border-bottom-color: rgb(var(--c-primary-600)); color: rgb(var(--ink)); font-weight: 700; }
+.admin-filter-choice {
+  min-height: 4.6rem;
+  border: 1px solid rgb(var(--line));
+  border-radius: 13px;
+  background: linear-gradient(140deg, rgb(var(--surface)), rgb(var(--surface-raised)));
+  padding: 0.8rem 1rem;
+  transition: border-color 0.15s, background-color 0.15s;
 }
-.admin-nav-link[data-active='true'] {
-  background: linear-gradient(90deg, rgb(var(--c-primary-500) / 0.13), rgb(var(--c-primary-500) / 0.03));
-  box-shadow: inset 0 0 0 1px rgb(var(--c-primary-500) / 0.22);
-}
-.admin-nav-link[data-active='true']::before {
-  content: '';
-  position: absolute;
-  left: -1.25rem;
-  top: 22%;
-  bottom: 22%;
-  width: 4px;
-  border-radius: 0 4px 4px 0;
-  background: linear-gradient(180deg, rgb(var(--c-primary-300)), rgb(var(--c-primary-500)));
-}
-.admin-nav-link:not([data-active='true']):hover {
-  background: rgb(var(--c-neutral-500) / 0.08);
-  color: rgb(var(--ink));
-  transform: translateX(2px);
-}
+.admin-filter-choice:hover { border-color: rgb(var(--c-neutral-400)); }
+.admin-filter-choice[aria-pressed='true'] { border-color: rgb(var(--c-primary-500)); background: linear-gradient(130deg, rgb(var(--c-primary-500) / 0.12), rgb(var(--surface))); box-shadow: inset 0 3px 0 rgb(var(--c-primary-600)); }
 
-/* Operations rows: a coloured edge tells the state at a glance */
-.admin-session-row {
-  position: relative;
-  transition: background-color 0.2s;
+.admin-hero {
+  border: 1px solid rgb(var(--c-secondary-700) / 0.24);
+  border-radius: 20px;
+  background: radial-gradient(circle at 88% 16%, rgb(var(--c-primary-400) / 0.24), transparent 30%), linear-gradient(115deg, rgb(var(--c-secondary-900)), rgb(var(--c-secondary-700)));
+  box-shadow: 0 22px 42px -32px rgb(var(--c-secondary-900) / 0.7);
+  color: white;
 }
-.admin-session-row::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 0.6rem;
-  bottom: 0.6rem;
-  width: 3px;
-  border-radius: 0 3px 3px 0;
-  background: var(--row-accent, transparent);
-}
-.admin-session-row[data-status='en_curso'] {
-  --row-accent: rgb(16 185 129);
-  background-image: linear-gradient(90deg, rgb(16 185 129 / 0.07), transparent 38%);
-}
+html[data-surface='admin'] .card.admin-hero { background: radial-gradient(circle at 88% 16%, rgb(var(--c-primary-400) / 0.24), transparent 30%), linear-gradient(115deg, rgb(var(--c-secondary-900)), rgb(var(--c-secondary-700))); box-shadow: 0 22px 42px -32px rgb(var(--c-secondary-900) / 0.7); }
+html[data-surface='admin'] .admin-hero h1,
+html[data-surface='admin'] .admin-hero h2,
+html[data-surface='admin'] .admin-hero .text-ink { color: white; }
+html[data-surface='admin'] .admin-hero .text-ink-muted { color: rgb(255 255 255 / 0.76); }
+.admin-stat { min-height: 8.25rem; position: relative; overflow: hidden; border-top: 3px solid var(--stat-accent, rgb(var(--c-primary-500))) !important; }
+.admin-stat::before { content: ''; position: absolute; width: 5.5rem; height: 5.5rem; right: -1rem; bottom: -2.5rem; border: 1px solid var(--stat-accent, rgb(var(--c-primary-500))); border-radius: 50%; opacity: 0.16; pointer-events: none; }
+.admin-stat::after { content: ''; position: absolute; width: 7rem; height: 7rem; right: -2rem; top: -3rem; border-radius: 50%; background: var(--stat-glow, rgb(var(--c-primary-500) / 0.13)); pointer-events: none; }
+.admin-stat > * { position: relative; z-index: 1; }
+.admin-feature-card { position: relative; overflow: hidden; border-radius: 18px; border: 1px solid rgb(var(--line)); background: linear-gradient(145deg, rgb(var(--surface)), rgb(var(--surface-raised))); box-shadow: 0 14px 32px -25px rgb(23 34 56 / 0.3); transition: transform 0.18s, border-color 0.18s, box-shadow 0.18s; }
+.admin-feature-card::before { content: ''; position: absolute; inset: 0 auto 0 0; width: 4px; background: var(--feature-accent, rgb(var(--c-primary-600))); }
+.admin-feature-card::after { content: ''; position: absolute; width: 9rem; height: 9rem; right: -5rem; top: -5rem; border: 1px solid var(--feature-accent, rgb(var(--c-primary-600))); border-radius: 50%; opacity: 0.13; box-shadow: 0 0 0 1.8rem rgb(var(--c-secondary-500) / 0.035); pointer-events: none; }
+.admin-feature-card > * { position: relative; z-index: 1; }
+.admin-feature-card:hover { transform: translateY(-2px); border-color: rgb(var(--c-secondary-500) / 0.45); box-shadow: 0 18px 36px -25px rgb(23 34 56 / 0.38); }
+.admin-feature-icon { display: inline-flex; width: 2.8rem; height: 2.8rem; align-items: center; justify-content: center; border-radius: 13px; color: rgb(var(--c-secondary-700)); background: rgb(var(--c-secondary-500) / 0.1); }
+.admin-feature-card:focus-visible, .admin-action-link:focus-visible { outline: 3px solid rgb(var(--c-primary-500)); outline-offset: 3px; }
+.admin-hero-orbit { position: absolute; width: 18rem; height: 18rem; right: -4rem; top: -8rem; border: 1px solid rgb(255 255 255 / 0.22); border-radius: 50%; box-shadow: 0 0 0 2.6rem rgb(255 255 255 / 0.035), 0 0 0 5.4rem rgb(255 255 255 / 0.025); pointer-events: none; }
+.admin-action-link { display: inline-flex; min-height: 2.5rem; align-items: center; justify-content: center; gap: 0.35rem; border: 1px solid rgb(var(--line)); border-radius: 9px; background: rgb(var(--surface)); padding: 0.45rem 0.8rem; color: rgb(var(--ink)); font-size: 0.82rem; font-weight: 700; white-space: nowrap; transition: background-color 0.15s, border-color 0.15s; }
+.admin-action-link:hover { border-color: rgb(var(--c-secondary-500)); background: rgb(var(--c-secondary-500) / 0.07); }
+.admin-action-link[data-primary='true'] { border-color: rgb(var(--c-primary-600)); background: rgb(var(--c-primary-600)); color: white; }
+.admin-action-link[data-primary='true']:hover { background: rgb(var(--c-primary-700)); }
+.admin-action-link:disabled { cursor: wait; opacity: 0.5; }
+.admin-workshop-card { border-left: 4px solid var(--workshop-accent, rgb(var(--c-secondary-500))); }
+.admin-workshop-card[data-group='pending'] { --workshop-accent: rgb(var(--c-warning-600)); }
+.admin-workshop-card[data-group='published'] { --workshop-accent: rgb(var(--c-success-600)); }
+.admin-workshop-card[data-group='archived'] { --workshop-accent: rgb(var(--c-neutral-500)); }
+.admin-detail-section { border-top: 3px solid rgb(var(--c-secondary-500) / 0.55) !important; }
+.admin-editor-section { position: relative; padding-top: 1.4rem; }
+.admin-editor-section > h2:first-child { display: flex; align-items: center; gap: 0.7rem; }
+.admin-editor-section > h2:first-child::before { content: attr(data-step); display: inline-flex; width: 2rem; height: 2rem; flex: none; align-items: center; justify-content: center; border-radius: 9px; background: rgb(var(--c-secondary-500) / 0.12); color: rgb(var(--c-secondary-700)); font-size: 0.72rem; font-weight: 800; letter-spacing: 0; }
+.admin-form-actions { position: sticky; bottom: 0; z-index: 15; border: 1px solid rgb(var(--line)); border-radius: 14px; background: rgb(var(--surface) / 0.95); box-shadow: 0 -8px 24px -16px rgb(23 34 56 / 0.3); padding: 0.85rem 1rem; backdrop-filter: blur(14px); }
+html[data-surface='admin'] .admin-operation-tabs { border: 1px solid rgb(var(--line)); border-radius: 12px; background: rgb(var(--surface)); padding: 0.3rem; box-shadow: 0 2px 10px -8px rgb(23 34 56 / 0.24); }
+html[data-surface='admin'] .admin-operation-tabs [role='tab'] { min-height: 2.75rem; border: 0; border-radius: 9px; padding: 0.55rem 1rem; }
+html[data-surface='admin'] .admin-operation-tabs [role='tab'][aria-selected='true'] { border: 0; background: rgb(var(--c-secondary-500) / 0.11); color: rgb(var(--c-secondary-800)); }
+.admin-session-row { position: relative; }
+.admin-session-row::before { content: ''; position: absolute; left: 0; top: 0.5rem; bottom: 0.5rem; width: 3px; border-radius: 3px; background: var(--row-accent, transparent); }
+.admin-session-row[data-status='en_curso'] { --row-accent: rgb(var(--c-success-500)); }
 .admin-session-row[data-status='proxima'] { --row-accent: rgb(var(--c-secondary-400)); }
 .admin-session-row[data-status='terminada'] { --row-accent: rgb(var(--c-neutral-300)); }
-.admin-session-row[data-status='cancelada'] {
-  --row-accent: rgb(var(--c-error-500));
-  background-image: linear-gradient(90deg, rgb(var(--c-error-500) / 0.06), transparent 38%);
-}
-.admin-session-row[data-attention='true'] {
-  --row-accent: rgb(217 119 6);
-  background-image: linear-gradient(90deg, rgb(245 158 11 / 0.1), transparent 45%);
-}
-.admin-session-row:hover {
-  background-color: rgb(var(--c-primary-500) / 0.04);
-}
-.admin-session-row[data-status='terminada'] > :not(:last-child) {
-  opacity: 0.78;
-}
-
-/* Live pulse for the edition mode pill */
-@keyframes admin-pulse {
-  0% { box-shadow: 0 0 0 0 currentColor; }
-  70% { box-shadow: 0 0 0 7px transparent; }
-  100% { box-shadow: 0 0 0 0 transparent; }
-}
-.admin-pulse {
-  animation: admin-pulse 2.2s ease-out infinite;
-}
-
-/* Entrance and hero ornaments */
-/* `backwards` (not `both`): after the entrance no transform is left behind, so position:fixed descendants keep
-   resolving against the viewport instead of the animated block. */
-@keyframes admin-rise {
-  from { opacity: 0; transform: translateY(14px); }
-  to { opacity: 1; transform: none; }
-}
-.admin-rise {
-  animation: admin-rise 0.6s var(--admin-ease, ease) backwards;
-}
-.admin-hero {
-  position: relative;
-  overflow: hidden;
-  border: 1px solid rgb(var(--line));
-  background:
-    radial-gradient(520px 260px at 96% 0%, rgb(var(--c-primary-500) / 0.14), transparent 70%),
-    linear-gradient(120deg, #ffffff 0%, #fcf8f3 55%, #f8efe5 100%);
-  box-shadow: inset 0 1px 0 #fff, 0 1px 2px rgb(28 25 23 / 0.04), 0 24px 48px -30px rgb(120 80 40 / 0.35);
-  color: rgb(var(--ink));
-}
-/* Concentric hairline rings, like an architect's plan: quiet decoration, no theme motifs */
-.admin-hero::after {
-  content: '';
-  position: absolute;
-  right: -7rem;
-  top: 50%;
-  width: 26rem;
-  height: 26rem;
-  transform: translateY(-50%);
-  border-radius: 999px;
-  pointer-events: none;
-  background: repeating-radial-gradient(circle at center, transparent 0 1.6rem, rgb(var(--c-primary-500) / 0.16) calc(1.6rem + 1px) calc(1.6rem + 2px));
-  mask-image: radial-gradient(circle, #000 25%, transparent 72%);
-  -webkit-mask-image: radial-gradient(circle, #000 25%, transparent 72%);
-}
-.admin-stat {
-  position: relative;
-  overflow: hidden;
-}
-.admin-stat::after {
-  content: '';
-  position: absolute;
-  right: -2rem;
-  top: -2rem;
-  width: 6.5rem;
-  height: 6.5rem;
-  border-radius: 999px;
-  background: radial-gradient(circle, var(--stat-glow, rgb(var(--c-primary-500) / 0.16)), transparent 70%);
-  pointer-events: none;
-}
-.gradient-text {
-  background: linear-gradient(100deg, rgb(var(--c-primary-600)), rgb(var(--c-primary-400)) 60%, #f0a24b);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-}
+.admin-session-row[data-status='cancelada'] { --row-accent: rgb(var(--c-error-500)); }
+.admin-session-row[data-attention='true'] { --row-accent: rgb(var(--c-warning-500)); }
+.admin-session-row:hover { background: rgb(var(--surface-raised)); }
+.admin-pulse { box-shadow: 0 0 0 3px currentColor; }
+.admin-rise { animation: admin-rise 0.25s ease-out both; }
+@keyframes admin-rise { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: none; } }
+html[data-surface='admin'] .gradient-text { color: rgb(var(--c-primary-700)); }
+html[data-surface='admin'] .no-scrollbar { scrollbar-width: none; }
+html[data-surface='admin'] .no-scrollbar::-webkit-scrollbar { display: none; }
 
 @media (prefers-reduced-motion: reduce) {
-  .admin-pulse,
-  .admin-rise {
-    animation: none !important;
-  }
-  html[data-surface='admin'] {
-    scroll-behavior: auto;
-  }
-}
-
-/* Staggered entrance of a page's top-level blocks */
-html[data-surface='admin'] main > div > * {
-  animation: admin-rise 0.6s var(--admin-ease, ease) backwards;
-}
-html[data-surface='admin'] main > div > *:nth-child(2) { animation-delay: 0.05s; }
-html[data-surface='admin'] main > div > *:nth-child(3) { animation-delay: 0.1s; }
-html[data-surface='admin'] main > div > *:nth-child(4) { animation-delay: 0.15s; }
-html[data-surface='admin'] main > div > *:nth-child(5) { animation-delay: 0.2s; }
-html[data-surface='admin'] main > div > *:nth-child(n + 6) { animation-delay: 0.25s; }
-@media (prefers-reduced-motion: reduce) {
-  html[data-surface='admin'] main > div > * {
-    animation: none !important;
-  }
-}
-
-/* Horizontal strips (tabs) scroll without a visible bar */
-.no-scrollbar {
-  scrollbar-width: none;
-  -ms-overflow-style: none;
-}
-.no-scrollbar::-webkit-scrollbar {
-  display: none;
-}
-
-/* Hero ornaments recede on phones so text stays clean */
-@media (max-width: 639px) {
-  .admin-hero::after {
-    opacity: 0.45;
-    right: -11rem;
-  }
-}
-
-/* Tables in cards scroll sideways instead of clipping on narrow screens */
-html[data-surface='admin'] .card:has(> table) {
-  overflow-x: auto;
-}
-
-/* Dialog: the form body scrolls, the heading stays put */
-html[data-surface='admin'] .modal-panel {
-  padding: clamp(1.1rem, 4vw, 1.75rem);
-}
-@media (max-width: 639px) {
-  html[data-surface='admin'] .modal-backdrop {
-    align-items: flex-end;
-    padding: 0.5rem;
-  }
-  html[data-surface='admin'] .modal-panel {
-    border-radius: 22px 22px 16px 16px;
-  }
+  .admin-rise { animation: none; }
 }
