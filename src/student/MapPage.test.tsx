@@ -268,3 +268,46 @@ test('a space still «por confirmar» shows its original text, the whole campus 
     SPACE_RULES.pop();
   }
 });
+
+// ------------------------------------------------------------------ D3: «Lions Sport Center»
+
+test.each([
+  ['Lions Sport Center Gimnasio, Planta baja', 'Gimnasio · Planta baja'],
+  ['Lions Sports Center Cancha 2', 'Cancha 2'],
+  ['Gimnasio y Vestidores', null],
+  ['Gimnasio', null],
+])('a mission at «%s» is shown at «Lions Sport Center» (D3) whatever the way it was written', async (location, detail) => {
+  m.board = board([session('gym', HOUR, location, { title: 'Entrenamiento funcional' })]);
+  const { container } = app('/mapa?sesion=gym');
+  const card = await screen.findByRole('region', { name: 'Tu misión es aquí' });
+  expect(within(card).getByText('Lions Sport Center')).toBeInTheDocument();
+  if (detail) expect(within(card).getByText(detail)).toBeInTheDocument();
+  expect(zoneButton('Lions Sport Center')).toHaveAttribute('aria-pressed', 'true');
+  expect(container.querySelector('.campus-callout-text')?.textContent).toBe('Lions Sport Center');
+  expect(document.body.textContent).not.toMatch(/Lions Sports Center/);
+  expect(document.body.textContent).not.toMatch(/\bGimnasio\b.*\bGimnasio\b/); // not repeated as the building name
+});
+
+test('choosing D3 on the map shows «Lions Sport Center» in its card and in the list of places, and the mission in it', async () => {
+  m.board = board([session('gym', HOUR, 'Gimnasio y Vestidores', { title: 'Entrenamiento funcional' })]);
+  app('/mapa');
+  await screen.findByRole('heading', { name: 'Mapa del campus' });
+  const gym = zoneButton('Lions Sport Center');
+  expect(gym).toHaveAttribute('tabindex', '0');
+  fireEvent.keyDown(gym, { key: 'Enter' });
+  expect(gym).toHaveAttribute('aria-pressed', 'true');
+  const card = screen.getByRole('region', { name: 'Lions Sport Center' });
+  expect(within(card).getByText('Entrenamiento funcional')).toBeInTheDocument();
+  expect(screen.getAllByRole('button', { name: /Lions Sport Center/ }).length).toBeGreaterThan(1); // the drawing and the list of places
+  expect(screen.queryByRole('button', { name: /Gimnasio/ })).not.toBeInTheDocument();
+});
+
+test('Mi ruta → map: a mission at the gym is numbered on D3 and its «Cómo llegar» points to that session', async () => {
+  m.board = board([session('gym', HOUR, 'Lions Sports Center', { title: 'Entrenamiento funcional' })]);
+  const { container } = app('/ruta');
+  fireEvent.click(await screen.findByRole('link', { name: 'Ver mi ruta en el mapa del campus' }));
+  await screen.findByRole('heading', { name: 'Tu ruta en el mapa' });
+  expect([...container.querySelectorAll('.campus-marker')].map((g) => g.textContent)).toEqual(['1']);
+  const list = screen.getByRole('region', { name: 'Tu ruta en orden' });
+  expect(within(list).getAllByRole('button')[0].textContent).toMatch(/Lions Sport Center/);
+});

@@ -145,3 +145,36 @@ test('all 62 distinct real locations (63 workshops) resolve to the expected buil
   for (const [location, zoneId] of REAL_LOCATIONS) expect([location, zoneOf(location)]).toEqual([location, zoneId]);
   for (const location of DEMO_LOCATIONS) expect([location, zoneOf(location)]).toEqual([location, null]);
 });
+
+describe('Lions Sport Center (D3, id «gimnasio»)', () => {
+  const gym = ZONE_BY_ID.get('gimnasio')!;
+
+  test('the official name is the one shown, in the full name and in the short label', () => {
+    expect(gym.name).toBe('Lions Sport Center');
+    expect(gym.short).toBe('Lions Sport Center');
+    expect(JSON.stringify(CAMPUS_ZONES.filter((zone) => zone.id === 'gimnasio').map(({ name, short, description }) => [name, short, description]))).not.toMatch(/Sports/);
+  });
+
+  test('id, code, pin, geometry and anchor are untouched', () => {
+    expect(gym).toMatchObject({ id: 'gimnasio', code: 'D3', pin: '#8FC3E6', pinInk: '#10243A', kind: 'sports', anchor: [759, 1115], shapes: [{ rect: [700, 1053, 118, 137] }] });
+  });
+
+  test.each(['Lions Sport Center', 'Lions Sports Center', 'Gimnasio', 'Gimnasio y Vestidores', 'lions sport center', 'GIMNASIO Y VESTIDORES'])(
+    '«%s» resolves to the same zone and always shows the official name',
+    (location) => {
+      expect(resolveCampusLocation(location)).toMatchObject({ resolved: true, zoneId: 'gimnasio', building: 'Lions Sport Center', detail: null });
+      expect(formatPlace(location)).toBe('Lions Sport Center');
+    },
+  );
+
+  test('the longest alias wins and the rest is the detail, with its floor', () => {
+    expect(resolveCampusLocation('Gimnasio y Vestidores Vestidor 2, Planta baja')).toMatchObject({ zoneId: 'gimnasio', detail: 'Vestidor 2', floor: 'Planta baja', building: 'Lions Sport Center' });
+    expect(formatPlace('Lions Sports Center Sala de pesas')).toBe('Lions Sport Center · Sala de pesas');
+  });
+
+  test('the neighbouring courts are not swallowed by the gym', () => {
+    expect(zoneOf('Cancha de Tenis')).toBe('tenis');
+    expect(zoneOf('Cancha de Fútbol 7')).toBe('futbol7');
+    expect(zoneOf('Gimnasios')).toBeNull();
+  });
+});

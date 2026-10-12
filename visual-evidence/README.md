@@ -15,3 +15,7 @@ Capturas del navegador integrado con respuestas locales ficticias; no contienen 
 Las capturas del Sorteo (prefijo `sorteo-`; segunda revisión: pantalla pública, recuperación y consola) se tomaron con Chrome sobre la app local y un servidor Supabase ficticio en memoria: 3 categorías reales y 2 de prueba con nombres repetidos, 6 premios (uno agotado, una categoría sin premios), 6 resultados en todos los estados y un nombre de 60 letras. Ver [`docs/sorteo-redesign.md`](../docs/sorteo-redesign.md). Anchuras: 1440 × 900, 1920 × 1080 y 390 × 844; sin desbordamiento horizontal. Los únicos mensajes de consola del navegador son los fallos HTTP 503 que el servidor ficticio inyecta a propósito en los escenarios de recuperación.
 
 Los datos ficticios de Participantes y Check-in incluyen 32 participantes, categorías reales y DEMO con nombres repetidos, tres premios y seis talleres con varios horarios. Se comprobó la selección de taller, el paso a credencial, el regreso, la separación de categorías y premios por entorno, un listado largo, dos estados vacíos y un formulario con error de validación.
+
+## Portal del alumno · rangos y Lions Sport Center
+
+Capturas móviles (390 × 844, ×2) con un Supabase ficticio local: [Bitácora con 0 sellos](bitacora-rangos-0-sellos-movil.jpg), [2 sellos](bitacora-rangos-2-sellos-movil.jpg), [4 sellos (rango máximo)](bitacora-rangos-4-sellos-movil.jpg), [6 sellos (sigue en el máximo)](bitacora-rangos-6-sellos-movil.jpg) y [mapa con una misión en el Lions Sport Center (D3)](mapa-lions-sport-center-movil.jpg).
