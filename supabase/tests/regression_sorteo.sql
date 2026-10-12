@@ -48,6 +48,14 @@ CREATE FUNCTION pg_temp.expect_true(p_name text, p_cond boolean) RETURNS void LA
   SELECT pg_temp.expect(p_name, coalesce(p_cond, false)::text, 'true');
 $f$;
 
+-- Escritura directa en la base (propietario), fuera de los RPC: devuelve 'ok' o 'ERR:<mensaje>'.
+CREATE FUNCTION pg_temp.as_owner(p_sql text) RETURNS text LANGUAGE plpgsql AS $f$
+BEGIN
+  EXECUTE p_sql;
+  RETURN 'ok';
+EXCEPTION WHEN others THEN RETURN 'ERR:' || SQLERRM;
+END $f$;
+
 CREATE FUNCTION pg_temp.mk_staff(p_key text, p_role text) RETURNS void LANGUAGE plpgsql AS $f$
 DECLARE u uuid := gen_random_uuid(); mail text := 'rs.' || p_key || '@test.invalid';
 BEGIN
@@ -349,7 +357,13 @@ BEGIN
   FOR r IN SELECT * FROM (VALUES
       ('lista vacía', '[]'), ('no es lista', '{"academic": 1}'), ('negativo', '[{"academic": -1}]'),
       ('texto', '[{"academic": "2"}]'), ('decimal', '[{"total": 1.5}]'), ('clave desconocida', '[{"leadership": 1}]'),
-      ('alternativa no objeto', '[3]'), ('demasiado grande', '[{"total": 1000}]')
+      ('alternativa no objeto', '[3]'), ('demasiado grande', '[{"total": 1000}]'),
+      -- Sin requisitos efectivos: dejarían entrar al sorteo a quien no tiene sellos.
+      ('alternativa vacía', '[{}]'),
+      ('alternativa con todo en cero', '[{"academic": 0, "university_life": 0, "total": 0}]'),
+      ('alternativa con un único cero', '[{"academic": 0}]'),
+      ('una válida y otra vacía', '[{"academic": 2, "university_life": 1}, {}]'),
+      ('una válida y otra en ceros', '[{"total": 4}, {"academic": 0, "university_life": 0}]')
     ) AS t(label, rules) LOOP
     PERFORM pg_temp.expect(format('validación: se rechaza %s', r.label),
       pg_temp.as_user(coord, format('select save_raffle_category(%L::jsonb)', jsonb_build_object('name', 'RS Inválida', 'is_demo', true, 'rules', r.rules::jsonb)::text)),
@@ -361,6 +375,66 @@ BEGIN
   EXCEPTION WHEN others THEN
     PERFORM pg_temp.expect('validación: la tabla rechaza reglas inválidas aunque no pasen por el RPC', 'ERR:' || SQLERRM, 'ERR:INVALID_REQUIREMENTS');
   END;
+
+  -- ---- Categorías sin requisitos efectivos -------------------------------------------------------------------------
+  -- RPC: tampoco al EDITAR una categoría oficial ni con el formato anterior (0 académicos + 0 de liderazgo).
+  PERFORM pg_temp.expect('sin requisitos: editar Galaxia agregándole una alternativa vacía se rechaza',
+    pg_temp.as_user(coord, format('select save_raffle_category(%L::jsonb)', jsonb_build_object('id', pg_temp.demo_category('Galaxia'),
+      'name', 'Galaxia', 'sort_order', 20, 'is_active', true, 'rules', '[{"academic": 2, "university_life": 1}, {"total": 4}, {}]'::jsonb)::text)),
+    'ERR:INVALID_REQUIREMENTS');
+  PERFORM pg_temp.expect('sin requisitos: el formato anterior con 0 + 0 se rechaza',
+    pg_temp.as_user(coord, $q$select save_raffle_category('{"name": "RS Todos", "is_demo": true, "required_academic": 0, "required_leadership": 0}')$q$),
+    'ERR:INVALID_REQUIREMENTS');
+  PERFORM pg_temp.expect('sin requisitos: el formato anterior sin ningún requisito se rechaza',
+    pg_temp.as_user(coord, $q$select save_raffle_category('{"name": "RS Todos", "is_demo": true}')$q$),
+    'ERR:INVALID_REQUIREMENTS');
+  PERFORM pg_temp.expect_true('sin requisitos: nada de lo rechazado quedó guardado',
+    NOT EXISTS (SELECT 1 FROM raffle_categories WHERE name IN ('RS Inválida', 'RS Todos'))
+    AND (SELECT rules FROM raffle_categories WHERE id = pg_temp.demo_category('Galaxia')) = '[{"academic": 2, "university_life": 1}, {"total": 4}]'::jsonb);
+
+  -- Escritura directa en la tabla (sin RPC): el trigger y el CHECK son la última barrera.
+  PERFORM pg_temp.expect('sin requisitos (tabla): UPDATE a una alternativa vacía',
+    pg_temp.as_owner(format($q$update raffle_categories set rules = '[{}]' where id = %L$q$, pg_temp.demo_category('Sistema Solar'))), 'ERR:INVALID_REQUIREMENTS');
+  PERFORM pg_temp.expect('sin requisitos (tabla): UPDATE que agrega una alternativa en ceros a una categoría oficial',
+    pg_temp.as_owner(format($q$update raffle_categories set rules = rules || '[{"academic": 0, "total": 0}]'::jsonb where id = %L$q$, pg_temp.demo_category('Universo'))), 'ERR:INVALID_REQUIREMENTS');
+  PERFORM pg_temp.expect('sin requisitos (tabla): INSERT con una alternativa vacía',
+    pg_temp.as_owner(format($q$insert into raffle_categories (edition_id, name, sort_order, rules, is_demo) values (%L, 'RS Directa', 1, '[{}]', true)$q$, active_edition_id())), 'ERR:INVALID_REQUIREMENTS');
+  PERFORM pg_temp.expect('sin requisitos (tabla): INSERT con las columnas anteriores en 0 + 0',
+    pg_temp.as_owner(format($q$insert into raffle_categories (edition_id, name, sort_order, required_academic, required_leadership, is_demo) values (%L, 'RS Directa', 1, 0, 0, true)$q$, active_edition_id())), 'ERR:INVALID_REQUIREMENTS');
+  PERFORM pg_temp.expect('sin requisitos (tabla): UPDATE de las columnas anteriores a 0 + 0',
+    pg_temp.as_owner(format($q$update raffle_categories set required_academic = 0, required_leadership = 0 where id = %L$q$, pg_temp.demo_category('Sistema Solar'))), 'ERR:INVALID_REQUIREMENTS');
+  -- Aun sin el trigger, el CHECK de la tabla lo impide.
+  ALTER TABLE raffle_categories DISABLE TRIGGER raffle_categories_sync_rules;
+  PERFORM pg_temp.expect('sin requisitos (CHECK): alternativa vacía con el trigger deshabilitado',
+    pg_temp.as_owner(format($q$update raffle_categories set rules = '[{}]' where id = %L$q$, pg_temp.demo_category('Sistema Solar'))), 'ERR:raffle_categories_rules_check');
+  PERFORM pg_temp.expect('sin requisitos (CHECK): todo en cero con el trigger deshabilitado',
+    pg_temp.as_owner(format($q$update raffle_categories set rules = '[{"academic": 0, "university_life": 0, "total": 0}]' where id = %L$q$, pg_temp.demo_category('Sistema Solar'))), 'ERR:raffle_categories_rules_check');
+  PERFORM pg_temp.expect('sin requisitos (CHECK): lista vacía con el trigger deshabilitado',
+    pg_temp.as_owner(format($q$update raffle_categories set rules = '[]' where id = %L$q$, pg_temp.demo_category('Sistema Solar'))), 'ERR:raffle_categories_rules_check');
+  ALTER TABLE raffle_categories ENABLE TRIGGER raffle_categories_sync_rules;
+
+  -- Defensa adicional: la clasificación nunca da por cumplida una alternativa que no pide nada.
+  PERFORM pg_temp.expect_true('sin requisitos: raffle_rules_met ignora alternativas vacías o en cero',
+    NOT raffle_rules_met('[{}]', 0, 0) AND NOT raffle_rules_met('[{}]', 9, 9)
+    AND NOT raffle_rules_met('[{"academic": 0, "university_life": 0, "total": 0}]', 0, 0)
+    AND NOT raffle_rules_met('[{}, {"academic": 2}]', 0, 0) AND NOT raffle_rules_met('[{}, {"academic": 2}]', 1, 5)
+    AND raffle_rules_met('[{}, {"academic": 2}]', 2, 0));
+  PERFORM pg_temp.expect_true('sin requisitos: raffle_rules_valid exige un mínimo positivo por alternativa',
+    NOT raffle_rules_valid('[{}]') AND NOT raffle_rules_valid('[{"total": 0}]') AND NOT raffle_rules_valid('[{"academic": 1}, {}]')
+    AND raffle_rules_valid('[{"total": 1}]') AND raffle_rules_valid('[{"academic": 0, "university_life": 1}]'));
+  PERFORM pg_temp.expect_true('sin requisitos: todas las categorías existentes son válidas y conservan sus alternativas oficiales',
+    NOT EXISTS (SELECT 1 FROM raffle_categories WHERE NOT raffle_rules_valid(rules))
+    AND (SELECT count(*) FROM raffle_categories WHERE edition_id = active_edition_id()
+         AND (name, rules) IN (('Sistema Solar', '[{"academic": 1, "university_life": 1}]'::jsonb),
+                               ('Galaxia', '[{"academic": 2, "university_life": 1}, {"total": 4}]'::jsonb),
+                               ('Universo', '[{"academic": 3, "university_life": 1}, {"academic": 2, "university_life": 2}]'::jsonb))) = 6);
+  -- Quien no tiene sellos no entra a ninguna categoría ni aparece como candidato.
+  PERFORM pg_temp.expect('sin requisitos: un alumno con 0 sellos sigue sin categoría', pg_temp.category_of('m00'), '—');
+  PERFORM pg_temp.expect('sin requisitos: su Bitácora no muestra categoría',
+    coalesce(pg_temp.passport('m00')->>'raffle_category_name', '—') || ' ' || (pg_temp.passport('m00')->>'total_stamps'), '— 0');
+  PERFORM pg_temp.expect_true('sin requisitos: ningún candidato de ninguna categoría tiene 0 sellos',
+    NOT EXISTS (SELECT 1 FROM participants p WHERE p.edition_id = active_edition_id()
+                AND participant_raffle_category(p.id) IS NOT NULL AND my_stamp_count(p.id) = 0));
 
   -- Una categoría nueva, más alta, con una alternativa por total: se asigna la MÁS ALTA alcanzada.
   answer := pg_temp.as_user(coord, $q$select save_raffle_category('{"name": "RS Cinco", "sort_order": 40, "is_demo": true, "rules": [{"academic": 5}, {"university_life": 5}]}')$q$);

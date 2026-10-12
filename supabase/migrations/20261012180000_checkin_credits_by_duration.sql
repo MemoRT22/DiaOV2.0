@@ -15,17 +15,34 @@
   - Trigger `activity_sessions_set_credits`: `activity_sessions.credits` deja de ser un dato que cada ruta debe recordar
     escribir y pasa a derivarse siempre del horario (creación, edición, publicación e importación incluidas). Un valor
     enviado por cualquier cliente o función se ignora.
-  - `check_in`: acredita `session_stamp_credits` de la sesión reservada (QR y código manual comparten esta ruta). El
-    snapshot `attendances.credits_granted`, la idempotencia por actividad, la autorización, la elección de sesión y la
+  - Trigger `attendances_set_credits` (BEFORE INSERT): toda asistencia NACE con los sellos oficiales de su sesión, sea
+    cual sea el valor que envíe quien la inserta. El snapshot solo se fija al insertar: editar después la sesión no lo
+    cambia.
+  - `check_in`: acredita `session_stamp_credits` de la sesión reservada (QR y código manual comparten esta ruta) y
+    responde con lo que quedó guardado. La idempotencia por actividad, la autorización, la elección de sesión y la
     validez temporal no cambian.
   - Sesiones existentes: se recalcula `credits` (solo esa columna; no dispara avisos de disponibilidad ni toca
     reservaciones). Idempotente.
-  - Marca de auditoría `attendance.credit_rule_installed`: deja constancia del momento exacto en que la regla entró en
-    vigor. La conciliación de asistencias anteriores (migración aparte) se limita a lo registrado antes de esa marca.
+  - Marca de auditoría `attendance.credit_rule_installed` (informativa: deja constancia de la instalación).
+
+  Check-ins en curso durante la instalación (por qué el trigger de `attendances` y no solo la función)
+  - Una llamada a `check_in` que ya está ejecutándose sigue usando el cuerpo ANTERIOR de la función, y pudo leer
+    `credits = 1` antes de que esta migración confirmara. Reemplazar la función no la alcanza.
+  - `CREATE TRIGGER` sobre `attendances` toma un bloqueo que espera a que confirmen las asistencias ya insertadas y
+    retiene las nuevas hasta que esta migración confirma. A partir de ese instante cualquier INSERT —también el de una
+    llamada antigua que estaba esperando— pasa por el trigger y guarda los sellos oficiales.
+  - Resultado: el conjunto de asistencias con menos sellos de los debidos queda CERRADO y ya confirmado en el momento
+    en que el trigger existe. La conciliación (migración aparte) las ve todas, se ejecute cuando se ejecute.
+  - La garantía la da el trigger por sí solo; no depende de que toda la migración corra en una única transacción.
+  - El bloqueo dura lo que tarda en confirmar esta migración (milisegundos). `lock_timeout` evita que, si hubiera una
+    transacción larga abierta, los check-ins queden esperando detrás: la migración falla limpia y se reintenta.
 
   Qué NO cambia
   - Las asistencias ya registradas no se modifican aquí.
 */
+
+-- Si no se obtiene un bloqueo en 5 s, fallar en vez de dejar check-ins en cola detrás de esta migración.
+SET lock_timeout = '5s';
 
 CREATE OR REPLACE FUNCTION public.session_stamp_credits(p_starts_at timestamptz, p_ends_at timestamptz)
 RETURNS smallint
@@ -52,8 +69,7 @@ $$;
 
 REVOKE ALL ON FUNCTION public.set_session_credits() FROM PUBLIC, anon, authenticated;
 
-DROP TRIGGER IF EXISTS activity_sessions_set_credits ON public.activity_sessions;
-CREATE TRIGGER activity_sessions_set_credits
+CREATE OR REPLACE TRIGGER activity_sessions_set_credits
   BEFORE INSERT OR UPDATE ON public.activity_sessions
   FOR EACH ROW EXECUTE FUNCTION public.set_session_credits();
 
@@ -146,14 +162,14 @@ BEGIN
   SELECT * INTO v_s FROM activity_sessions WHERE id = v_session_id;
 
   -- Sellos según la duración oficial de la sesión; nunca los decide el cliente ni el método de registro.
-  v_credits := session_stamp_credits(v_s.starts_at, v_s.ends_at);
+  -- Se responde con lo que quedó guardado (el trigger de `attendances` es quien fija el snapshot).
   v_method := v_match.method;
   INSERT INTO attendances (participant_id, session_id, activity_id, credits_granted, method, reservation_id)
-  VALUES (v_pid, v_s.id, v_s.activity_id, v_credits, v_method, v_reservation_id)
-  RETURNING id INTO v_att_id;
+  VALUES (v_pid, v_s.id, v_s.activity_id, session_stamp_credits(v_s.starts_at, v_s.ends_at), v_method, v_reservation_id)
+  RETURNING id, credits_granted INTO v_att_id, v_credits;
   PERFORM write_audit('attendance.checked_in', jsonb_build_object(
     'session_id', v_s.id, 'activity_id', v_s.activity_id, 'participant_id', v_pid, 'method', v_method,
-    'credits_granted', v_credits));
+    'credits_granted', v_credits, 'session_starts_at', v_s.starts_at, 'session_ends_at', v_s.ends_at));
 
   RETURN jsonb_build_object(
     'already_registered', false,
@@ -172,10 +188,35 @@ BEGIN
 END;
 $$;
 
--- Constancia de entrada en vigor (una sola vez). La conciliación de asistencias anteriores usa esta marca como límite.
+-- Toda asistencia nace con los sellos oficiales de su sesión. Va al final: el bloqueo que toma CREATE TRIGGER sobre
+-- `attendances` (espera a las inserciones en curso y retiene las nuevas) se mantiene solo hasta confirmar.
+CREATE OR REPLACE FUNCTION public.set_attendance_credits()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE v_credits smallint;
+BEGIN
+  SELECT public.session_stamp_credits(s.starts_at, s.ends_at) INTO v_credits
+  FROM public.activity_sessions s WHERE s.id = NEW.session_id;
+  IF v_credits IS NOT NULL THEN NEW.credits_granted := v_credits; END IF;
+  RETURN NEW;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.set_attendance_credits() FROM PUBLIC, anon, authenticated;
+
+CREATE OR REPLACE TRIGGER attendances_set_credits
+  BEFORE INSERT ON public.attendances
+  FOR EACH ROW EXECUTE FUNCTION public.set_attendance_credits();
+
+-- Constancia de la instalación (una sola vez; informativa).
 INSERT INTO public.audit_log (edition_id, action, detail)
 SELECT e.id, 'attendance.credit_rule_installed',
   jsonb_build_object('rule', '60 minutos = 2 sellos; otra duración = 1 sello')
 FROM public.editions e
 WHERE e.is_active
   AND NOT EXISTS (SELECT 1 FROM public.audit_log a WHERE a.action = 'attendance.credit_rule_installed' AND a.edition_id = e.id);
+
+RESET lock_timeout;

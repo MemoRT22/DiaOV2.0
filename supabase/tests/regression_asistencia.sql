@@ -341,10 +341,27 @@ BEGIN
      OR (SELECT s.credits FROM activity_sessions s JOIN activities a ON a.id = s.activity_id WHERE a.title = '6B Sellos importado 45') <> 2
   THEN RAISE EXCEPTION 'REIMPORT_STAMPS'; END IF;
 
-  -- 12. Ninguna sesión de la base queda fuera de la regla.
+  -- 12. La asistencia NACE con los sellos oficiales, envíe lo que envíe quien la inserta. Es lo que protege a un
+  --     check-in que estaba en curso con la función anterior cuando se instaló la regla.
+  INSERT INTO attendances(participant_id,session_id,activity_id,credits_granted,method)
+  SELECT pb, id, activity_id, 1, 'qr' FROM activity_sessions WHERE activity_id = act30 ORDER BY starts_at LIMIT 1;   -- 60 min, se envía 1
+  INSERT INTO attendances(participant_id,session_id,activity_id,credits_granted,method) VALUES (pb, s30, a30, 5, 'qr');   -- 30 min, se envía 5
+  INSERT INTO attendances(participant_id,session_id,activity_id,method) VALUES (pb, s61, a61, 'codigo_manual');           -- 61 min, sin valor
+  IF (SELECT credits_granted FROM attendances WHERE participant_id = pb AND activity_id = act30) <> 2
+     OR (SELECT credits_granted FROM attendances WHERE participant_id = pb AND activity_id = a30) <> 1
+     OR (SELECT credits_granted FROM attendances WHERE participant_id = pb AND activity_id = a61) <> 1
+  THEN RAISE EXCEPTION 'ATTENDANCE_BORN_WITH_OFFICIAL_CREDITS[%]',
+    (SELECT string_agg(credits_granted::text, ',' ORDER BY recorded_at, id) FROM attendances WHERE participant_id = pb); END IF;
+  -- El snapshot solo se fija al insertar: tocar la fila después no lo recalcula (pb conserva su 1 en la sesión que
+  -- hoy dura 60 minutos, ver paso 8).
+  UPDATE attendances SET method = method WHERE participant_id = pb;
+  IF (SELECT credits_granted FROM attendances WHERE participant_id = pb AND activity_id = a45) <> 1
+  THEN RAISE EXCEPTION 'SNAPSHOT_RECOMPUTED_ON_UPDATE'; END IF;
+
+  -- 13. Ninguna sesión de la base queda fuera de la regla.
   IF EXISTS (SELECT 1 FROM activity_sessions WHERE credits <> session_stamp_credits(starts_at, ends_at))
   THEN RAISE EXCEPTION 'SESSIONS_OUT_OF_RULE'; END IF;
 
-  RAISE NOTICE 'ASISTENCIA_SELLOS_OK: regla 60=2, QR y código manual, reintentos, snapshot, publicación, edición e importación';
+  RAISE NOTICE 'ASISTENCIA_SELLOS_OK: regla 60=2, QR y código manual, reintentos, snapshot, sellos fijados al insertar, publicación, edición e importación';
 END $credits$;
 ROLLBACK;

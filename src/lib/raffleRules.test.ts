@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { describeRule, describeRules, missingFor, nextTierHint, normalizeRaffleStatus, rulesMet, tierFor, type RaffleTier } from './raffleRules';
+import { describeRule, describeRules, hasRequirement, missingFor, nextTierHint, normalizeRaffleStatus, ruleMet, rulesMet, tierFor, type RaffleTier } from './raffleRules';
 
 /** The official Día OV 2026 categories, exactly as the backend stores them. */
 const OFFICIAL: RaffleTier[] = [
@@ -37,6 +37,21 @@ describe('official raffle classification (mirror of the backend rules)', () => {
     expect(rulesMet(OFFICIAL[0].rules, { academic: 3, university_life: 1 })).toBe(true);
   });
 
+  it('an alternative that asks for nothing is never met, whatever the stamps', () => {
+    for (const empty of [{}, { academic: 0 }, { academic: 0, university_life: 0, total: 0 }]) {
+      expect(hasRequirement(empty)).toBe(false);
+      expect(ruleMet(empty, { academic: 0, university_life: 0 })).toBe(false);
+      expect(ruleMet(empty, { academic: 9, university_life: 9 })).toBe(false);
+    }
+    expect(hasRequirement({ total: 1 })).toBe(true);
+    // a student with no stamps never lands in a category, even if one carried an empty alternative
+    const broken: RaffleTier[] = [{ id: 'x', name: 'Rota', sort_order: 99, rules: [{}, { academic: 2 }] }];
+    expect(tierFor(broken, { academic: 0, university_life: 0 })).toBeNull();
+    expect(tierFor(broken, { academic: 1, university_life: 5 })).toBeNull();
+    expect(tierFor(broken, { academic: 2, university_life: 0 })?.name).toBe('Rota');
+    expect(nextTierHint({ academic_stamps: 0, university_life_stamps: 0, categories: broken })?.text).toBe('Te faltan 2 sellos académicos para Rota.');
+  });
+
   it('a category without alternatives is never reached', () => {
     expect(tierFor([{ id: 'x', name: 'Vacía', sort_order: 99, rules: [] }], { academic: 9, university_life: 9 })).toBeNull();
   });
@@ -49,7 +64,8 @@ describe('describing the rules', () => {
     expect(describeRule({ total: 4 })).toBe('4 sellos en total');
     expect(describeRule({ academic: 2, total: 5 })).toBe('2 académicos (5 sellos en total)');
     expect(describeRule({ academic: 2, university_life: 0, total: 2 })).toBe('2 académicos');
-    expect(describeRule({})).toBe('Sin requisito');
+    expect(describeRule({})).toBe('Sin requisitos');
+    expect(describeRule({ academic: 0, university_life: 0, total: 0 })).toBe('Sin requisitos');
   });
 
   it('joins the alternatives with «o»', () => {

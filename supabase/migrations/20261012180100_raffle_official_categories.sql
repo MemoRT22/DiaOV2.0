@@ -14,6 +14,9 @@
   Modelo
   - `raffle_categories.rules` (jsonb): lista de ALTERNATIVAS. Cada alternativa fija mínimos de sellos
     `academic`, `university_life` y `total` (los que falten valen 0). La categoría se alcanza si se cumple alguna.
+  - Toda alternativa debe pedir ALGO: al menos uno de sus mínimos es mayor que cero. Una alternativa vacía o con
+    todo en cero dejaría entrar al sorteo a quien no tiene sellos, así que la base la rechaza (función de validación,
+    trigger y CHECK) y, como defensa adicional, la clasificación nunca la da por cumplida.
   - `required_academic` / `required_leadership` se conservan (nada se borra) como reflejo de la primera alternativa,
     para que cualquier lector o cliente anterior siga funcionando; la clasificación ya no los usa.
 
@@ -28,13 +31,17 @@
   - Las categorías por defecto se actualizan EN SITIO (mismos id): Baja → Sistema Solar, Media → Galaxia,
     Mayor → Universo. Premios, ganadores e historial conservan sus referencias.
   - Cualquier otra categoría conserva su condición actual, expresada como una sola alternativa.
+  - Compatibilidad verificada en producción (2026-10-12): solo existen las seis categorías por defecto y ninguna tiene
+    requisitos en cero. Si en otra base hubiera una categoría sin requisitos (0 académicos y 0 de liderazgo), esta
+    migración se detiene con un mensaje claro en lugar de inventarle una condición o convertirla en «todos entran».
 */
 
 -- ---------------------------------------------------------------------------------------------------------------------
 -- 1. Reglas por categoría
 -- ---------------------------------------------------------------------------------------------------------------------
 
--- Entre 1 y 10 alternativas; cada una con mínimos enteros (0–999) de `academic`, `university_life` y/o `total`.
+-- Entre 1 y 10 alternativas; cada una con mínimos enteros (0–999) de `academic`, `university_life` y/o `total`,
+-- y con al menos un mínimo mayor que cero (una alternativa sin requisitos no es una alternativa).
 CREATE OR REPLACE FUNCTION public.raffle_rules_valid(p_rules jsonb)
 RETURNS boolean
 LANGUAGE sql
@@ -53,11 +60,16 @@ AS $$
             OR jsonb_typeof(kv.value) <> 'number'
             OR kv.value::text !~ '^[0-9]{1,3}$'
         )
+        OR NOT EXISTS (
+          SELECT 1 FROM jsonb_each(CASE WHEN jsonb_typeof(alt.value) = 'object' THEN alt.value ELSE '{}'::jsonb END) AS kv
+          WHERE kv.key IN ('academic', 'university_life', 'total') AND kv.value::text ~ '^[0-9]{1,3}$' AND kv.value::text::int > 0
+        )
     )
   END;
 $$;
 
 -- ¿Se cumple alguna alternativa con estos sellos? El total es siempre académicos + Vida Universitaria.
+-- Una alternativa que no pide nada nunca se da por cumplida, aunque llegara a existir.
 CREATE OR REPLACE FUNCTION public.raffle_rules_met(p_rules jsonb, p_academic int, p_university_life int)
 RETURNS boolean
 LANGUAGE sql
@@ -69,6 +81,8 @@ AS $$
     WHERE coalesce((alt.value->>'academic')::int, 0) <= p_academic
       AND coalesce((alt.value->>'university_life')::int, 0) <= p_university_life
       AND coalesce((alt.value->>'total')::int, 0) <= p_academic + p_university_life
+      AND coalesce((alt.value->>'academic')::int, 0) + coalesce((alt.value->>'university_life')::int, 0)
+        + coalesce((alt.value->>'total')::int, 0) > 0
   );
 $$;
 
@@ -102,8 +116,7 @@ $$;
 
 REVOKE ALL ON FUNCTION public.sync_raffle_category_rules() FROM PUBLIC, anon, authenticated;
 
-DROP TRIGGER IF EXISTS raffle_categories_sync_rules ON public.raffle_categories;
-CREATE TRIGGER raffle_categories_sync_rules
+CREATE OR REPLACE TRIGGER raffle_categories_sync_rules
   BEFORE INSERT OR UPDATE ON public.raffle_categories
   FOR EACH ROW EXECUTE FUNCTION public.sync_raffle_category_rules();
 
@@ -122,6 +135,21 @@ WHERE rc.name = official.old_name
     WHERE other.edition_id = rc.edition_id AND other.is_demo = rc.is_demo AND other.name = official.name
   );
 
+-- Compatibilidad: una categoría anterior sin requisitos (0 + 0) no tiene una condición que conservar. No se le
+-- inventa una ni se deja pasar: se detiene aquí para que Coordinación la corrija o la retire.
+DO $$
+DECLARE v_names text;
+BEGIN
+  SELECT string_agg(format('«%s» (%s)', name, CASE WHEN is_demo THEN 'DEMO' ELSE 'real' END), ', ' ORDER BY is_demo, sort_order, name)
+  INTO v_names
+  FROM public.raffle_categories
+  WHERE rules = '[]'::jsonb AND coalesce(required_academic, 0) <= 0 AND coalesce(required_leadership, 0) <= 0;
+  IF v_names IS NOT NULL THEN
+    RAISE EXCEPTION 'RAFFLE_CATEGORY_WITHOUT_REQUIREMENTS: %', v_names
+      USING HINT = 'Asigna a cada una al menos un mínimo mayor que cero (required_academic / required_leadership) o elimínala, y vuelve a aplicar la migración.';
+  END IF;
+END $$;
+
 -- Cualquier otra categoría: su condición actual como única alternativa (lo hace el trigger).
 UPDATE public.raffle_categories SET rules = '[]'::jsonb WHERE rules = '[]'::jsonb;
 
@@ -130,6 +158,12 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'raffle_categories_rules_check') THEN
     ALTER TABLE public.raffle_categories ADD CONSTRAINT raffle_categories_rules_check
       CHECK (public.raffle_rules_valid(rules));
+  END IF;
+  -- Un CHECK ya existente no vuelve a evaluar las filas cuando su función se hace más estricta: se comprueba aquí.
+  IF EXISTS (SELECT 1 FROM public.raffle_categories WHERE NOT public.raffle_rules_valid(rules)) THEN
+    RAISE EXCEPTION 'RAFFLE_CATEGORY_WITHOUT_REQUIREMENTS: %',
+      (SELECT string_agg(format('«%s» (%s)', name, CASE WHEN is_demo THEN 'DEMO' ELSE 'real' END), ', ')
+       FROM public.raffle_categories WHERE NOT public.raffle_rules_valid(rules));
   END IF;
 END $$;
 

@@ -224,13 +224,24 @@ BEGIN
   SELECT id INTO v_sess_id FROM public.activity_sessions WHERE activity_id = v_act_vida LIMIT 1;
   INSERT INTO public.attendances (session_id, participant_id, activity_id, credits_granted) VALUES (v_sess_id, v_pid, v_act_vida, 1);
 
+  -- La asistencia nace con los sellos oficiales de su sesión aunque se inserte otro valor: el taller de
+  -- Vida Universitaria es de 60 min (2 sellos) y el académico de 30 min (1 sello).
   v_tickets := public.participant_tickets(v_pid);
-  IF (v_tickets->>'leadership_tickets')::int <> 1 THEN RAISE EXCEPTION 'LEADERSHIP_TICKETS_FAILED'; END IF;
+  IF (v_tickets->>'university_life_stamps')::int <> 2 OR (v_tickets->>'leadership_tickets')::int <> 2
+     OR (v_tickets->>'academic_stamps')::int <> 1 THEN RAISE EXCEPTION 'STAMPS_BY_TYPE_FAILED[%]', v_tickets; END IF;
 
-  -- Raffle category preserves behavior
-  INSERT INTO public.raffle_categories (edition_id, name, is_demo, required_academic, required_leadership, is_active) VALUES (v_edition, 'Test Cat', false, 0, 0, true);
+  -- Una categoría definida solo con las columnas anteriores sigue clasificando (1 académico + 2 Vida Universitaria).
+  INSERT INTO public.raffle_categories (edition_id, name, is_demo, required_academic, required_leadership, is_active, sort_order) VALUES (v_edition, 'Test Cat', false, 1, 2, true, 99);
 
-  IF public.participant_raffle_category(v_pid) IS NULL THEN RAISE EXCEPTION 'RAFFLE_CAT_FAILED'; END IF;
+  IF public.participant_raffle_category(v_pid) IS DISTINCT FROM (SELECT id FROM public.raffle_categories WHERE name = 'Test Cat') THEN RAISE EXCEPTION 'RAFFLE_CAT_FAILED'; END IF;
+
+  -- Una categoría sin requisitos (0 + 0) dejaría entrar a cualquiera: la base la rechaza.
+  BEGIN
+    INSERT INTO public.raffle_categories (edition_id, name, is_demo, required_academic, required_leadership, is_active) VALUES (v_edition, 'Test Cat Zero', false, 0, 0, true);
+    RAISE EXCEPTION 'RAFFLE_CAT_ZERO_ACCEPTED';
+  EXCEPTION WHEN others THEN
+    IF SQLERRM <> 'INVALID_REQUIREMENTS' THEN RAISE; END IF;
+  END;
 
 END
 $test$;

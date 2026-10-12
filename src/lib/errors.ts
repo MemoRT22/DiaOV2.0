@@ -102,7 +102,7 @@ const MESSAGES: Record<string, string> = {
   ALREADY_CHECKED_IN: 'Esta asistencia ya estaba registrada.',
   CREDENTIAL_GENERATION_FAILED: 'No se pudo generar una credencial nueva. Intenta de nuevo.',
   INVALID_ACTIVITY_TYPE: 'El tipo de actividad debe ser académica o liderazgo.',
-  INVALID_REQUIREMENTS: 'Revisa los requisitos: cada alternativa lleva números enteros entre 0 y 999, y debe haber al menos una.',
+  INVALID_REQUIREMENTS: 'Revisa los requisitos: debe haber al menos una alternativa, con números enteros entre 0 y 999, y cada alternativa debe pedir al menos un sello.',
   INVALID_QUANTITY: 'La cantidad debe ser un número válido.',
   CATEGORY_INACTIVE: 'Esta categoría de sorteo está inactiva.',
   PENDING_SELECTION: 'Ya hay un ganador pendiente de confirmar para este premio. Confírmalo o márcalo como no presentado.',

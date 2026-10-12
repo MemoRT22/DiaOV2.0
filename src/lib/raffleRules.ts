@@ -43,7 +43,12 @@ export function normalizeRaffleStatus(raw: Record<string, unknown> | null | unde
   };
 }
 
+/** An alternative must ask for something: at least one minimum above zero. */
+export const hasRequirement = (rule: RaffleRule) => int(rule.academic) + int(rule.university_life) + int(rule.total) > 0;
+
+/** An alternative that asks for nothing is never met (the backend rejects it; this mirrors its last line of defence). */
 export const ruleMet = (rule: RaffleRule, stamps: StampCount) =>
+  hasRequirement(rule) &&
   int(rule.academic) <= stamps.academic &&
   int(rule.university_life) <= stamps.university_life &&
   int(rule.total) <= stamps.academic + stamps.university_life;
@@ -57,7 +62,7 @@ export function tierFor<T extends { sort_order: number; rules: RaffleRule[] }>(t
 
 const academicWord = (n: number) => (n === 1 ? 'académico' : 'académicos');
 
-/** «3 académicos + 1 de Vida Universitaria» · «4 sellos en total» · «Sin requisito». */
+/** «3 académicos + 1 de Vida Universitaria» · «4 sellos en total» · «Sin requisitos» (not a valid alternative). */
 export function describeRule(rule: RaffleRule): string {
   const academic = int(rule.academic);
   const universityLife = int(rule.university_life);
@@ -70,7 +75,7 @@ export function describeRule(rule: RaffleRule): string {
     const totalText = `${total} ${total === 1 ? 'sello' : 'sellos'} en total`;
     return typed ? `${typed} (${totalText})` : totalText;
   }
-  return typed || 'Sin requisito';
+  return typed || 'Sin requisitos';
 }
 
 /** Alternatives joined with «o»: «2 académicos + 1 de Vida Universitaria, o 4 sellos en total». */
@@ -105,7 +110,9 @@ export type NextTierHint = { tier: string; cost: number; text: string };
 export function nextTierHint(status: Pick<MyRaffleStatus, 'academic_stamps' | 'university_life_stamps' | 'categories'>): NextTierHint | null {
   const stamps = { academic: status.academic_stamps, university_life: status.university_life_stamps };
   const current = tierFor(status.categories, stamps);
-  const higher = status.categories.filter((tier) => tier.rules.length > 0 && (!current || tier.sort_order > current.sort_order));
+  const higher = status.categories
+    .map((tier) => ({ ...tier, rules: tier.rules.filter(hasRequirement) }))
+    .filter((tier) => tier.rules.length > 0 && (!current || tier.sort_order > current.sort_order));
   let best: { tier: RaffleTier; cost: number } | null = null;
   for (const tier of higher) {
     const cost = Math.min(...tier.rules.map((rule) => missingFor(rule, stamps).cost));
