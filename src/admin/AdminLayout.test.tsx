@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { useEdition } from '../edition/EditionProvider';
@@ -67,6 +67,17 @@ test('Mi cuenta belongs to the profile, not to the product areas', () => {
   expect(within(nav).queryByRole('link', { name: /Mi cuenta/ })).not.toBeInTheDocument();
   expect(screen.getByRole('link', { name: /Mi cuenta · Coordinadora/ })).toHaveAttribute('href', '/coordinacion/cuenta');
   expect(screen.getByRole('button', { name: 'Cerrar sesión' })).toBeInTheDocument();
+});
+
+test('mobile navigation closes with Escape and restores focus', () => {
+  role(['coordinacion']);
+  show('/coordinacion');
+  const trigger = screen.getByRole('button', { name: 'Abrir menú' });
+  fireEvent.click(trigger);
+  expect(trigger).toHaveAttribute('aria-expanded', 'true');
+  fireEvent.keyDown(window, { key: 'Escape' });
+  expect(trigger).toHaveAttribute('aria-expanded', 'false');
+  expect(trigger).toHaveFocus();
 });
 
 test('Operación groups the live center, check-in and the final raffle', () => {

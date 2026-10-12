@@ -7,19 +7,19 @@ import type { ColorKey } from '../theme/types';
  * colours (success / warning / error) for states, alerts and charts.
  */
 export const ADMIN_COLORS: Record<ColorKey, string> = {
-  primary: '#D95A1A',
-  secondary: '#385D73',
-  accent: '#4C7563',
-  success: '#16A34A',
-  warning: '#D97706',
-  error: '#DC2626',
-  neutral: '#6B7280',
-  background: '#F7F8FA',
+  primary: '#BF4818',
+  secondary: '#24536B',
+  accent: '#23766B',
+  success: '#15803D',
+  warning: '#A65C09',
+  error: '#B42318',
+  neutral: '#64748B',
+  background: '#F4F6FA',
   surface: '#FFFFFF',
-  surfaceRaised: '#F3F5F7',
-  ink: '#1F2933',
-  inkMuted: '#5B6570',
-  line: '#E2E7EB',
+  surfaceRaised: '#EEF2F7',
+  ink: '#172238',
+  inkMuted: '#526174',
+  line: '#DCE3EC',
 };
 
 export const ADMIN_LOGO = '/assets/images/Logo_A.png';
@@ -30,6 +30,6 @@ export function adminCssVars(): Record<string, string> {
     ...paletteCssVars(ADMIN_COLORS, 700),
     '--font-display': "'Inter', system-ui, sans-serif",
     '--font-body': "'Inter', system-ui, sans-serif",
-    '--radius': '8px',
+    '--radius': '10px',
   };
 }

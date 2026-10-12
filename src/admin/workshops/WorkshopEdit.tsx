@@ -52,15 +52,15 @@ function Editor({ detail, catalog }: { detail: WorkshopDetail; catalog: Awaited<
   const copy = copyFor(form.activity_type);
   return <div className="space-y-6">
     <Link to={`/coordinacion/talleres/${detail.id}`} className="text-sm font-semibold underline">Volver al taller</Link>
-    <header><h1 className="text-2xl font-extrabold">Editar taller</h1><p className="mt-1 text-sm text-ink-muted">Los cambios se guardan en el taller.</p></header>
+    <header className="admin-feature-card p-5 sm:p-6"><p className="text-xs font-semibold uppercase tracking-wider text-ink-muted">Taller · edición</p><h1 className="mt-1 text-2xl font-extrabold">Editar taller</h1><p className="mt-1 text-sm text-ink-muted">{detail.title}. Revisa cada sección y guarda al finalizar.</p></header>
     {failure && <Alert tone="error">{failure}</Alert>}
     {Object.keys(errors).length > 0 && <Alert tone="error">Revisa los campos marcados antes de guardar.</Alert>}
     <form onSubmit={(event) => void submit(event)} noValidate className="space-y-6">
-      <section className="card space-y-4 p-5"><h2 className="text-lg font-bold">Responsable</h2>
+      <section className="card admin-editor-section space-y-4 p-5"><h2 data-step="01" className="text-lg font-bold">Responsable</h2>
         <TextField field="facilitator_name" label="Nombre completo" required value={form.facilitator_name} onChange={(v) => set('facilitator_name', v)} error={errors.facilitator_name} />
         <TextField field="facilitator_email" label="Correo electrónico" required type="email" value={form.facilitator_email} onChange={(v) => set('facilitator_email', v)} error={errors.facilitator_email} />
       </section>
-      <section className="card space-y-4 p-5"><h2 className="text-lg font-bold">Sobre el taller</h2>
+      <section className="card admin-editor-section space-y-4 p-5"><h2 data-step="02" className="text-lg font-bold">Sobre el taller</h2>
         <RadioCards field="activity_type" legend="Tipo de taller" required value={form.activity_type}
           onChange={(v) => { set('activity_type', v); if (v === 'academica') { set('experience_category', ''); if (form.session_duration_minutes === '15') set('session_duration_minutes', '30'); } else set('career_ids', []); }}
           options={ACTIVITY_TYPES.map((t) => ({ value: t.value, label: t.label, description: t.description }))} error={errors.activity_type} />
@@ -69,12 +69,12 @@ function Editor({ detail, catalog }: { detail: WorkshopDetail; catalog: Awaited<
         <TextField field="title" label={copy.title.label} required value={form.title} onChange={(v) => set('title', v)} error={errors.title} />
         <TextAreaField field="student_pitch" label="Presentación breve" required rows={3} max={LIMITS.studentPitch.max} value={form.student_pitch} onChange={(v) => set('student_pitch', v)} error={errors.student_pitch} />
       </section>
-      <section className="card space-y-4 p-5"><h2 className="text-lg font-bold">Experiencia</h2>
+      <section className="card admin-editor-section space-y-4 p-5"><h2 data-step="03" className="text-lg font-bold">Experiencia</h2>
         <TextAreaField field="objective" label="Objetivo" required={form.activity_type === 'academica'} max={LIMITS.objective.max} value={form.objective} onChange={(v) => set('objective', v)} error={errors.objective} />
         <TextAreaField field="takeaway" label="Qué se llevará el alumno" required max={LIMITS.takeaway.max} value={form.takeaway} onChange={(v) => set('takeaway', v)} error={errors.takeaway} />
         <KeywordInput value={form.keywords} onChange={(v) => set('keywords', v)} error={errors.keywords} />
       </section>
-      <section className="card space-y-4 p-5"><h2 className="text-lg font-bold">Logística</h2>
+      <section className="card admin-editor-section space-y-4 p-5"><h2 data-step="04" className="text-lg font-bold">Logística</h2>
         <RadioCards field="session_duration_minutes" legend="Duración" required value={form.session_duration_minutes} onChange={(v) => set('session_duration_minutes', v)}
           options={durationsFor(form.activity_type).map((d) => ({ value: String(d.value), label: d.label }))} error={errors.session_duration_minutes} />
         <TextField field="capacity_per_session" label="Cupo por sesión" required inputMode="numeric" value={form.capacity_per_session} onChange={(v) => set('capacity_per_session', v)} error={errors.capacity_per_session} />
@@ -84,11 +84,11 @@ function Editor({ detail, catalog }: { detail: WorkshopDetail; catalog: Awaited<
         <TextAreaField field="requirements" label="Requerimientos" max={LIMITS.requirementsMax} value={form.requirements} onChange={(v) => set('requirements', v)} error={errors.requirements} />
         <TextAreaField field="notes" label="Notas" max={LIMITS.notesMax} value={form.notes} onChange={(v) => set('notes', v)} error={errors.notes} />
       </section>
-      {form.activity_type === 'academica' && <section className="card space-y-4 p-5"><h2 className="text-lg font-bold">Carreras relacionadas</h2>
+      {form.activity_type === 'academica' && <section className="card admin-editor-section space-y-4 p-5"><h2 data-step="05" className="text-lg font-bold">Carreras relacionadas</h2>
         <CareerPicker catalog={catalog} value={form.career_ids} onChange={(v) => set('career_ids', v)} error={errors.career_ids} />
       </section>}
-      <div className="flex flex-wrap gap-3"><Button type="submit" loading={saving} disabled={saving}>Guardar cambios</Button>
-        <Link to={`/coordinacion/talleres/${detail.id}`} className="inline-flex min-h-11 items-center rounded-full border border-line px-5 text-sm font-semibold">Cancelar</Link></div>
+      <div className="admin-form-actions flex flex-wrap items-center justify-end gap-3"><Link to={`/coordinacion/talleres/${detail.id}`} className="admin-action-link">Cancelar</Link>
+        <Button type="submit" loading={saving} disabled={saving}>Guardar cambios</Button></div>
     </form>
   </div>;
 }

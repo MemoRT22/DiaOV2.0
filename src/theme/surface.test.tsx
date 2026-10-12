@@ -66,7 +66,7 @@ test('admin variables are fixed and independent from any public theme', () => {
   expect(admin).toEqual(adminCssVars());
   expect(admin['--c-primary-500']).not.toBe(loud['--c-primary-500']);
   expect(admin['--font-display']).toContain('Inter');
-  expect(admin['--radius']).toBe('8px');
+  expect(admin['--radius']).toBe('10px');
   // readable foregrounds for states, charts and alerts are dark tones on the light admin canvas
   expect(admin['--fg-error']).toBe(admin['--c-error-700']);
   expect(loud['--fg-error']).toBe(loud['--c-error-200']);
@@ -85,7 +85,7 @@ test('painting the admin removes every trace of the public theme', () => {
   expect(document.documentElement.dataset.background).toBe('starfield');
   paintAdminSurface();
   expect(rootVar('--font-display')).toContain('Inter');
-  expect(rootVar('--radius')).toBe('8px');
+  expect(rootVar('--radius')).toBe('10px');
   expect(rootVar('--surface-sunken')).toBe(adminCssVars()['--surface-sunken']);
   expect(document.documentElement.dataset.background).toBeUndefined();
   expect(document.documentElement.style.colorScheme).toBe('light');
@@ -99,7 +99,7 @@ test('a published public theme never reaches the admin, but does reach the publi
   expect(rootVar('--c-primary-500')).toBe(adminCssVars()['--c-primary-500']);
   expect(rootVar('--font-display')).toContain('Inter');
   expect(rootVar('--surface')).toBe(adminCssVars()['--surface']);
-  expect(rootVar('--radius')).toBe('8px');
+  expect(rootVar('--radius')).toBe('10px');
   expect(document.documentElement.dataset.background).toBeUndefined();
 
   fireEvent.click(screen.getByRole('link', { name: 'ir al portal' }));
@@ -111,6 +111,6 @@ test('a published public theme never reaches the admin, but does reach the publi
 
   fireEvent.click(screen.getByRole('link', { name: 'ir al admin' }));
   await waitFor(() => expect(rootVar('--font-display')).toContain('Inter'));
-  expect(rootVar('--radius')).toBe('8px');
+  expect(rootVar('--radius')).toBe('10px');
   expect(document.documentElement.dataset.background).toBeUndefined();
 });

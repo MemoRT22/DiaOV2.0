@@ -27,7 +27,7 @@ export default function CareersTab() {
   return (
     <section className="space-y-4">
       <div className="flex justify-end">
-        <Button variant="secondary" onClick={() => setEditing({ is_active: true, division_id: divisions[0]?.id })} disabled={!divisions.length}>
+        <Button onClick={() => setEditing({ is_active: true, division_id: divisions[0]?.id })} disabled={!divisions.length}>
           <Plus className="h-4 w-4" aria-hidden />
           Nueva carrera
         </Button>
@@ -51,10 +51,10 @@ export default function CareersTab() {
                     {c.is_demo && <Badge tone="warning">Prueba</Badge>}
                     <button
                       onClick={() => setEditing(c)}
-                      className="rounded-full p-2 text-ink-muted hover:bg-surface-raised hover:text-ink"
+                      className="admin-action-link"
                       aria-label={`Editar ${c.name}`}
                     >
-                      <Pencil className="h-4 w-4" />
+                      <Pencil className="h-4 w-4" aria-hidden />Editar
                     </button>
                   </li>
                 ))}

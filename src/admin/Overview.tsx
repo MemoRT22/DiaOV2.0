@@ -1,4 +1,4 @@
-import { ArrowRight } from 'lucide-react';
+import { Activity, ArrowRight, CalendarDays, ClipboardCheck, Shapes, UsersRound, type LucideIcon } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Alert, Button, Spinner } from '../components/ui';
 import { formatEventDate } from '../lib/catalog';
@@ -45,31 +45,32 @@ export default function Overview() {
     ...(reviewCount > 0 ? [{ count: reviewCount, label: reviewCount === 1 ? 'taller por revisar' : 'talleres por revisar',
       description: 'Hay talleres pendientes de decisión.', to: '/coordinacion/talleres', action: 'Revisar talleres' }] : []),
   ];
-  const quickActions = [
-    { to: '/coordinacion/participantes', title: 'Gestionar participantes', description: 'Busca participantes, corrige datos y restablece contraseñas.' },
-    { to: '/coordinacion/talleres', title: 'Gestionar talleres', description: 'Revisa, edita y administra talleres.' },
-    { to: '/coordinacion/operacion-en-vivo', title: 'Abrir operación del evento', description: 'Consulta sesiones, aforo y asistencias.' },
+  const quickActions: { to: string; title: string; description: string; icon: LucideIcon; accent: string }[] = [
+    { to: '/coordinacion/participantes', title: 'Gestionar participantes', description: 'Busca y corrige datos directamente desde la lista.', icon: UsersRound, accent: 'rgb(var(--c-secondary-600))' },
+    { to: '/coordinacion/talleres', title: 'Gestionar talleres', description: 'Revisa propuestas y edita talleres sin pasos extra.', icon: Shapes, accent: 'rgb(var(--c-primary-600))' },
+    { to: '/coordinacion/operacion-en-vivo', title: 'Abrir operación del evento', description: 'Prioriza incidencias, sesiones y check-in.', icon: Activity, accent: 'rgb(var(--c-accent-600))' },
   ];
-  const indicators = [
-    { label: 'Participantes', value: summary.participants_total },
-    { label: 'Talleres', value: summary.activities },
-    { label: 'Sesiones', value: summary.sessions },
-    { label: 'Asistencias', value: summary.attendances },
+  const indicators: { label: string; value: number; icon: LucideIcon; glow: string; accent: string }[] = [
+    { label: 'Participantes', value: summary.participants_total, icon: UsersRound, glow: 'rgb(var(--c-secondary-500) / 0.16)', accent: 'rgb(var(--c-secondary-600))' },
+    { label: 'Talleres', value: summary.activities, icon: Shapes, glow: 'rgb(var(--c-primary-500) / 0.16)', accent: 'rgb(var(--c-primary-600))' },
+    { label: 'Sesiones', value: summary.sessions, icon: CalendarDays, glow: 'rgb(var(--c-accent-500) / 0.17)', accent: 'rgb(var(--c-accent-600))' },
+    { label: 'Asistencias', value: summary.attendances, icon: ClipboardCheck, glow: 'rgb(var(--c-success-500) / 0.16)', accent: 'rgb(var(--c-success-600))' },
   ];
 
-  return <div className="space-y-9">
-    <header className="admin-hero pb-7 pt-1">
+  return <div className="space-y-8">
+    <header className="admin-hero relative overflow-hidden px-6 py-7 sm:px-8 sm:py-9">
       <p className="text-xs font-semibold uppercase tracking-[0.12em] text-ink-muted">Panel de Coordinación</p>
       <h1 className="mt-2">Inicio</h1>
-      <p className="mt-2 text-sm text-ink-muted">Resumen del evento y tareas que necesitan atención.</p>
+      <p className="mt-2 max-w-xl text-sm text-ink-muted">Lo que necesita tu atención y los accesos para resolverlo, en un solo lugar.</p>
+      <div className="admin-hero-orbit" aria-hidden />
     </header>
 
     <section aria-labelledby="indicators-title" className="space-y-3">
       <h2 id="indicators-title" className="text-sm font-semibold text-ink">En números</h2>
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        {indicators.map(({ label, value }) => <div key={label} className="card admin-stat flex flex-col justify-between p-4 sm:p-5">
-          <p className="text-sm text-ink-muted">{label}</p>
-          <p className="mt-5 text-3xl font-semibold tabular-nums tracking-tight text-ink">{value}</p>
+        {indicators.map(({ label, value, icon: Icon, glow, accent }) => <div key={label} className="card admin-stat flex flex-col justify-between p-4 sm:p-5" style={{ ['--stat-glow' as string]: glow, ['--stat-accent' as string]: accent }}>
+          <div className="flex items-center justify-between gap-3"><p className="text-sm font-semibold text-ink-muted">{label}</p><span className="flex h-9 w-9 items-center justify-center rounded-xl" style={{ background: glow, color: accent }}><Icon className="h-[1.15rem] w-[1.15rem]" strokeWidth={1.9} aria-hidden /></span></div>
+          <p className="mt-5 text-3xl font-bold tabular-nums tracking-tight text-ink">{value}</p>
         </div>)}
       </div>
     </section>
@@ -106,12 +107,12 @@ export default function Overview() {
         <p className="mt-1 text-sm text-ink-muted">Ve directo a las tareas más frecuentes.</p>
       </div>
       <div className="grid gap-3 md:grid-cols-3">
-        {quickActions.map(({ to, title, description }, index) => <Link key={to} to={to}
-          className="card group flex min-h-44 flex-col p-5 focus-visible:outline-none">
-          <span className="text-xs font-semibold tabular-nums text-fg-brand">0{index + 1}</span>
-          <span className="mt-4 flex-1"><span className="block text-base font-semibold">{title}</span>
+        {quickActions.map(({ to, title, description, icon: Icon, accent }) => <Link key={to} to={to}
+          className="admin-feature-card group flex min-h-48 flex-col p-5" style={{ ['--feature-accent' as string]: accent }}>
+          <span className="admin-feature-icon"><Icon className="h-5 w-5" strokeWidth={1.8} aria-hidden /></span>
+          <span className="mt-4 flex-1"><span className="block text-base font-bold">{title}</span>
             <span className="mt-1.5 block text-sm text-ink-muted">{description}</span></span>
-          <span className="mt-4 inline-flex items-center gap-1 text-sm font-semibold text-fg-brand">Abrir
+          <span className="mt-4 inline-flex items-center gap-1 text-sm font-semibold text-fg-info">Abrir
             <ArrowRight className="h-4 w-4" aria-hidden /></span>
         </Link>)}
       </div>

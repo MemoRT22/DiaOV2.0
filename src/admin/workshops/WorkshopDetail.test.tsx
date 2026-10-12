@@ -21,7 +21,7 @@ test.each(['submitted', 'in_review', 'changes_requested', 'approved'] as const)(
   show();
   expect(await screen.findByRole('heading', { name: 'Taller de medicina' })).toBeInTheDocument();
   expect(screen.getByText('Pendiente')).toBeInTheDocument();
-  expect(screen.getByRole('link', { name: 'Editar' })).toBeInTheDocument();
+  expect(screen.getByRole('link', { name: 'Editar taller' })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Aprobar' })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Descartar' })).toBeInTheDocument();
   expect(screen.queryByText(/Revisión administrativa|Publicar en Día OV|Solicitar cambios|Feedback/)).not.toBeInTheDocument();
@@ -66,7 +66,7 @@ test('published workshop stays in its editorial detail with operational sessions
   show();
   expect(await screen.findByRole('heading', { name: 'Taller de medicina' })).toBeInTheDocument();
   expect(screen.getByText('Publicado')).toBeInTheDocument();
-  expect(screen.getByRole('link', { name: 'Editar' })).toHaveAttribute('href', `/coordinacion/talleres/${ID}/editar`);
+  expect(screen.getByRole('link', { name: 'Editar taller' })).toHaveAttribute('href', `/coordinacion/talleres/${ID}/editar`);
   expect(screen.getByText(/Cupo 20 · Reservados 4/)).toBeInTheDocument();
   expect(screen.getByText('Medicina')).toBeInTheDocument();
 });
