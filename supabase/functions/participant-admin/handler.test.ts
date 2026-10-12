@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { generatePassword, handleRequest, type AuthResult, type Deps, type ParticipantRow, type AuthUserInfo } from './handler.ts';
+import { classifyAuthLookup, generatePassword, handleRequest, type AuthResult, type Deps, type ParticipantRow, type AuthUserInfo } from './handler.ts';
 
 const url = 'https://example.test/functions/v1/participant-admin';
 const ACTOR = '11111111-1111-4111-8111-111111111111';
@@ -151,6 +151,8 @@ function deleteFixture(opts: {
   caller?: AuthResult;
   plan?: { data?: unknown; error?: { message: string } | null };
   identity?: AuthUserInfo | null;
+  /** Auth cannot answer whether the identity exists (network, permissions, timeout…). */
+  lookupFails?: boolean;
   authDeleteFails?: boolean;
   removal?: { data?: unknown; error?: { message: string; code?: string } | null };
 } = {}) {
@@ -166,7 +168,11 @@ function deleteFixture(opts: {
       }
       return { data: opts.removal?.data ?? { participant_id: PID, deleted: true, removed: { reservations: 2, attendances: 1 } }, error: opts.removal?.error ?? null };
     },
-    getUser: async (id) => { calls.push(`get:${id}`); return opts.identity === undefined ? { id: UID, email: 'ana@example.com', kind: 'participant' } : opts.identity; },
+    getUser: async (id) => {
+      calls.push(`get:${id}`);
+      if (opts.lookupFails) throw new Error('AUTH_LOOKUP_FAILED');
+      return opts.identity === undefined ? { id: UID, email: 'ana@example.com', kind: 'participant' } : opts.identity;
+    },
     createUser: async () => { calls.push('create'); return {}; },
     updateUser: async () => { calls.push('update'); return { ok: true }; },
     deleteUser: async (id) => { calls.push(`delete:${id}`); if (opts.authDeleteFails) throw new Error('AUTH_ERROR'); },
@@ -245,7 +251,7 @@ test('delete: if Auth cannot remove the identity nothing is deleted and the oper
   assert.ok(!f.calls.some((c) => c.startsWith('rpc:participant_delete_internal')));
 });
 
-test('delete: an identity already gone from Auth does not block the removal', async () => {
+test('delete: an identity that Auth CONFIRMS as non-existent does not block the removal', async () => {
   const f = deleteFixture({ identity: null });
   const res = await handleRequest(post({ action: 'delete', participant_id: PID }), f.deps);
   assert.equal(res.status, 200);
@@ -266,4 +272,117 @@ test('delete: database answers are mapped without leaking details', async () => 
     assert.equal(removalRes.status, status);
     assert.deepEqual(await removalRes.json(), { error: code });
   }
+});
+
+// --------------------------------------------------- «no account» versus «Auth could not answer»
+
+test('only a confirmed 404 from Auth means the account does not exist', () => {
+  const user = { id: UID };
+  assert.equal(classifyAuthLookup(user, null), 'found');
+  assert.equal(classifyAuthLookup(null, { status: 404, code: 'user_not_found' }), 'missing');
+  assert.equal(classifyAuthLookup(null, { status: 404 }), 'missing');
+  assert.equal(classifyAuthLookup(null, { code: 'user_not_found' }), 'missing');
+  // network failure, timeout, permissions, rate limit, server error, unexpected empty answer: nothing is known
+  for (const error of [{ status: 0 }, { status: 401, code: 'no_authorization' }, { status: 403, code: 'not_admin' },
+    { status: 408 }, { status: 429, code: 'over_request_rate_limit' }, { status: 500, code: 'unexpected_failure' },
+    { status: 503 }, { status: 504, code: 'request_timeout' }, {}]) {
+    assert.equal(classifyAuthLookup(null, error), 'inconclusive', JSON.stringify(error));
+  }
+  assert.equal(classifyAuthLookup(null, null), 'inconclusive');
+  assert.equal(classifyAuthLookup(undefined, undefined), 'inconclusive');
+});
+
+test('delete: when Auth cannot answer, neither the account nor the participant is deleted', async () => {
+  const f = deleteFixture({ lookupFails: true });
+  const res = await handleRequest(post({ action: 'delete', participant_id: PID }), f.deps);
+  assert.equal(res.status, 502);
+  assert.deepEqual(await res.json(), { error: 'AUTH_UNAVAILABLE' });
+  assert.deepEqual(f.calls, [`rpc:participant_delete_plan_internal:${args}`, `get:${UID}`]);
+  assert.deepEqual(f.logs, ['auth_lookup_failed:']);
+});
+
+test('delete: no outcome ever creates an account or changes a password', async () => {
+  const scenarios = [{}, { lookupFails: true }, { identity: null }, { authDeleteFails: true },
+    { identity: { id: UID, email: 'staff@anahuac.mx', kind: 'staff' } }, { removal: { error: { message: 'boom' } } },
+    { plan: { data: { participant_id: PID, auth_user_id: null, linked_non_participant_account: true } } }];
+  for (const scenario of scenarios) {
+    const f = deleteFixture(scenario);
+    await handleRequest(post({ action: 'delete', participant_id: PID }), f.deps);
+    assert.ok(!f.calls.some((c) => c === 'create' || c === 'update' || c === 'participant'), JSON.stringify(scenario));
+  }
+});
+
+test('delete: a Staff account stays protected whether Auth answers or not', async () => {
+  // Auth answers: it is a Staff identity → kept, participant removed.
+  const answered = deleteFixture({ identity: { id: UID, email: 'staff@anahuac.mx', kind: 'staff' } });
+  const first = await handleRequest(post({ action: 'delete', participant_id: PID }), answered.deps);
+  assert.equal((await first.json()).account, 'kept_not_participant');
+  assert.ok(!answered.calls.some((c) => c.startsWith('delete:')));
+  // Auth does not answer → nothing at all is deleted (in particular, never the account).
+  const silent = deleteFixture({ lookupFails: true });
+  assert.equal((await handleRequest(post({ action: 'delete', participant_id: PID }), silent.deps)).status, 502);
+  assert.ok(!silent.calls.some((c) => c.startsWith('delete:') || c.startsWith('rpc:participant_delete_internal')));
+  // The database says the linked account is not a participant identity → Auth is not even asked.
+  const byPlan = deleteFixture({ lookupFails: true, plan: { data: { participant_id: PID, auth_user_id: null, linked_non_participant_account: true } } });
+  const third = await handleRequest(post({ action: 'delete', participant_id: PID }), byPlan.deps);
+  assert.equal((await third.json()).account, 'kept_not_participant');
+  assert.ok(!byPlan.calls.some((c) => c.startsWith('get:') || c.startsWith('delete:')));
+});
+
+test('delete: after a temporary Auth failure the same request simply works on retry', async () => {
+  let authDown = true;
+  const calls: string[] = [];
+  const base = deleteFixture();
+  const deps: Deps = { ...base.deps,
+    rpc: async (name, a) => { calls.push(`rpc:${name}`); return base.deps.rpc(name, a); },
+    getUser: async (id) => { calls.push(`get:${id}`); if (authDown) throw new Error('AUTH_LOOKUP_FAILED'); return { id: UID, email: 'ana@example.com', kind: 'participant' }; },
+    deleteUser: async (id) => { calls.push(`delete:${id}`); },
+  };
+  assert.equal((await handleRequest(post({ action: 'delete', participant_id: PID }), deps)).status, 502);
+  assert.deepEqual(calls, ['rpc:participant_delete_plan_internal', `get:${UID}`]);
+  authDown = false;
+  const retry = await handleRequest(post({ action: 'delete', participant_id: PID }), deps);
+  assert.equal(retry.status, 200);
+  assert.equal((await retry.json()).account, 'deleted');
+  assert.deepEqual(calls.slice(2), ['rpc:participant_delete_plan_internal', `get:${UID}`, `delete:${UID}`, 'rpc:participant_delete_internal']);
+});
+
+test('delete: a partial deletion (account gone, participant still there) is completed by repeating it', async () => {
+  // First attempt: the account is removed but the database step fails.
+  // Second attempt: the participant no longer has an account (the link was cleared with it), so only the database step runs.
+  let accountExists = true;
+  let databaseDown = true;
+  const calls: string[] = [];
+  const deps: Deps = { ...deleteFixture().deps,
+    rpc: async (name) => {
+      calls.push(`rpc:${name}`);
+      if (name === 'participant_delete_plan_internal') {
+        return { data: { participant_id: PID, auth_user_id: accountExists ? UID : null, linked_non_participant_account: false }, error: null };
+      }
+      return databaseDown ? { data: null, error: { message: 'connection reset' } }
+        : { data: { participant_id: PID, deleted: true, removed: { reservations: 1 } }, error: null };
+    },
+    getUser: async (id) => { calls.push(`get:${id}`); return accountExists ? { id: UID, email: 'ana@example.com', kind: 'participant' } : null; },
+    deleteUser: async (id) => { calls.push(`delete:${id}`); accountExists = false; },
+  };
+  const first = await handleRequest(post({ action: 'delete', participant_id: PID }), deps);
+  assert.equal(first.status, 500);
+  assert.deepEqual(calls, ['rpc:participant_delete_plan_internal', `get:${UID}`, `delete:${UID}`, 'rpc:participant_delete_internal']);
+
+  databaseDown = false;
+  const second = await handleRequest(post({ action: 'delete', participant_id: PID }), deps);
+  assert.equal(second.status, 200);
+  assert.deepEqual(await second.json(), { ok: true, account: 'none', removed: { reservations: 1 } });
+  assert.deepEqual(calls.slice(4), ['rpc:participant_delete_plan_internal', 'rpc:participant_delete_internal']);
+});
+
+test('reset_password: when Auth cannot answer, no second account is created and no password is changed', async () => {
+  const f = fixture({ participant: { id: PID, email: 'ana@example.com', auth_user_id: UID } });
+  f.deps.getUser = async () => { throw new Error('AUTH_LOOKUP_FAILED'); };
+  const res = await handleRequest(post({ action: 'reset_password', participant_id: PID }), f.deps);
+  assert.equal(res.status, 500);
+  assert.deepEqual(await res.json(), { error: 'SERVER_ERROR' });
+  assert.ok(!f.calls.some((c) => c.startsWith('create:') || c.startsWith('update:')));
+  assert.deepEqual(f.passwords, []);
+  assert.ok(f.logs.includes('auth_lookup_failed:'));
 });

@@ -4,6 +4,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { Alert, Badge, Button, buttonClasses, SelectField, Spinner } from '../../components/ui';
 import { friendlyError } from '../../lib/errors';
 import { useLoad } from '../../lib/useLoad';
+import LegacyWorkshops from './LegacyWorkshops';
 import {
   CATEGORY_LABELS, GROUP_LABELS, TYPE_LABELS, groupForStatus, workshopAdminApi,
   type WorkshopGroup, type WorkshopType,
@@ -100,5 +101,6 @@ export default function WorkshopInbox() {
         <Button variant="secondary" disabled={page * data.page_size >= data.total} onClick={() => setPage(page + 1)}>Siguiente</Button>
       </nav>}
     </>}
+    <LegacyWorkshops type={type} search={search} />
   </div>;
 }

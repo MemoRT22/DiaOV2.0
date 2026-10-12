@@ -11,6 +11,9 @@
      - `workshop_admin_delete_internal`: elimina el taller en cualquier estado junto con actividad, sesiones,
        reservaciones, asistencias y credenciales.
      - `workshop_admin_get_internal`: además informa `dependents` (qué se eliminaría).
+     - `workshop_admin_legacy_list_internal` / `workshop_admin_activity_delete_internal`: los talleres que existen
+       solo como actividad (datos de prueba anteriores al flujo de expedientes) también se consultan y eliminan
+       uno por uno; no se les inventa un expediente.
   2. Alumnos:
      - `admin_create_participant`: alta manual por Coordinación. NO registra consentimiento: el Aviso de Privacidad lo
        acepta el propio participante al entrar.
@@ -204,6 +207,76 @@ BEGIN
     'sessions', v_sessions, 'dependents', v_dependents);
 END;
 $$;
+
+-- Talleres que existen solo como actividad, sin expediente (datos de prueba heredados, anteriores al flujo unificado).
+-- No aparecen en la bandeja de expedientes; se listan aparte para poder consultarlos y eliminarlos uno por uno.
+CREATE OR REPLACE FUNCTION public.workshop_admin_legacy_list_internal()
+RETURNS jsonb
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+  SELECT coalesce(jsonb_agg(jsonb_build_object(
+    'activity_id', a.id, 'title', a.title, 'activity_type', a.activity_type, 'experience_category', a.experience_category,
+    'is_demo', a.is_demo, 'location', nullif(a.location, ''), 'created_at', a.created_at,
+    'division_names', coalesce((
+      SELECT jsonb_agg(d.name ORDER BY d.sort_order, d.name) FROM public.divisions d
+      WHERE d.id = a.division_id OR EXISTS (SELECT 1 FROM public.activity_divisions ad WHERE ad.activity_id = a.id AND ad.division_id = d.id)), '[]'::jsonb),
+    'sessions', coalesce((
+      SELECT jsonb_agg(jsonb_build_object('id', s.id, 'starts_at', s.starts_at, 'ends_at', s.ends_at, 'capacity', s.capacity,
+        'reserved', public.session_reserved_count(s.id), 'status', s.status) ORDER BY s.starts_at, s.id)
+      FROM public.activity_sessions s WHERE s.activity_id = a.id), '[]'::jsonb),
+    'dependents', jsonb_build_object(
+      'sessions', (SELECT count(*) FROM public.activity_sessions s WHERE s.activity_id = a.id),
+      'reservations', (SELECT count(*) FROM public.reservations r WHERE r.activity_id = a.id),
+      'attendances', (SELECT count(*) FROM public.attendances t WHERE t.activity_id = a.id),
+      'participants', (SELECT count(DISTINCT x.participant_id) FROM (
+        SELECT participant_id FROM public.reservations WHERE activity_id = a.id
+        UNION SELECT participant_id FROM public.attendances WHERE activity_id = a.id) x))
+  ) ORDER BY a.is_demo, a.title, a.id), '[]'::jsonb)
+  FROM public.activities a
+  WHERE a.edition_id = (SELECT id FROM public.editions WHERE is_active LIMIT 1)
+    AND NOT EXISTS (SELECT 1 FROM public.workshop_submissions w WHERE w.published_activity_id = a.id);
+$$;
+
+REVOKE ALL ON FUNCTION public.workshop_admin_legacy_list_internal() FROM PUBLIC, anon, authenticated;
+
+-- Eliminación de un taller por su actividad. Pensada para los que no tienen expediente; si lo tuviera, se elimina
+-- junto con él por el mismo camino, de modo que nunca queda un expediente «publicado» sin actividad.
+CREATE OR REPLACE FUNCTION public.workshop_admin_activity_delete_internal(p_actor uuid, p_activity_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_ed public.editions%ROWTYPE;
+  v_activity public.activities%ROWTYPE;
+  v_submission uuid;
+  v_removed jsonb;
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM public.staff_members m JOIN public.staff_roles r
+    ON r.user_id = m.user_id AND r.role = 'coordinacion'
+    WHERE m.user_id = p_actor AND m.is_active) THEN RAISE EXCEPTION 'NOT_AUTHORIZED'; END IF;
+  SELECT * INTO v_ed FROM public.editions WHERE is_active LIMIT 1;
+  IF v_ed.id IS NULL THEN RAISE EXCEPTION 'NO_ACTIVE_EDITION'; END IF;
+  SELECT * INTO v_activity FROM public.activities WHERE id = p_activity_id AND edition_id = v_ed.id FOR UPDATE;
+  IF v_activity.id IS NULL THEN RAISE EXCEPTION 'NOT_FOUND'; END IF;
+  SELECT id INTO v_submission FROM public.workshop_submissions WHERE published_activity_id = v_activity.id FOR UPDATE;
+
+  v_removed := public.workshop_delete_cascade_internal(v_submission, v_activity.id);
+
+  INSERT INTO public.audit_log (edition_id, actor_user_id, action, detail)
+  VALUES (v_ed.id, p_actor, 'catalog.activity_deleted', jsonb_build_object(
+    'activity_id', v_activity.id, 'submission_id', v_submission, 'title', v_activity.title,
+    'activity_type', v_activity.activity_type, 'is_demo', v_activity.is_demo, 'removed', v_removed));
+
+  RETURN jsonb_build_object('activity_id', v_activity.id, 'deleted', true, 'removed', v_removed);
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.workshop_admin_activity_delete_internal(uuid, uuid) FROM PUBLIC, anon, authenticated;
 
 -- =====================================================================================================================
 -- 2. Alumnos
@@ -423,10 +496,13 @@ REVOKE ALL ON FUNCTION public.participant_delete_internal(uuid, uuid) FROM PUBLI
 
 -- Qué implica eliminar una división. Única fuente tanto para la vista previa como para la eliminación.
 --   · Sus carreras se eliminan (una carrera no existe sin división).
---   · Un taller académico cuyas carreras son TODAS de esta división no puede seguir siendo válido: se elimina con
---     sus sesiones, reservaciones y asistencias.
+--   · Un taller ACADÉMICO que se quedaría sin ninguna carrera ni división no puede seguir siendo válido: se elimina
+--     con sus sesiones, reservaciones y asistencias. Vale igual para un expediente (todas sus carreras son de esta
+--     división) y para una actividad heredada sin expediente (todas sus divisiones y carreras son de esta).
 --   · Un taller que también pertenece a otras divisiones se conserva con ellas; solo pierde esta asociación.
+--   · Un taller de Vida Universitaria no necesita división: si tenía esta, simplemente la pierde.
 --   · Los intereses (iniciales y posteriores) de los alumnos en esas carreras se retiran; los demás se conservan.
+--   · Solo entran en el plan actividades vinculadas a ESTA división (principal, asociada o por sus carreras).
 CREATE OR REPLACE FUNCTION public.division_delete_plan_internal(p_id uuid)
 RETURNS jsonb
 LANGUAGE sql
@@ -443,23 +519,41 @@ AS $$
     WHERE EXISTS (SELECT 1 FROM public.workshop_submission_careers sc
                   WHERE sc.submission_id = w.id AND sc.career_id IN (SELECT id FROM career))
   ),
-  doomed AS (SELECT * FROM touched WHERE only_this_division AND activity_type = 'academica'),
+  doomed_submission AS (SELECT * FROM touched WHERE only_this_division AND activity_type = 'academica'),
+  -- Actividades vinculadas a esta división que no caen ya con su expediente.
   linked_activity AS (
-    SELECT a.id FROM public.activities a
-    WHERE (a.division_id = p_id OR EXISTS (SELECT 1 FROM public.activity_divisions ad WHERE ad.activity_id = a.id AND ad.division_id = p_id))
-      AND a.id NOT IN (SELECT published_activity_id FROM doomed WHERE published_activity_id IS NOT NULL)
+    SELECT a.id, a.title, a.activity_type, a.is_demo,
+      EXISTS (SELECT 1 FROM public.workshop_submissions w WHERE w.published_activity_id = a.id) AS has_submission,
+      -- ¿Le queda alguna otra división o alguna carrera de otra división?
+      (a.division_id IS NOT NULL AND a.division_id <> p_id)
+        OR EXISTS (SELECT 1 FROM public.activity_divisions ad WHERE ad.activity_id = a.id AND ad.division_id <> p_id)
+        OR EXISTS (SELECT 1 FROM public.activity_careers ac WHERE ac.activity_id = a.id AND ac.career_id NOT IN (SELECT id FROM career))
+        AS keeps_something
+    FROM public.activities a
+    WHERE (a.division_id = p_id
+        OR EXISTS (SELECT 1 FROM public.activity_divisions ad WHERE ad.activity_id = a.id AND ad.division_id = p_id)
+        OR EXISTS (SELECT 1 FROM public.activity_careers ac WHERE ac.activity_id = a.id AND ac.career_id IN (SELECT id FROM career)))
+      AND a.id NOT IN (SELECT published_activity_id FROM doomed_submission WHERE published_activity_id IS NOT NULL)
+  ),
+  doomed_activity AS (SELECT * FROM linked_activity WHERE NOT has_submission AND activity_type = 'academica' AND NOT keeps_something),
+  doomed AS (
+    SELECT d.id AS submission_id, d.published_activity_id AS activity_id, d.title, d.status, false AS legacy FROM doomed_submission d
+    UNION ALL
+    SELECT NULL, a.id, a.title, 'published', true FROM doomed_activity a
   )
   SELECT jsonb_build_object(
     'careers', (SELECT count(*) FROM career),
     'career_names', coalesce((SELECT jsonb_agg(name ORDER BY name) FROM career), '[]'::jsonb),
     'workshops_deleted', coalesce((SELECT jsonb_agg(jsonb_build_object(
-        'submission_id', d.id, 'activity_id', d.published_activity_id, 'title', d.title, 'status', d.status,
-        'sessions', (SELECT count(*) FROM public.activity_sessions s WHERE s.activity_id = d.published_activity_id),
-        'reservations', (SELECT count(*) FROM public.reservations r WHERE r.activity_id = d.published_activity_id),
-        'attendances', (SELECT count(*) FROM public.attendances at WHERE at.activity_id = d.published_activity_id)
-      ) ORDER BY d.title) FROM doomed d), '[]'::jsonb),
-    'workshops_kept', (SELECT count(*) FROM touched t WHERE t.id NOT IN (SELECT id FROM doomed)),
-    'activities_unlinked', (SELECT count(*) FROM linked_activity),
+        'submission_id', d.submission_id, 'activity_id', d.activity_id, 'title', d.title, 'status', d.status, 'legacy', d.legacy,
+        'sessions', (SELECT count(*) FROM public.activity_sessions s WHERE s.activity_id = d.activity_id),
+        'reservations', (SELECT count(*) FROM public.reservations r WHERE r.activity_id = d.activity_id),
+        'attendances', (SELECT count(*) FROM public.attendances at WHERE at.activity_id = d.activity_id)
+      ) ORDER BY d.title, d.activity_id) FROM doomed d), '[]'::jsonb),
+    'workshops_kept', (SELECT count(*) FROM touched t WHERE t.id NOT IN (SELECT id FROM doomed_submission)),
+    'activities_unlinked', (SELECT count(*) FROM linked_activity l WHERE l.id NOT IN (SELECT id FROM doomed_activity)),
+    -- De esas, las que no tienen expediente (talleres heredados que continúan sin esta división).
+    'legacy_activities_kept', (SELECT count(*) FROM linked_activity l WHERE NOT l.has_submission AND l.id NOT IN (SELECT id FROM doomed_activity)),
     'participants_initial_interest', (SELECT count(DISTINCT x.pid) FROM (
         SELECT participant_id AS pid FROM public.initial_interests WHERE career_id IN (SELECT id FROM career)
         UNION SELECT id FROM public.participants WHERE initial_career_id IN (SELECT id FROM career)) x),
@@ -514,9 +608,9 @@ BEGIN
   FROM (SELECT id FROM careers WHERE division_id = v_d.id ORDER BY id FOR UPDATE) c;
   v_plan := division_delete_plan_internal(v_d.id);
 
-  -- 1. Talleres que solo existían por esta división: se eliminan completos.
+  -- 1. Talleres que solo existían por esta división (con expediente o heredados sin él): se eliminan completos.
   FOR v_item IN SELECT * FROM jsonb_array_elements(v_plan->'workshops_deleted') LOOP
-    v_one := workshop_delete_cascade_internal((v_item->>'submission_id')::uuid, nullif(v_item->>'activity_id', '')::uuid);
+    v_one := workshop_delete_cascade_internal(nullif(v_item->>'submission_id', '')::uuid, nullif(v_item->>'activity_id', '')::uuid);
     v_removed := jsonb_build_object(
       'sessions', (v_removed->>'sessions')::int + (v_one->>'sessions')::int,
       'reservations', (v_removed->>'reservations')::int + (v_one->>'reservations')::int,
@@ -526,6 +620,7 @@ BEGIN
   -- 2. Talleres que continúan con otras divisiones: pierden solo las carreras y la asociación de esta.
   DELETE FROM workshop_submission_careers WHERE career_id = ANY(v_careers);
   UPDATE workshop_submissions SET division_id = NULL WHERE division_id = v_d.id;
+  -- Solo las actividades vinculadas a ESTA división; ninguna otra se toca.
   SELECT coalesce(array_agg(a.id), '{}'::uuid[]) INTO v_activities FROM activities a
   WHERE a.division_id = v_d.id OR EXISTS (SELECT 1 FROM activity_divisions ad WHERE ad.activity_id = a.id AND ad.division_id = v_d.id);
   DELETE FROM activity_divisions WHERE division_id = v_d.id;

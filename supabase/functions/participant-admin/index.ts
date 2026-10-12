@@ -1,5 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.45.4';
-import { handleRequest, type Deps } from './handler.ts';
+import { classifyAuthLookup, handleRequest, type Deps } from './handler.ts';
 
 const url = Deno.env.get('SUPABASE_URL');
 const key = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
@@ -39,7 +39,11 @@ const deps: Deps = {
   },
   getUser: async (id) => {
     const { data, error } = await need().auth.admin.getUserById(id);
-    if (error || !data.user) return null;
+    // «No existe» solo cuando Auth lo confirma (404). Cualquier otro fallo es «no se sabe» y se propaga: quien
+    // llama no debe tratarlo como una cuenta inexistente.
+    const outcome = classifyAuthLookup(data?.user, error ? { status: error.status, code: error.code } : null);
+    if (outcome === 'missing') return null;
+    if (outcome !== 'found' || !data.user) throw new Error('AUTH_LOOKUP_FAILED');
     return { id: data.user.id, email: data.user.email ?? null, kind: (data.user.app_metadata?.kind as string | undefined) ?? null };
   },
   createUser: async (email, password) => {

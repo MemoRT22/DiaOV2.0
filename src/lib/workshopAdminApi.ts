@@ -47,6 +47,13 @@ export type WorkshopDetail = WorkshopSummary & {
 export type WorkshopDependents = { sessions: number; reservations: number; attendances: number; participants: number };
 export type WorkshopCreated = { submission_id: string; status: ReviewStatus; activity_id: string | null };
 export type WorkshopDeleted = { submission_id: string; deleted: true; removed: WorkshopDependents };
+/** A workshop that exists only as an activity, without a file (test data from before the unified workshop flow). */
+export type LegacyWorkshop = {
+  activity_id: string; title: string; activity_type: string; experience_category: string | null;
+  is_demo: boolean; location: string | null; created_at: string; division_names: string[];
+  sessions: { id: string; starts_at: string; ends_at: string; capacity: number; reserved: number; status: string }[];
+  dependents: WorkshopDependents;
+};
 export type WorkshopList = {
   items: WorkshopSummary[]; total: number; page: number; page_size: number;
   counts: Record<WorkshopGroup, number>;
@@ -81,6 +88,10 @@ export const workshopAdminApi = {
     (await call<{ submission: WorkshopCreated }>({ action: 'create', payload, publish })).submission,
   /** Permanently deletes the workshop, in any state, with its sessions, reservations, attendances and credential. */
   remove: (submission_id: string) => call<WorkshopDeleted>({ action: 'delete', submission_id }),
+  /** Workshops without a file («expediente»), managed through their activity. */
+  listLegacy: async () => (await call<{ items: LegacyWorkshop[] }>({ action: 'list_legacy' })).items ?? [],
+  removeLegacy: (activity_id: string) =>
+    call<{ activity_id: string; deleted: true; removed: WorkshopDependents }>({ action: 'delete_legacy', activity_id }),
   edit: async (submission_id: string, payload: SubmissionPayload) =>
     (await call<{ submission: { id: string; status: ReviewStatus } }>({ action: 'edit', submission_id, payload })).submission,
   discard: async (submission_id: string) =>

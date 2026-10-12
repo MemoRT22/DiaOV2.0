@@ -31,8 +31,8 @@ const payload = {
 test('only active Coordinación can read or mutate', async () => {
   for (const kind of ['unauthorized', 'forbidden'] as const) {
     const { deps, calls } = fixture(async () => ({ kind }));
-    for (const action of ['list', 'get', 'create', 'edit', 'approve_publish', 'archive', 'delete']) {
-      const res = await handleRequest(post({ action, submission_id: ID, payload }), deps);
+    for (const action of ['list', 'get', 'create', 'edit', 'approve_publish', 'archive', 'delete', 'list_legacy', 'delete_legacy']) {
+      const res = await handleRequest(post({ action, submission_id: ID, activity_id: ID, payload }), deps);
       assert.equal(res.status, kind === 'forbidden' ? 403 : 401);
     }
     assert.equal(calls.length, 0);
@@ -170,4 +170,33 @@ test('delete needs a valid id and maps a missing workshop to 404', async () => {
   const res = await handleRequest(post({ action: 'delete', submission_id: ID }), deps);
   assert.equal(res.status, 404);
   assert.equal((await body(res)).error, 'NOT_FOUND');
+});
+
+test('legacy workshops without a file are listed on their own', async () => {
+  const items = [{ activity_id: ID, title: 'Taller Académico A', activity_type: 'academica', is_demo: true }];
+  const { deps, calls } = fixture(undefined, async () => ({ data: items, error: null }));
+  const res = await handleRequest(post({ action: 'list_legacy' }), deps);
+  assert.equal(res.status, 200);
+  assert.deepEqual(await body(res), { items });
+  assert.deepEqual(calls, [{ name: 'workshop_admin_legacy_list_internal', args: {} }]);
+  // an unexpected answer never breaks the screen
+  const odd = fixture(undefined, async () => ({ data: null, error: null }));
+  assert.deepEqual(await body(await handleRequest(post({ action: 'list_legacy' }), odd.deps)), { items: [] });
+});
+
+test('a legacy workshop is deleted by its activity, one at a time', async () => {
+  const removed = { sessions: 1, reservations: 2, attendances: 1, participants: 2 };
+  const { deps, calls } = fixture(undefined, async () => ({ data: { activity_id: ID, deleted: true, removed }, error: null }));
+  const res = await handleRequest(post({ action: 'delete_legacy', activity_id: ID }), deps);
+  assert.equal(res.status, 200);
+  assert.deepEqual(await body(res), { activity_id: ID, deleted: true, removed });
+  assert.deepEqual(calls, [{ name: 'workshop_admin_activity_delete_internal', args: { p_actor: ACTOR, p_activity_id: ID } }]);
+
+  // needs a valid activity id (a submission id in the wrong field is not accepted) and maps a missing one to 404
+  const guarded = fixture(undefined, async () => ({ data: null, error: { message: 'NOT_FOUND' } }));
+  assert.equal((await handleRequest(post({ action: 'delete_legacy' }), guarded.deps)).status, 400);
+  assert.equal((await handleRequest(post({ action: 'delete_legacy', submission_id: ID }), guarded.deps)).status, 400);
+  assert.equal((await handleRequest(post({ action: 'delete_legacy', activity_id: 'nope' }), guarded.deps)).status, 400);
+  assert.equal(guarded.calls.length, 0);
+  assert.equal((await handleRequest(post({ action: 'delete_legacy', activity_id: ID }), guarded.deps)).status, 404);
 });

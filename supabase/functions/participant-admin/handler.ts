@@ -6,7 +6,7 @@
 // Eliminar un participante (solo Coordinación): primero se retira su identidad de Supabase Auth —únicamente si es una
 // identidad de participante; jamás una cuenta de Staff o Coordinación— y después la base elimina al participante con
 // todo lo suyo en una transacción. Si algo falla a medias, repetir la operación la termina: nunca queda una cuenta de
-// acceso sin participante.
+// acceso sin participante. Si Auth no puede decir si la cuenta existe, no se elimina nada.
 export type AuthResult = { kind: 'ok'; userId: string; coordinator?: boolean } | { kind: 'unauthorized' | 'forbidden' };
 export type RpcResult = { data: unknown; error: { code?: string; message: string } | null };
 export type ParticipantRow = { id: string; email: string; auth_user_id: string | null };
@@ -15,6 +15,10 @@ export type Deps = {
   authorize: (token: string) => Promise<AuthResult>;
   participant: (id: string) => Promise<ParticipantRow | null>;
   rpc: (name: string, args: Record<string, unknown>) => Promise<RpcResult>;
+  /**
+   * Resolves `null` ONLY when Auth confirms the identity does not exist. When Auth cannot answer (network, permissions,
+   * timeout, any other error) it must THROW: «no answer» is never read as «no account».
+   */
   getUser: (id: string) => Promise<AuthUserInfo | null>;
   createUser: (email: string, password: string) => Promise<{ id?: string; code?: 'EMAIL_TAKEN' | 'AUTH_ERROR' }>;
   updateUser: (id: string, email: string, password: string) => Promise<{ ok: boolean; code?: 'EMAIL_TAKEN' | 'AUTH_ERROR' }>;
@@ -56,10 +60,26 @@ export function generatePassword(randomBytes: (length: number) => Uint8Array): s
   return out;
 }
 
+/** What Auth answered when asked for an identity. Only a confirmed «not found» counts as a missing account. */
+export type AuthLookup = 'found' | 'missing' | 'inconclusive';
+export function classifyAuthLookup(user: unknown, error: { status?: number; code?: string } | null | undefined): AuthLookup {
+  if (error) return error.status === 404 || error.code === 'user_not_found' ? 'missing' : 'inconclusive';
+  return user ? 'found' : 'inconclusive';
+}
+
 const isParticipantIdentity = (user: AuthUserInfo) => user.kind === 'participant' || SYNTHETIC.test(user.email ?? '');
 
 async function applyPassword(deps: Deps, participant: ParticipantRow, password: string): Promise<'ok' | 'EMAIL_EXISTS' | 'SERVER_ERROR'> {
-  const existing = participant.auth_user_id ? await deps.getUser(participant.auth_user_id) : null;
+  let existing: AuthUserInfo | null = null;
+  if (participant.auth_user_id) {
+    try {
+      existing = await deps.getUser(participant.auth_user_id);
+    } catch {
+      // Auth no respondió: no se sabe si la cuenta existe, así que no se crea otra ni se cambia nada.
+      deps.log('auth_lookup_failed');
+      return 'SERVER_ERROR';
+    }
+  }
   // Jamás se cambia la contraseña de una cuenta que no sea de participante (p. ej. Staff vinculada por error).
   if (existing && !isParticipantIdentity(existing)) {
     deps.log('identity_not_participant');
@@ -94,7 +114,17 @@ async function deleteParticipant(deps: Deps, actor: string, participantId: strin
 
   let account: 'none' | 'deleted' | 'kept_not_participant' = foreignAccount ? 'kept_not_participant' : 'none';
   if (typeof authUserId === 'string' && UUID.test(authUserId)) {
-    const identity = await deps.getUser(authUserId);
+    let identity: AuthUserInfo | null;
+    try {
+      identity = await deps.getUser(authUserId);
+    } catch {
+      // Auth no pudo responder (red, permisos, tiempo de espera…). No se sabe si la cuenta existe: no se elimina
+      // nada, ni la cuenta ni el participante, y la operación puede repetirse.
+      deps.log('auth_lookup_failed');
+      return fail('AUTH_UNAVAILABLE', 502);
+    }
+    // `null` aquí significa que Auth CONFIRMÓ que la identidad ya no existe (p. ej. una eliminación anterior que se
+    // quedó a medias): no hay cuenta que retirar y el participante puede eliminarse.
     if (identity && !isParticipantIdentity(identity)) {
       // La base ya lo descarta; segunda barrera con lo que dice Auth. La cuenta se conserva y solo se desvincula.
       deps.log('identity_not_participant');

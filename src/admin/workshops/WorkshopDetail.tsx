@@ -6,6 +6,7 @@ import { friendlyError } from '../../lib/errors';
 import { formatEventDateTime, formatEventTime } from '../../lib/eventTime';
 import { useLoad } from '../../lib/useLoad';
 import PhraseConfirmModal from '../PhraseConfirmModal';
+import WorkshopDeleteSummary from './WorkshopDeleteSummary';
 import {
   CATEGORY_LABELS, GROUP_LABELS, TYPE_LABELS, groupForStatus, workshopAdminApi,
   type WorkshopCareer, type WorkshopDetail as Detail,
@@ -34,26 +35,6 @@ function Operational({ detail }: { detail: Detail }) {
       <p className="mt-1 text-sm text-ink-muted">Cupo {session.capacity} · Reservados {session.reserved} · {fallback(session.location)} · {sessionStatusLabel(session.status)}</p>
     </div>)}</div> : <p className="text-sm text-ink-muted">Sin sesiones registradas.</p>}
   </Section>;
-}
-
-const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
-/** What goes away with the workshop, so the confirmation is explicit about related data. */
-function DeleteSummary({ detail }: { detail: Detail }) {
-  const published = groupForStatus(detail.status) === 'published';
-  const d = detail.dependents ?? { sessions: detail.sessions?.length ?? 0, reservations: 0, attendances: 0, participants: 0 };
-  const related = d.reservations + d.attendances > 0;
-  return <>
-    <p>Vas a eliminar definitivamente <strong className="text-ink">{detail.title}</strong>. Esta acción no se puede deshacer.</p>
-    {published ? <>
-      <p>Dejará de aparecer para los alumnos de inmediato. Junto con el taller se eliminan:</p>
-      <ul className="list-disc space-y-1 pl-5" aria-label="Datos que se eliminarán">
-        <li>{plural(d.sessions, 'horario', 'horarios')} y su código QR de asistencia</li>
-        <li>{plural(d.reservations, 'reservación', 'reservaciones')}</li>
-        <li>{plural(d.attendances, 'asistencia registrada', 'asistencias registradas')}, con los sellos que otorgaron</li>
-      </ul>
-      {related && <p className="font-semibold text-fg-warning">{plural(d.participants, 'alumno perderá', 'alumnos perderán')} su reservación o sus sellos de este taller.</p>}
-    </> : <p>El taller no está publicado: no tiene horarios, reservaciones ni asistencias.</p>}
-  </>;
 }
 
 export default function WorkshopDetail() {
@@ -144,7 +125,8 @@ export default function WorkshopDetail() {
         await workshopAdminApi.remove(id);
         navigate('/coordinacion/talleres', { replace: true, state: { notice: `Taller «${data.title}» eliminado.` } });
       }}>
-      <DeleteSummary detail={data} />
+      <WorkshopDeleteSummary title={data.title} published={group === 'published'}
+        dependents={data.dependents ?? { sessions: data.sessions?.length ?? 0, reservations: 0, attendances: 0, participants: 0 }} />
     </PhraseConfirmModal>}
     {confirmDiscard && <Modal title="Descartar taller" onClose={() => { if (!busyRef.current) setConfirmDiscard(false); }}>
       <p className="mb-5 text-sm text-ink-muted">El taller se conservará en Descartados y no estará disponible para alumnos.</p>

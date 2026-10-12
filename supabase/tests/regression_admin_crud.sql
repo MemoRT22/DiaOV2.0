@@ -72,6 +72,10 @@ DECLARE
   ses uuid; ses_life uuid; ses_only_a uuid; cred jsonb;
   answer text; result jsonb; preview jsonb; board jsonb;
   cat uuid; prize uuid; n int; baseline_orphans int; careers_elsewhere int; divisions_before int;
+  -- talleres heredados sin expediente (DEMO)
+  ud uuid := gen_random_uuid(); pd uuid; div_d uuid; div_o uuid; car_d uuid; car_o uuid;
+  leg_only uuid; leg_shared uuid; leg_career uuid; leg_tipo uuid; leg_vida uuid; leg_other uuid; leg_extra uuid; leg_ses uuid;
+  legacy jsonb; invalid_before int;
 BEGIN
   baseline_orphans := pg_temp.orphans();
   SELECT count(*) INTO divisions_before FROM divisions;
@@ -400,8 +404,9 @@ BEGIN
   preview := pg_temp.as_user(coord, format('select division_delete_preview(%L)', div_a))::jsonb;
   IF (preview->>'careers')::int <> 2 OR preview->'career_names' <> '["CRUD Carrera A1", "CRUD Carrera A2"]'::jsonb
      OR jsonb_array_length(preview->'workshops_deleted') <> 1
-     OR ((preview->'workshops_deleted'->0) - 'submission_id' - 'activity_id') <> '{"title": "CRUD Solo A", "status": "published", "sessions": 2, "reservations": 2, "attendances": 1}'::jsonb
+     OR ((preview->'workshops_deleted'->0) - 'submission_id' - 'activity_id') <> '{"title": "CRUD Solo A", "status": "published", "legacy": false, "sessions": 2, "reservations": 2, "attendances": 1}'::jsonb
      OR (preview->>'workshops_kept')::int <> 1 OR (preview->>'activities_unlinked')::int <> 1
+     OR (preview->>'legacy_activities_kept')::int <> 0
      OR (preview->>'participants_initial_interest')::int <> 3 OR (preview->>'participants_post_event_interest')::int <> 2
   THEN RAISE EXCEPTION 'DIVISION_PREVIEW[%]', preview; END IF;
   answer := pg_temp.as_user(coord, format('select delete_division(%L)', div_a));
@@ -456,6 +461,148 @@ BEGIN
      OR (SELECT count(*) FROM divisions) <> divisions_before OR pg_temp.orphans() <> baseline_orphans
   THEN RAISE EXCEPTION 'DIVISION_DELETE_SECOND[%]', answer; END IF;
 
-  RAISE NOTICE 'ADMIN_CRUD_OK: talleres (crear, publicar, editar, eliminar con dependientes), alumnos (alta manual sin consentimiento, eliminación con todo lo suyo, cuentas de Staff intactas), divisiones (limpieza coherente) y tipo de misión en el tablero';
+  -- ===================================================================================================================
+  -- TALLERES HEREDADOS SIN EXPEDIENTE (datos DEMO anteriores al flujo de expedientes)
+  -- ===================================================================================================================
+  SELECT count(*) INTO invalid_before FROM activities a WHERE a.activity_type = 'academica' AND a.division_id IS NULL
+    AND NOT EXISTS (SELECT 1 FROM activity_divisions ad WHERE ad.activity_id = a.id)
+    AND NOT EXISTS (SELECT 1 FROM activity_careers ac WHERE ac.activity_id = a.id);
+  INSERT INTO auth.users(id,instance_id,aud,role,email,raw_app_meta_data,raw_user_meta_data,created_at,updated_at)
+  VALUES (ud,'00000000-0000-0000-0000-000000000000','authenticated','authenticated','crud.demo@test.invalid','{"kind":"participant"}','{}',now(),now());
+  INSERT INTO participants(edition_id,email,full_name,origin,is_demo,auth_user_id) VALUES (ed,'crud.demo@test.invalid','CRUD Alumno DEMO','demo',true,ud) RETURNING id INTO pd;
+  INSERT INTO divisions(code,name,sort_order,is_demo) VALUES ('ZZ-CRUD-D','CRUD División DEMO',905,true) RETURNING id INTO div_d;
+  INSERT INTO divisions(code,name,sort_order,is_demo) VALUES ('ZZ-CRUD-O','CRUD Otra DEMO',906,true) RETURNING id INTO div_o;
+  INSERT INTO careers(code,name,division_id,is_active,is_demo) VALUES ('ZZ-D1','CRUD Carrera DEMO',div_d,true,true) RETURNING id INTO car_d;
+  INSERT INTO careers(code,name,division_id,is_active,is_demo) VALUES ('ZZ-O1','CRUD Carrera Otra DEMO',div_o,true,true) RETURNING id INTO car_o;
+  -- Solo de la división D (con sesión, reservación, asistencia y credencial).
+  INSERT INTO activities(edition_id,division_id,title,location,is_demo,activity_type) VALUES (ed,div_d,'CRUD Heredado solo D','Sala DEMO',true,'academica') RETURNING id INTO leg_only;
+  INSERT INTO activity_divisions(activity_id,division_id) VALUES (leg_only,div_d);
+  INSERT INTO activity_careers(activity_id,career_id) VALUES (leg_only,car_d);
+  INSERT INTO activity_sessions(activity_id,starts_at,ends_at,capacity,is_demo,status) VALUES (leg_only,now()+interval '1 hour',now()+interval '2 hours',10,true,'activa') RETURNING id INTO leg_ses;
+  PERFORM rotate_activity_credential(leg_only);
+  INSERT INTO reservations(participant_id,session_id,activity_id) VALUES (pd,leg_ses,leg_only);
+  INSERT INTO attendances(participant_id,session_id,activity_id,method) VALUES (pd,leg_ses,leg_only,'qr');
+  -- Compartido entre D y otra división.
+  INSERT INTO activities(edition_id,division_id,title,is_demo,activity_type) VALUES (ed,div_d,'CRUD Heredado compartido',true,'academica') RETURNING id INTO leg_shared;
+  INSERT INTO activity_divisions(activity_id,division_id) VALUES (leg_shared,div_d),(leg_shared,div_o);
+  INSERT INTO activity_sessions(activity_id,starts_at,ends_at,capacity,is_demo,status) VALUES (leg_shared,now()+interval '3 hours',now()+interval '4 hours',10,true,'activa');
+  INSERT INTO reservations(participant_id,session_id,activity_id) SELECT pd, id, leg_shared FROM activity_sessions WHERE activity_id = leg_shared;
+  -- División principal D, pero con una carrera de otra división.
+  INSERT INTO activities(edition_id,division_id,title,is_demo,activity_type) VALUES (ed,div_d,'CRUD Heredado con carrera ajena',true,'academica') RETURNING id INTO leg_career;
+  INSERT INTO activity_careers(activity_id,career_id) VALUES (leg_career,car_d),(leg_career,car_o);
+  -- Tipo anterior «liderazgo» y Vida Universitaria con división D: no necesitan división para ser válidos.
+  INSERT INTO activities(edition_id,division_id,title,is_demo,activity_type) VALUES (ed,div_d,'CRUD Heredado liderazgo',true,'liderazgo') RETURNING id INTO leg_tipo;
+  INSERT INTO activities(edition_id,division_id,title,is_demo,activity_type,experience_category) VALUES (ed,NULL,'CRUD Heredado vida',true,'vida_universitaria','otra') RETURNING id INTO leg_vida;
+  INSERT INTO activity_divisions(activity_id,division_id) VALUES (leg_vida,div_d);
+  -- Ajeno a la división D.
+  INSERT INTO activities(edition_id,division_id,title,is_demo,activity_type) VALUES (ed,div_o,'CRUD Heredado ajeno',true,'academica') RETURNING id INTO leg_other;
+  INSERT INTO activity_divisions(activity_id,division_id) VALUES (leg_other,div_o);
+  -- Uno más, para eliminarlo individualmente.
+  INSERT INTO activities(edition_id,division_id,title,is_demo,activity_type) VALUES (ed,div_o,'CRUD Heredado individual',true,'academica') RETURNING id INTO leg_extra;
+  INSERT INTO activity_sessions(activity_id,starts_at,ends_at,capacity,is_demo,status) VALUES (leg_extra,now()+interval '5 hours',now()+interval '6 hours',10,true,'activa');
+  INSERT INTO reservations(participant_id,session_id,activity_id) SELECT pd, id, leg_extra FROM activity_sessions WHERE activity_id = leg_extra;
+  INSERT INTO attendances(participant_id,session_id,activity_id,method) SELECT pd, id, leg_extra, 'codigo_manual' FROM activity_sessions WHERE activity_id = leg_extra;
+  PERFORM rotate_activity_credential(leg_extra);
+
+  -- Aparecen en la administración (lista propia), con lo necesario para consultarlos; los que tienen expediente no.
+  IF pg_temp.as_user(coord, 'select workshop_admin_legacy_list_internal()') NOT LIKE 'ERR:permission denied%'
+     OR pg_temp.as_user(coord, format('select workshop_admin_activity_delete_internal(%L, %L)', coord, leg_extra)) NOT LIKE 'ERR:permission denied%'
+  THEN RAISE EXCEPTION 'LEGACY_INTERNALS_EXPOSED'; END IF;
+  legacy := workshop_admin_legacy_list_internal();
+  IF (SELECT count(*) FROM jsonb_array_elements(legacy) x WHERE (x->>'activity_id')::uuid IN (leg_only, leg_shared, leg_career, leg_tipo, leg_vida, leg_other, leg_extra)) <> 7
+     OR EXISTS (SELECT 1 FROM jsonb_array_elements(legacy) x WHERE (x->>'activity_id')::uuid = act_life)
+     OR EXISTS (SELECT 1 FROM jsonb_array_elements(legacy) x JOIN workshop_submissions w ON w.published_activity_id = (x->>'activity_id')::uuid)
+     OR (SELECT count(*) FROM jsonb_array_elements(legacy)) <> (SELECT count(*) FROM activities a WHERE a.edition_id = ed
+           AND NOT EXISTS (SELECT 1 FROM workshop_submissions w WHERE w.published_activity_id = a.id))
+  THEN RAISE EXCEPTION 'LEGACY_LIST_SCOPE'; END IF;
+  IF (SELECT x - 'activity_id' - 'created_at' - 'sessions' FROM jsonb_array_elements(legacy) x WHERE (x->>'activity_id')::uuid = leg_only)
+       <> jsonb_build_object('title','CRUD Heredado solo D','activity_type','academica','experience_category',NULL,'is_demo',true,'location','Sala DEMO',
+            'division_names', jsonb_build_array('CRUD División DEMO'),
+            'dependents', '{"sessions": 1, "reservations": 1, "attendances": 1, "participants": 1}'::jsonb)
+     OR (SELECT jsonb_array_length(x->'sessions') FROM jsonb_array_elements(legacy) x WHERE (x->>'activity_id')::uuid = leg_only) <> 1
+     OR (SELECT x->'sessions'->0->>'reserved' FROM jsonb_array_elements(legacy) x WHERE (x->>'activity_id')::uuid = leg_only) <> '1'
+     OR (SELECT x->'division_names' FROM jsonb_array_elements(legacy) x WHERE (x->>'activity_id')::uuid = leg_shared) <> '["CRUD División DEMO", "CRUD Otra DEMO"]'::jsonb
+  THEN RAISE EXCEPTION 'LEGACY_LIST_CONTENT'; END IF;
+
+  -- Eliminación individual de un taller sin expediente, con sus dependencias.
+  IF pg_temp.try(format('select workshop_admin_activity_delete_internal(%L, %L)::text', staff, leg_extra)) <> 'ERR:NOT_AUTHORIZED'
+     OR pg_temp.try(format('select workshop_admin_activity_delete_internal(%L, %L)::text', coord, gen_random_uuid())) <> 'ERR:NOT_FOUND'
+     OR NOT EXISTS (SELECT 1 FROM activities WHERE id = leg_extra)
+  THEN RAISE EXCEPTION 'LEGACY_DELETE_GUARDS'; END IF;
+  result := workshop_admin_activity_delete_internal(coord, leg_extra);
+  IF result->'removed' <> '{"sessions": 1, "reservations": 1, "attendances": 1, "participants": 1}'::jsonb
+     OR EXISTS (SELECT 1 FROM activities WHERE id = leg_extra) OR EXISTS (SELECT 1 FROM activity_sessions WHERE activity_id = leg_extra)
+     OR EXISTS (SELECT 1 FROM reservations WHERE activity_id = leg_extra) OR EXISTS (SELECT 1 FROM attendances WHERE activity_id = leg_extra)
+     OR EXISTS (SELECT 1 FROM activity_credentials WHERE activity_id = leg_extra)
+     OR EXISTS (SELECT 1 FROM jsonb_array_elements(workshop_admin_legacy_list_internal()) x WHERE (x->>'activity_id')::uuid = leg_extra)
+     OR pg_temp.orphans() <> baseline_orphans
+     OR NOT EXISTS (SELECT 1 FROM audit_log WHERE action = 'catalog.activity_deleted' AND actor_user_id = coord AND detail->>'activity_id' = leg_extra::text
+          AND detail->>'submission_id' IS NULL AND (detail->'removed'->>'attendances')::int = 1)
+  THEN RAISE EXCEPTION 'LEGACY_DELETE[%]', result; END IF;
+  -- Los demás siguen intactos, y el alumno conserva lo que no era de ese taller.
+  IF (SELECT count(*) FROM activities WHERE id IN (leg_only, leg_shared, leg_career, leg_tipo, leg_vida, leg_other)) <> 6
+     OR (SELECT count(*) FROM reservations WHERE participant_id = pd) <> 2 OR (SELECT count(*) FROM attendances WHERE participant_id = pd) <> 1
+  THEN RAISE EXCEPTION 'LEGACY_DELETE_COLLATERAL'; END IF;
+  -- La misma operación sobre una actividad CON expediente elimina también el expediente (nunca «publicado» sin actividad).
+  result := workshop_admin_activity_delete_internal(coord, act_life);
+  IF EXISTS (SELECT 1 FROM activities WHERE id = act_life) OR EXISTS (SELECT 1 FROM workshop_submissions WHERE id = w_life)
+     OR pg_temp.orphans() <> baseline_orphans
+     OR NOT EXISTS (SELECT 1 FROM audit_log WHERE action = 'catalog.activity_deleted' AND detail->>'submission_id' = w_life::text)
+  THEN RAISE EXCEPTION 'ACTIVITY_DELETE_WITH_SUBMISSION[%]', result; END IF;
+
+  -- División con talleres heredados: la vista previa los refleja.
+  preview := pg_temp.as_user(coord, format('select division_delete_preview(%L)', div_d))::jsonb;
+  IF (preview->>'careers')::int <> 1 OR jsonb_array_length(preview->'workshops_deleted') <> 1
+     OR ((preview->'workshops_deleted'->0) - 'activity_id') <> '{"submission_id": null, "title": "CRUD Heredado solo D", "status": "published", "legacy": true, "sessions": 1, "reservations": 1, "attendances": 1}'::jsonb
+     OR (preview->'workshops_deleted'->0->>'activity_id')::uuid <> leg_only
+     OR (preview->>'workshops_kept')::int <> 0 OR (preview->>'activities_unlinked')::int <> 4
+     OR (preview->>'legacy_activities_kept')::int <> 4
+  THEN RAISE EXCEPTION 'LEGACY_DIVISION_PREVIEW[%]', preview; END IF;
+  answer := pg_temp.as_user(coord, format('select delete_division(%L)', div_d));
+  IF answer LIKE 'ERR:%' THEN RAISE EXCEPTION 'LEGACY_DIVISION_DELETE[%]', answer; END IF;
+  IF answer::jsonb->'removed' <> '{"sessions": 1, "reservations": 1, "attendances": 1}'::jsonb THEN RAISE EXCEPTION 'LEGACY_DIVISION_COUNTS[%]', answer; END IF;
+  -- El académico que solo era de D se eliminó con sus dependencias: no queda un taller académico sin carreras ni divisiones.
+  IF EXISTS (SELECT 1 FROM divisions WHERE id = div_d) OR EXISTS (SELECT 1 FROM careers WHERE id = car_d)
+     OR EXISTS (SELECT 1 FROM activities WHERE id = leg_only) OR EXISTS (SELECT 1 FROM reservations WHERE activity_id = leg_only)
+     OR EXISTS (SELECT 1 FROM attendances WHERE activity_id = leg_only) OR EXISTS (SELECT 1 FROM activity_credentials WHERE activity_id = leg_only)
+  THEN RAISE EXCEPTION 'LEGACY_DIVISION_ONLY_REMAINS'; END IF;
+  IF (SELECT count(*) FROM activities a WHERE a.activity_type = 'academica' AND a.division_id IS NULL
+        AND NOT EXISTS (SELECT 1 FROM activity_divisions ad WHERE ad.activity_id = a.id)
+        AND NOT EXISTS (SELECT 1 FROM activity_careers ac WHERE ac.activity_id = a.id)) <> invalid_before
+  THEN RAISE EXCEPTION 'ACADEMIC_ACTIVITY_LEFT_INVALID'; END IF;
+  -- El compartido conserva la otra división (que pasa a ser la principal), su sesión y su reservación.
+  IF (SELECT division_id FROM activities WHERE id = leg_shared) IS DISTINCT FROM div_o
+     OR (SELECT array_agg(division_id) FROM activity_divisions WHERE activity_id = leg_shared) <> ARRAY[div_o]
+     OR (SELECT count(*) FROM activity_sessions WHERE activity_id = leg_shared) <> 1
+     OR (SELECT count(*) FROM reservations WHERE activity_id = leg_shared AND participant_id = pd) <> 1
+  THEN RAISE EXCEPTION 'LEGACY_SHARED_DAMAGED'; END IF;
+  -- El que tenía una carrera de otra división la conserva (sigue siendo válido) y solo pierde lo de D.
+  IF NOT EXISTS (SELECT 1 FROM activities WHERE id = leg_career AND division_id IS NULL)
+     OR (SELECT array_agg(career_id) FROM activity_careers WHERE activity_id = leg_career) <> ARRAY[car_o]
+  THEN RAISE EXCEPTION 'LEGACY_CAREER_LINK_DAMAGED'; END IF;
+  -- Vida Universitaria y el tipo anterior «liderazgo» no dependen de una división: se conservan sin ella.
+  IF NOT EXISTS (SELECT 1 FROM activities WHERE id = leg_tipo AND division_id IS NULL AND activity_type = 'liderazgo')
+     OR NOT EXISTS (SELECT 1 FROM activities WHERE id = leg_vida AND division_id IS NULL AND activity_type = 'vida_universitaria')
+     OR EXISTS (SELECT 1 FROM activity_divisions WHERE activity_id IN (leg_tipo, leg_vida))
+  THEN RAISE EXCEPTION 'LEGACY_NON_ACADEMIC_DAMAGED'; END IF;
+  -- Una actividad ajena a la división no se toca en absoluto.
+  IF NOT EXISTS (SELECT 1 FROM activities WHERE id = leg_other AND division_id = div_o AND title = 'CRUD Heredado ajeno')
+     OR (SELECT array_agg(division_id) FROM activity_divisions WHERE activity_id = leg_other) <> ARRAY[div_o]
+     OR NOT EXISTS (SELECT 1 FROM careers WHERE id = car_o AND division_id = div_o)
+     OR pg_temp.orphans() <> baseline_orphans
+  THEN RAISE EXCEPTION 'LEGACY_UNRELATED_TOUCHED'; END IF;
+  -- Al eliminar después la otra división, los dos académicos que solo quedaban en ella caen; el de la carrera ajena también.
+  preview := pg_temp.as_user(coord, format('select division_delete_preview(%L)', div_o))::jsonb;
+  IF (SELECT array_agg(w->>'title' ORDER BY w->>'title') FROM jsonb_array_elements(preview->'workshops_deleted') w)
+       <> ARRAY['CRUD Heredado ajeno', 'CRUD Heredado compartido', 'CRUD Heredado con carrera ajena']
+  THEN RAISE EXCEPTION 'LEGACY_SECOND_PREVIEW[%]', preview; END IF;
+  answer := pg_temp.as_user(coord, format('select delete_division(%L)', div_o));
+  IF answer LIKE 'ERR:%' OR EXISTS (SELECT 1 FROM activities WHERE id IN (leg_shared, leg_career, leg_other))
+     OR (SELECT count(*) FROM activities WHERE id IN (leg_tipo, leg_vida)) <> 2
+     OR EXISTS (SELECT 1 FROM reservations WHERE participant_id = pd)
+     OR (SELECT count(*) FROM divisions) <> divisions_before OR pg_temp.orphans() <> baseline_orphans
+  THEN RAISE EXCEPTION 'LEGACY_SECOND_DELETE[%]', answer; END IF;
+
+  RAISE NOTICE 'ADMIN_CRUD_OK: talleres (crear, publicar, editar, eliminar con dependientes), alumnos (alta manual sin consentimiento, eliminación con todo lo suyo, cuentas de Staff intactas), divisiones (limpieza coherente, también con talleres heredados sin expediente), talleres sin expediente (consulta y eliminación individual) y tipo de misión en el tablero';
 END $test$;
 ROLLBACK;

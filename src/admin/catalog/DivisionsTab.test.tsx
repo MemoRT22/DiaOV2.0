@@ -124,3 +124,18 @@ test('a failed preview opens no confirmation', async () => {
   expect(await screen.findByText('No se encontró el elemento.')).toBeInTheDocument();
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
 });
+
+test('legacy workshops without a file are part of the warning: the ones deleted and the ones that stay', async () => {
+  current = preview({
+    careers: 1, career_names: ['Carrera Demo'], activities_unlinked: 2, legacy_activities_kept: 2,
+    workshops_deleted: [
+      { title: 'Taller Académico A', status: 'published', legacy: true, sessions: 1, reservations: 2, attendances: 1 },
+      { title: 'Taller con expediente', status: 'published', legacy: false, sessions: 2, reservations: 0, attendances: 0 },
+    ],
+  });
+  render(<DivisionsTab />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Eliminar Ciencias de la Salud' }));
+  const dialog = within(await screen.findByRole('dialog'));
+  expect(dialog.getByText('Se eliminan 2 talleres que solo pertenecen a esta división, con 2 reservaciones y 1 asistencia: Taller Académico A (sin expediente), Taller con expediente.')).toBeInTheDocument();
+  expect(dialog.getByText('2 talleres sin expediente se conservan y solo dejan de pertenecer a esta división.')).toBeInTheDocument();
+});

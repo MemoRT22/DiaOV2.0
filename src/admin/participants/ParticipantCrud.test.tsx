@@ -182,6 +182,25 @@ test('if the account cannot be removed nothing is deleted and the participant st
   expect(screen.queryByText(/Lista de participantes/)).not.toBeInTheDocument();
 });
 
+test('when Auth cannot be consulted nothing is deleted, the reason is clear and retrying completes the deletion', async () => {
+  vi.mocked(fetchParticipantDeletePreview).mockResolvedValue(preview({ reservations: 1, has_account: true, account_will_be_deleted: true }));
+  vi.mocked(deleteParticipant).mockRejectedValueOnce(new Error('AUTH_UNAVAILABLE')).mockResolvedValueOnce({ account: 'deleted' });
+  showDetail();
+  fireEvent.click(await screen.findByRole('button', { name: 'Eliminar participante' }));
+  const dialog = within(await screen.findByRole('dialog'));
+  fireEvent.change(dialog.getByLabelText(/Escribe "ELIMINAR"/), { target: { value: 'ELIMINAR' } });
+  fireEvent.click(dialog.getByRole('button', { name: 'Eliminar definitivamente' }));
+  expect(await dialog.findByText('No se pudo consultar la cuenta de acceso en este momento, así que no se eliminó nada. Inténtalo de nuevo en unos segundos.')).toBeInTheDocument();
+  // still on the participant's file, with the confirmation open and ready for another try
+  expect(screen.getByRole('heading', { name: 'Ana López' })).toBeInTheDocument();
+  expect(screen.queryByText(/Lista de participantes/)).not.toBeInTheDocument();
+  const retry = dialog.getByRole('button', { name: 'Eliminar definitivamente' });
+  expect(retry).toBeEnabled();
+  fireEvent.click(retry);
+  expect(await screen.findByText('Lista de participantes · Ana López fue eliminado.')).toBeInTheDocument();
+  expect(deleteParticipant).toHaveBeenCalledTimes(2);
+});
+
 test('a failed preview opens no confirmation', async () => {
   vi.mocked(fetchParticipantDeletePreview).mockRejectedValue(new Error('NOT_AUTHORIZED'));
   showDetail();

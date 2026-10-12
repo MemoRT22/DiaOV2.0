@@ -12,8 +12,11 @@ import { DemoCheckbox } from './DemoCheckbox';
 export type DivisionDeletePreview = {
   id: string; code: string; name: string; is_demo: boolean;
   careers: number; career_names: string[];
-  workshops_deleted: { title: string; status: string; sessions: number; reservations: number; attendances: number }[];
+  /** `legacy`: a workshop that exists only as an activity, without a file. */
+  workshops_deleted: { title: string; status: string; legacy?: boolean; sessions: number; reservations: number; attendances: number }[];
   workshops_kept: number; activities_unlinked: number;
+  /** Workshops without a file that stay (with their other divisions, or because they need none). */
+  legacy_activities_kept?: number;
   participants_initial_interest: number; participants_post_event_interest: number;
 };
 
@@ -104,6 +107,7 @@ function DeleteSummary({ preview: d }: { preview: DivisionDeletePreview }) {
   const reservations = d.workshops_deleted.reduce((sum, w) => sum + w.reservations, 0);
   const attendances = d.workshops_deleted.reduce((sum, w) => sum + w.attendances, 0);
   const students = d.participants_initial_interest + d.participants_post_event_interest;
+  const legacyKept = d.legacy_activities_kept ?? 0;
   const nothing = d.careers === 0 && d.workshops_deleted.length === 0 && d.workshops_kept === 0 && d.activities_unlinked === 0 && students === 0;
   return (
     <>
@@ -119,8 +123,11 @@ function DeleteSummary({ preview: d }: { preview: DivisionDeletePreview }) {
             <li>
               Se {d.workshops_deleted.length === 1 ? 'elimina 1 taller que solo pertenece' : `eliminan ${d.workshops_deleted.length} talleres que solo pertenecen`} a esta división
               {reservations + attendances > 0 ? `, con ${count(reservations, 'reservación', 'reservaciones')} y ${count(attendances, 'asistencia', 'asistencias')}` : ''}:{' '}
-              {d.workshops_deleted.map((w) => w.title).join(', ')}.
+              {d.workshops_deleted.map((w) => (w.legacy ? `${w.title} (sin expediente)` : w.title)).join(', ')}.
             </li>
+          )}
+          {legacyKept > 0 && (
+            <li>{count(legacyKept, 'taller sin expediente se conserva', 'talleres sin expediente se conservan')} y solo {legacyKept === 1 ? 'deja' : 'dejan'} de pertenecer a esta división.</li>
           )}
           {d.workshops_kept > 0 && (
             <li>{count(d.workshops_kept, 'taller compartido se conserva', 'talleres compartidos se conservan')} con sus otras divisiones; solo {d.workshops_kept === 1 ? 'pierde' : 'pierden'} las carreras de esta.</li>

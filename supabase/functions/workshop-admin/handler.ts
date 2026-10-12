@@ -5,7 +5,7 @@ export type DbError = { code?: string; message?: string };
 export type AuthResult = { kind: 'ok'; userId: string } | { kind: 'unauthorized' | 'forbidden' };
 export type Deps = {
   authorize: (token: string) => Promise<AuthResult>;
-  rpc: (name: 'workshop_admin_list_internal' | 'workshop_admin_get_internal' | 'workshop_admin_edit_internal' | 'workshop_review_transition_internal' | 'publish_workshop_submission_internal' | 'workshop_admin_create_internal' | 'workshop_admin_delete_internal', args: Record<string, unknown>) => Promise<{ data: unknown; error: DbError | null }>;
+  rpc: (name: 'workshop_admin_list_internal' | 'workshop_admin_get_internal' | 'workshop_admin_edit_internal' | 'workshop_review_transition_internal' | 'publish_workshop_submission_internal' | 'workshop_admin_create_internal' | 'workshop_admin_delete_internal' | 'workshop_admin_legacy_list_internal' | 'workshop_admin_activity_delete_internal', args: Record<string, unknown>) => Promise<{ data: unknown; error: DbError | null }>;
   log?: (event: string, code?: string) => void;
 };
 
@@ -89,6 +89,19 @@ export async function handleRequest(req: Request, deps: Deps): Promise<Response>
         p_actor: caller.userId, p_payload: checked.value, p_publish: body.publish === true,
       });
       return error ? dbFailure(error, deps) : json({ submission: data }, 201);
+    }
+
+    // Talleres que existen solo como actividad, sin expediente (datos de prueba heredados): se consultan y se
+    // eliminan uno por uno por su actividad.
+    if (body.action === 'list_legacy') {
+      const { data, error } = await deps.rpc('workshop_admin_legacy_list_internal', {});
+      return error ? dbFailure(error, deps) : json({ items: Array.isArray(data) ? data : [] });
+    }
+    if (body.action === 'delete_legacy') {
+      const activityId = body.activity_id;
+      if (typeof activityId !== 'string' || !UUID.test(activityId)) return json({ error: 'INVALID_INPUT' }, 400);
+      const { data, error } = await deps.rpc('workshop_admin_activity_delete_internal', { p_actor: caller.userId, p_activity_id: activityId });
+      return error ? dbFailure(error, deps) : json(data);
     }
 
     const id = body.submission_id;
