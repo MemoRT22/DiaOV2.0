@@ -31,8 +31,13 @@ export default function RaffleAdmin() {
   const [actionOk, setActionOk] = useState('');
 
   useEffect(() => {
-    if (data) { setCategories(data.categories); if (!selectedCat && data.categories.length) setSelectedCat(data.categories.find((category) => !category.is_demo)?.id ?? data.categories[0].id); }
-  }, [data]);
+    if (!data) return;
+    setCategories(data.categories);
+    setSelectedCat((current) => {
+      const scoped = data.categories.filter((category) => category.is_demo === (scope === 'demo'));
+      return scoped.some((category) => category.id === current) ? current : scoped[0]?.id ?? '';
+    });
+  }, [data, scope]);
 
   useEffect(() => {
     if (!selectedCat) { setPrizes([]); return; }
@@ -145,7 +150,7 @@ export default function RaffleAdmin() {
         </section>
       )}
       {editingCat && <CategoryModal initial={editingCat} onClose={() => setEditingCat(null)} onSaved={() => { setEditingCat(null); reload(); setActionOk('Categoría guardada.'); }} />}
-      {editingPrize && <PrizeModal initial={editingPrize} categories={visibleCategories} onClose={() => setEditingPrize(null)} onSaved={() => { setEditingPrize(null); if (selectedCat) fetchPrizes(selectedCat).then(setPrizes).catch(() => {}); setActionOk('Premio guardado.'); }} />}
+      {editingPrize && <PrizeModal initial={editingPrize} categories={visibleCategories} onClose={() => setEditingPrize(null)} onSaved={() => { setEditingPrize(null); if (activeCategory) fetchPrizes(activeCategory.id).then(setPrizes).catch(() => {}); setActionOk('Premio guardado.'); }} />}
       {invalidating && <InvalidateModal winner={invalidating} onClose={() => setInvalidating(null)} onDone={() => { setInvalidating(null); loadWinners(); setActionOk('Ganador invalidado. El inventario fue restaurado.'); }} />}
     </div>
   );

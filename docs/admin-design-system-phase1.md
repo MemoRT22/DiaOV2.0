@@ -2,7 +2,7 @@
 
 ## Base e integración
 
-La rama `codex/admin-design-system-phase1` parte de `e020110`, punta del PR #35 (`feat/admin-crud-and-university-life-filter`). Al iniciar el trabajo, `origin/main` apuntaba a `c6a8f74`; el PR #35 estaba abierto, era fusionable y contenía el CRUD de participantes que usa esta interfaz. El PR de diseño debe tener **la rama del PR #35 como base**. Después de integrar #35, se puede cambiar su base a `main` y revisar el diff restante. No hace falta fusionar ni desplegar esta fase para revisarla.
+La rama `codex/admin-design-system-phase1` se creó inicialmente sobre el PR #35 (`feat/admin-crud-and-university-life-filter`) para conservar su CRUD de participantes. Tras fusionar #35 en `main` con `9c411fec`, la rama se rebasó sobre ese merge y el PR #36 cambió su base a `main`. El diff resultante contiene únicamente el sistema de diseño, las tres experiencias de esta fase, pruebas, documentación y evidencia visual. No incluye backend, migraciones ni Edge Functions. El PR continúa en borrador para revisión visual, sin fusión ni despliegue a producción.
 
 ## Decisiones del sistema
 
@@ -42,7 +42,7 @@ Los siguientes módulos que deben adoptar este sistema son: Centro de Operación
 
 ## Validación
 
-`npm run build` terminó correctamente y `npm test` pasó 627 pruebas en 60 archivos. La compilación conserva el aviso existente de tamaño del paquete de `exceljs`. La inspección visual usa el navegador integrado con respuestas locales ficticias, a 1440 × 900 y 390 × 844. Se revisan listados abundantes, estado vacío, cambio entre datos reales y DEMO, modal abierto, validación errónea y proyección. Las capturas están en `visual-evidence/`. No se conectó a Supabase ni se modificaron datos.
+Tras rebasar sobre `main` y corregir el selector DEMO, `npm run typecheck` y `npm run build` terminaron correctamente; `npm test` pasó 628 pruebas en 60 archivos. La compilación conserva el aviso existente de tamaño del paquete de `exceljs`. La inspección visual inicial usó el navegador integrado con respuestas locales ficticias, a 1440 × 900 y 390 × 844. Se revisaron listados abundantes, estado vacío, cambio entre datos reales y DEMO, modal abierto, validación errónea y proyección. Las capturas están en `visual-evidence/`. No se conectó a Supabase ni se modificaron datos.
 
 ## Comparación con las cuatro capturas originales
 
@@ -55,4 +55,4 @@ El usuario aportó después las cuatro capturas del administrador anterior. Se r
 | Sorteo / Premios | La fila de filtros repetía nombres como Universo, Galaxia y Sistema Solar al mezclar categorías DEMO y REAL. El estado vacío no aclaraba el inventario de la selección. | Primero se elige el entorno y luego una categoría en un selector con una sola opción por nombre dentro de ese entorno. El encabezado indica los premios configurados y las unidades disponibles; el estado vacío pertenece a esa selección. | `raffle-prizes-desktop.jpg`, `raffle-demo-empty-mobile.jpg` |
 | Check-in / Credencial | Un QR grande, el código manual, las métricas y los horarios compartían la misma pantalla de operación. La tarjeta desplazaba la información operativa hacia abajo. | La operación muestra lista de talleres, horarios, reservas y asistencias. La credencial se abre aparte; imprimir, pantalla completa, volver y regenerar tienen controles claros. La proyección agranda el QR y el código sin métricas ni navegación. | `checkin-desktop.jpg`, `credential-desktop.jpg`, `credential-projection-desktop.jpg` |
 
-La comparación no revela una corrección funcional adicional pendiente en estas tres experiencias. El flujo de la rama sigue sujeto a la revisión del PR y a las comprobaciones con datos y permisos reales del proyecto.
+En la revisión para integrar se detectó y corrigió que, tras crear la primera categoría DEMO, Premios podía conservar internamente la selección de una categoría REAL. Ahora la selección se reconcilia con el entorno visible y se cubre con una prueba de regresión. El flujo de la rama sigue sujeto a la revisión del PR y a las comprobaciones con datos y permisos reales del proyecto.

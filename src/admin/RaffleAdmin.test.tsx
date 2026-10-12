@@ -70,6 +70,28 @@ test('keeps real and demo categories in separate contexts and creates in the sel
   await waitFor(() => expect(m.save).toHaveBeenCalledWith(expect.objectContaining({ name: 'Estrella', is_demo: true })));
 });
 
+test('selects the first new demo category for prizes after creating it in an empty demo scope', async () => {
+  const real = category('real', 'Universo', 10, [{ total: 3 }], 12);
+  const demo = { ...category('demo', 'Universo', 10, [{ total: 3 }], 0), is_demo: true };
+  m.view.mockResolvedValue({ categories: [real], unassigned_combinations: [] });
+  m.save.mockImplementation(async () => {
+    m.view.mockResolvedValue({ categories: [real, demo], unassigned_combinations: [] });
+    return demo.id;
+  });
+  render(<RaffleAdmin />);
+  await screen.findByText('12');
+  fireEvent.click(screen.getByRole('button', { name: 'Datos de prueba' }));
+  expect(screen.getByText('Sin categorías de prueba.')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Nueva categoría' }));
+  const dialog = within(screen.getByRole('dialog'));
+  fireEvent.change(dialog.getByRole('textbox', { name: 'Nombre' }), { target: { value: 'Universo' } });
+  fireEvent.click(dialog.getByRole('button', { name: 'Guardar' }));
+  await screen.findByText('Categoría guardada.');
+  fireEvent.click(screen.getByRole('tab', { name: 'Premios' }));
+  await waitFor(() => expect(m.prizes).toHaveBeenCalledWith('demo'));
+  expect(screen.getByRole('combobox', { name: 'Categoría' })).toHaveValue('demo');
+});
+
 test('editing a category keeps every alternative and saves them as rules', async () => {
   render(<RaffleAdmin />);
   await screen.findByText('Galaxia');
