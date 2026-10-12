@@ -119,10 +119,11 @@ export const CAMPUS_ZONES: CampusZone[] = [
     aliases: ['Servicio Médico', 'Enfermería'],
   },
   {
-    id: 'gimnasio', name: 'Lions Sports Center', short: 'Gimnasio', code: 'D3', pin: '#8FC3E6', pinInk: '#10243A', kind: 'sports',
+    id: 'gimnasio', name: 'Lions Sport Center', short: 'Lions Sport Center', code: 'D3', pin: '#8FC3E6', pinInk: '#10243A', kind: 'sports',
     description: 'Gimnasio y vestidores.',
     shapes: [{ rect: [700, 1053, 118, 137] }], anchor: [759, 1115],
-    aliases: ['Lions Sports Center', 'Gimnasio', 'Gimnasio y Vestidores'],
+    // «Lions Sport Center» is the official name; the older spellings stay so historical locations keep resolving.
+    aliases: ['Lions Sport Center', 'Lions Sports Center', 'Gimnasio', 'Gimnasio y Vestidores'],
   },
   {
     id: 'tenis', name: 'Cancha de Tenis', short: 'Tenis', code: 'D2', pin: '#8FC3E6', pinInk: '#10243A', kind: 'sports',

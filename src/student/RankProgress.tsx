@@ -1,21 +1,31 @@
 import { Check, Star } from 'lucide-react';
 import type { Progress } from '../lib/catalog';
 import { usePublicTheme } from '../theme/PublicThemeProvider';
-import { progressNextMessage } from './progressText';
+import { isStampLadder, MAX_RANK_STAMPS, progressNextMessage, RANK_COUNT, stampsForRank } from './progressText';
 
 /**
  * «Estoy avanzando», drawn as a constellation: the five ranks are stars on one line; reached stars shine, the current
  * one pulses («estás aquí»), the rest are outlines. Below: a bar towards the next rank and ONE sentence about what is
  * missing — the student never has to interpret a formula. `full` also lists every rank (progressive disclosure).
+ *
+ * While the progression is «one stamp, one rank» (see `isStampLadder`) each star says how many stamps unlocks it, the
+ * bar counts stamps towards the LAST rank and one line spells the whole ladder out. Stamps beyond the last rank are
+ * kept as a real count and never create a rank.
  */
 export default function RankProgress({ progress, full = false }: { progress: Progress; full?: boolean }) {
   const { theme, term, text, rankName } = usePublicTheme();
-  const level = Math.min(Math.max(progress.level, 1), 5);
+  const level = Math.min(Math.max(progress.level, 1), RANK_COUNT);
+  const ladder = isStampLadder(progress);
+  const stampsFor = (n: number) => `${n} ${term('stamp', n !== 1).toLowerCase()}`;
+  const requirement = (rank: number) => (rank === 1 ? 'Inicio' : stampsFor(stampsForRank(rank)));
   const rank = theme.ranks[level - 1];
   const visited = new Set(progress.division_ids);
   const remainingStamps = progress.next ? Math.max(progress.next.required_attendances - progress.stamps, 0) : 0;
   const remainingDivisions = progress.next ? Math.max(progress.next.required_divisions - visited.size, 0) : 0;
-  const fraction = progress.next ? Math.min(progress.stamps / Math.max(progress.next.required_attendances, 1), 1) : 1;
+  const towardsLast = Math.min(Math.max(progress.stamps, 0), MAX_RANK_STAMPS);
+  const fraction = ladder
+    ? towardsLast / MAX_RANK_STAMPS
+    : progress.next ? Math.min(progress.stamps / Math.max(progress.next.required_attendances, 1), 1) : 1;
 
   return (
     <section aria-label={`${term('rank')} actual`} className="space-card relative overflow-hidden p-5">
@@ -24,11 +34,11 @@ export default function RankProgress({ progress, full = false }: { progress: Pro
       <p className="text-sm text-ink-muted">{rank.description}</p>
 
       {/* constellation of ranks */}
-      <ol className="relative mt-5 flex items-center justify-between" aria-label={`${term('rank', true)}: ${level} de 5`}>
-        <span className="absolute inset-x-4 top-1/2 h-0.5 -translate-y-1/2 bg-line" aria-hidden />
+      <ol className="relative mt-5 flex items-start justify-between" aria-label={`${term('rank', true)}: ${level} de ${RANK_COUNT}`}>
+        <span className="absolute inset-x-7 top-5 h-0.5 -translate-y-1/2 bg-line" aria-hidden />
         <span
-          className="anim-bar absolute left-4 top-[calc(50%-1px)] h-0.5 bg-gradient-to-r from-primary-500 to-primary-300 shadow-[0_0_8px_rgb(var(--c-primary-500)/0.8)]"
-          style={{ width: `calc((100% - 2rem) * ${(level - 1) / 4})` }}
+          className="anim-bar absolute left-7 top-[calc(1.25rem-1px)] h-0.5 bg-gradient-to-r from-primary-500 to-primary-300 shadow-[0_0_8px_rgb(var(--c-primary-500)/0.8)]"
+          style={{ width: `calc((100% - 3.5rem) * ${(level - 1) / (RANK_COUNT - 1)})` }}
           aria-hidden
         />
         {theme.ranks.map((r, i) => {
@@ -36,43 +46,67 @@ export default function RankProgress({ progress, full = false }: { progress: Pro
           const reached = n < level;
           const current = n === level;
           return (
-            <li key={n} className="relative flex flex-col items-center" aria-current={current ? 'step' : undefined}>
+            <li key={n} className="relative flex w-14 flex-col items-center" aria-current={current ? 'step' : undefined}>
               <span className="sr-only">
                 {r.name} {reached || current ? '(alcanzado)' : '(pendiente)'}
+                {ladder && (n === 1 ? ', rango inicial' : `, se alcanza con ${stampsFor(stampsForRank(n))}`)}
               </span>
-              <span
-                aria-hidden
-                className={`relative flex items-center justify-center rounded-full ${
-                  current
-                    ? 'anim-ring-pulse h-10 w-10 bg-primary-500 text-on-primary shadow-[0_0_22px_rgb(var(--c-primary-500)/0.9)]'
-                    : reached
-                      ? 'h-8 w-8 bg-primary-500/85 text-on-primary'
-                      : 'h-8 w-8 border-2 border-line bg-surface-sunken text-ink-muted'
-                }`}
-              >
-                {current ? <Star className="h-5 w-5" fill="currentColor" /> : reached ? <Check className="h-4 w-4" strokeWidth={3} /> : <span className="text-xs font-extrabold">{n}</span>}
+              <span className="flex h-10 items-center">
+                <span
+                  aria-hidden
+                  className={`relative flex items-center justify-center rounded-full ${
+                    current
+                      ? 'anim-ring-pulse h-10 w-10 bg-primary-500 text-on-primary shadow-[0_0_22px_rgb(var(--c-primary-500)/0.9)]'
+                      : reached
+                        ? 'h-8 w-8 bg-primary-500/85 text-on-primary'
+                        : 'h-8 w-8 border-2 border-line bg-surface-sunken text-ink-muted'
+                  }`}
+                >
+                  {current ? <Star className="h-5 w-5" fill="currentColor" /> : reached ? <Check className="h-4 w-4" strokeWidth={3} /> : <span className="text-xs font-extrabold">{n}</span>}
+                </span>
               </span>
+              {ladder && (
+                <span aria-hidden className={`mt-1.5 text-center text-[10px] leading-tight ${current ? 'font-bold text-fg-brand' : 'text-ink-muted'}`}>
+                  {requirement(n)}
+                </span>
+              )}
             </li>
           );
         })}
       </ol>
       <p className="mt-2 text-center text-[11px] font-bold uppercase tracking-wide text-ink-muted">
-        {term('rank')} {level} de 5
+        {term('rank')} {level} de {RANK_COUNT}
       </p>
+      {ladder && (
+        <p className="mt-1 text-center text-xs text-ink-muted">
+          Empiezas como {rankName(1)}. Cada {term('stamp').toLowerCase()} te sube un {term('rank').toLowerCase()}; con {stampsFor(MAX_RANK_STAMPS)} llegas a {rankName(RANK_COUNT)}, el máximo.
+        </p>
+      )}
 
       <div
         role="progressbar"
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuenow={Math.round(fraction * 100)}
-        aria-label={`Avance hacia el siguiente ${term('rank').toLowerCase()}`}
+        aria-valuetext={ladder ? `${towardsLast} de ${MAX_RANK_STAMPS} ${term('stamp', true).toLowerCase()} para ${rankName(RANK_COUNT)}` : undefined}
+        aria-label={ladder ? `Avance hacia ${rankName(RANK_COUNT)}` : `Avance hacia el siguiente ${term('rank').toLowerCase()}`}
         className="mt-4 h-2.5 overflow-hidden rounded-full bg-line"
       >
         <div className="anim-bar h-full rounded-full bg-gradient-to-r from-primary-500 to-primary-300" style={{ width: `${fraction * 100}%` }} />
       </div>
-      <p className="mt-2 text-sm font-semibold">
+      {ladder && (
+        <p className="mt-1 text-right text-[11px] font-semibold text-ink-muted">
+          {towardsLast} de {MAX_RANK_STAMPS} {term('stamp', true).toLowerCase()}
+        </p>
+      )}
+      <p className="mt-1 text-sm font-semibold">
         {progress.next ? progressNextMessage(theme, progress.next, remainingStamps, term, rankName) : text('progressMax')}
       </p>
+      {!progress.next && ladder && progress.stamps > 0 && (
+        <p className="mt-1 text-xs text-ink-muted">
+          Llevas {progress.stamps} {term('stamp', progress.stamps !== 1).toLowerCase()} acumulados.
+        </p>
+      )}
       {progress.next && remainingDivisions > 0 && remainingStamps === 0 && (
         <p className="mt-1 text-xs text-ink-muted">
           Te falta visitar {remainingDivisions} {term('division', remainingDivisions !== 1).toLowerCase()} distinto
@@ -90,7 +124,7 @@ export default function RankProgress({ progress, full = false }: { progress: Pro
           <ol className="mt-2 space-y-1">
             {theme.ranks.map((r, i) => {
               const n = i + 1;
-              const reached = n <= progress.level;
+              const reached = n <= level;
               return (
                 <li key={n} className="flex items-center gap-3 py-1.5">
                   <span
@@ -106,6 +140,11 @@ export default function RankProgress({ progress, full = false }: { progress: Pro
                       <span className="sr-only">{reached ? ' (alcanzado)' : ' (pendiente)'}</span>
                     </p>
                     <p className="text-xs text-ink-muted">{r.description}</p>
+                    {ladder && (
+                      <p className="mt-0.5 text-[11px] font-semibold text-ink-muted">
+                        {n === 1 ? 'Rango inicial' : `Con ${stampsFor(stampsForRank(n))}`}{n === RANK_COUNT ? ' · rango máximo' : ''}
+                      </p>
+                    )}
                   </div>
                 </li>
               );
