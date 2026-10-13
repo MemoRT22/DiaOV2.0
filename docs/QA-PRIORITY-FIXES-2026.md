@@ -145,4 +145,3 @@ Validación de esta revisión:
 
 No se ejecutaron operaciones contra Supabase remoto, ni se tocaron los datos de producción. Para respetar la prohibición de despliegue al subir esta revisión, el PR y el commit se marcan con `[skip netlify]`, según el mecanismo documentado por Netlify.
 
-
