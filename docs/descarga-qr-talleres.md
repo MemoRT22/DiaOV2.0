@@ -9,7 +9,7 @@ Ruta: **Operación → Check-in → «Descargar QR de talleres»** (`/coordinaci
 - Lista de control opcional (CSV, sin tokens ni códigos manuales) y lista de destinatarios deduplicada por correo.
 
 ## Origen de los datos
-- Metadatos: RPC de solo lectura `activity_export_metadata()` (migración `20261013120000_activity_export_metadata.sql`, **sin aplicar** a Supabase). Solo Coordinación; no devuelve tokens, solo si hay credencial y cuándo se emitió.
+- Metadatos: RPC de solo lectura `activity_export_metadata()` (migración `20261013032909_activity_export_metadata.sql`, **aplicada y verificada** en Supabase (versión `20261013032909`)). Solo Coordinación; no devuelve tokens, solo si hay credencial y cuándo se emitió.
 - Credenciales: `activity_credential_display` existente (audita cada consulta). Ese RPC sigue permitiendo al Staff operativo; esta pantalla solo la abre Coordinación.
 
 ## Seguridad
