@@ -45,6 +45,9 @@ DECLARE
   expected text[]:=ARRAY['CHECKIN_NOT_OPEN','CHECKIN_NOT_OPEN','CHECKIN_NOT_OPEN','ok','ok','ok','ok','ok','CHECKIN_CLOSED'];
   a jsonb; rec jsonb; result jsonb; again jsonb; admin_act jsonb; fallback jsonb; own_acts jsonb[]; before_count int; i int; j int;
   rid uuid; category_name text; other_demo jsonb; coord uuid:=gen_random_uuid(); snapshot_before text;
+  visibility_states text[]:=ARRAY['none','vigente','cancelada_alumno','cambiada','cancelada_sesion','expirada'];
+  reservation_state text; keep_history boolean; board jsonb; exclusive jsonb; ordinary jsonb; change_source jsonb;
+  source_reservation uuid;
 BEGIN
   UPDATE editions SET mode='preparacion',checkin_open_before_minutes=5,checkin_close_after_minutes=20,
     reservations_open_at=now()-interval '1 day',reservations_close_at=now()+interval '10 days' WHERE id=ed;
@@ -207,6 +210,60 @@ BEGIN
     'audience change preserves sessions capacities QR and career relationships');
   PERFORM pg_temp.assert_true(EXISTS(SELECT 1 FROM activities WHERE id=(admin_act->>'activity')::uuid)
     AND EXISTS(SELECT 1 FROM activity_credentials WHERE activity_id=(admin_act->>'activity')::uuid),'educator catalog and QR retained');
+  -- P2: only itinerary-preserved states justify exposing an exclusive session.
+  change_source:=pg_temp.activity(ed,divs[3],careers_[3],259200,30);
+  INSERT INTO reservations(participant_id,session_id,activity_id)
+  VALUES(pid[3],(change_source->>'session')::uuid,(change_source->>'activity')::uuid)
+  RETURNING id INTO source_reservation;
+  FOREACH reservation_state IN ARRAY visibility_states LOOP
+    keep_history:=reservation_state IN ('vigente','cancelada_sesion','expirada');
+    exclusive:=pg_temp.activity(ed,divs[3],careers_[3],
+      CASE WHEN reservation_state='expirada' THEN -7200 ELSE 172800 END,30);
+    ordinary:=pg_temp.activity(ed,divs[3],careers_[3],
+      CASE WHEN reservation_state='expirada' THEN -7200 ELSE 172800 END,30);
+    IF reservation_state<>'none' THEN
+      INSERT INTO reservations(participant_id,session_id,activity_id,status,ended_at)
+      VALUES(pid[3],(exclusive->>'session')::uuid,(exclusive->>'activity')::uuid,reservation_state,
+        CASE WHEN reservation_state='vigente' THEN NULL ELSE now() END),
+        (pid[3],(ordinary->>'session')::uuid,(ordinary->>'activity')::uuid,reservation_state,
+        CASE WHEN reservation_state='vigente' THEN NULL ELSE now() END);
+    END IF;
+    IF reservation_state='cancelada_sesion' THEN
+      UPDATE activity_sessions SET status='cancelada'
+      WHERE id IN ((exclusive->>'session')::uuid,(ordinary->>'session')::uuid);
+    END IF;
+    -- The reservation predates the audience change; ordinary activity remains unchanged.
+    UPDATE activities SET audience='educators' WHERE id=(exclusive->>'activity')::uuid;
+    board:=pg_temp.as_student(uid[3],'select my_reservation_board()');
+    PERFORM pg_temp.assert_true(NOT (board ? 'error'),'P2 board succeeds: '||reservation_state);
+    PERFORM pg_temp.assert_true(EXISTS(SELECT 1 FROM jsonb_array_elements(board->'sessions') s
+      WHERE s->>'id'=exclusive->>'session')=keep_history,'P2 exclusive session visibility: '||reservation_state);
+    PERFORM pg_temp.assert_true(EXISTS(SELECT 1 FROM jsonb_array_elements(board->'reservations') r
+      WHERE r->>'session_id'=exclusive->>'session' AND r->>'status'=reservation_state)=keep_history,
+      'P2 exclusive itinerary coherent: '||reservation_state);
+    IF keep_history THEN
+      PERFORM pg_temp.assert_true(EXISTS(SELECT 1 FROM jsonb_array_elements(board->'reservations') r
+        WHERE r->>'session_id'=exclusive->>'session'
+        AND r->>'derived_status'=CASE reservation_state WHEN 'vigente' THEN 'active'
+          WHEN 'cancelada_sesion' THEN 'cancelled' ELSE 'expired' END),'P2 derived history preserved: '||reservation_state);
+    END IF;
+    PERFORM pg_temp.assert_true(EXISTS(SELECT 1 FROM jsonb_array_elements(board->'sessions') s
+      WHERE s->>'id'=ordinary->>'session'),'P2 ordinary session remains visible: '||reservation_state);
+    PERFORM pg_temp.assert_true(EXISTS(SELECT 1 FROM jsonb_array_elements(board->'reservations') r
+      WHERE r->>'session_id'=ordinary->>'session' AND r->>'status'=reservation_state)=keep_history,
+      'P2 ordinary itinerary unchanged: '||reservation_state);
+    result:=pg_temp.as_student(uid[3],format('select reserve_session(%L)',exclusive->>'session'));
+    PERFORM pg_temp.assert_true(result->>'error'='ACTIVITY_EDUCATORS_ONLY','P2 reserve exclusive rejected: '||reservation_state);
+    result:=pg_temp.as_student(uid[3],format('select change_reservation(%L,%L)',source_reservation,exclusive->>'session'));
+    PERFORM pg_temp.assert_true(result->>'error'='ACTIVITY_EDUCATORS_ONLY','P2 change to exclusive rejected: '||reservation_state);
+    PERFORM pg_temp.assert_true(EXISTS(SELECT 1 FROM reservations WHERE id=source_reservation AND status='vigente'),
+      'P2 failed change retains original reservation: '||reservation_state);
+    rec:=pg_temp.as_student(uid[3],'select my_recommended_activities()');
+    PERFORM pg_temp.assert_true(NOT (rec ? 'error') AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(rec->'recommendations') r
+      WHERE r->>'activity_id'=exclusive->>'activity'),'P2 exclusive excluded from recommendations: '||reservation_state);
+    result:=pg_temp.as_student(uid[3],format('select my_workshop_detail(%L)',exclusive->>'activity'));
+    PERFORM pg_temp.assert_true(result='null'::jsonb,'P2 exclusive detail hidden: '||reservation_state);
+  END LOOP;
   RAISE NOTICE 'PRIORITY_QA_OK';
 END $tests$;
 ROLLBACK;

@@ -184,6 +184,7 @@ BEGIN
         AND s.is_demo = v_p.is_demo
         AND (a.audience = 'students' OR EXISTS (
           SELECT 1 FROM reservations own WHERE own.participant_id = v_pid AND own.session_id = s.id
+            AND own.status IN ('vigente', 'cancelada_sesion', 'expirada')
         ))
         AND (s.status = 'activa' OR EXISTS (
           SELECT 1 FROM reservations r WHERE r.session_id = s.id AND r.participant_id = v_pid

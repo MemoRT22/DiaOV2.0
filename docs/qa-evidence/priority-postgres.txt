@@ -84,6 +84,69 @@ NOTICE:  PASS: coordination can select students
 NOTICE:  PASS: coordination can select educators
 NOTICE:  PASS: audience change preserves sessions capacities QR and career relationships
 NOTICE:  PASS: educator catalog and QR retained
+NOTICE:  PASS: P2 board succeeds: none
+NOTICE:  PASS: P2 exclusive session visibility: none
+NOTICE:  PASS: P2 exclusive itinerary coherent: none
+NOTICE:  PASS: P2 ordinary session remains visible: none
+NOTICE:  PASS: P2 ordinary itinerary unchanged: none
+NOTICE:  PASS: P2 reserve exclusive rejected: none
+NOTICE:  PASS: P2 change to exclusive rejected: none
+NOTICE:  PASS: P2 failed change retains original reservation: none
+NOTICE:  PASS: P2 exclusive excluded from recommendations: none
+NOTICE:  PASS: P2 exclusive detail hidden: none
+NOTICE:  PASS: P2 board succeeds: vigente
+NOTICE:  PASS: P2 exclusive session visibility: vigente
+NOTICE:  PASS: P2 exclusive itinerary coherent: vigente
+NOTICE:  PASS: P2 derived history preserved: vigente
+NOTICE:  PASS: P2 ordinary session remains visible: vigente
+NOTICE:  PASS: P2 ordinary itinerary unchanged: vigente
+NOTICE:  PASS: P2 reserve exclusive rejected: vigente
+NOTICE:  PASS: P2 change to exclusive rejected: vigente
+NOTICE:  PASS: P2 failed change retains original reservation: vigente
+NOTICE:  PASS: P2 exclusive excluded from recommendations: vigente
+NOTICE:  PASS: P2 exclusive detail hidden: vigente
+NOTICE:  PASS: P2 board succeeds: cancelada_alumno
+NOTICE:  PASS: P2 exclusive session visibility: cancelada_alumno
+NOTICE:  PASS: P2 exclusive itinerary coherent: cancelada_alumno
+NOTICE:  PASS: P2 ordinary session remains visible: cancelada_alumno
+NOTICE:  PASS: P2 ordinary itinerary unchanged: cancelada_alumno
+NOTICE:  PASS: P2 reserve exclusive rejected: cancelada_alumno
+NOTICE:  PASS: P2 change to exclusive rejected: cancelada_alumno
+NOTICE:  PASS: P2 failed change retains original reservation: cancelada_alumno
+NOTICE:  PASS: P2 exclusive excluded from recommendations: cancelada_alumno
+NOTICE:  PASS: P2 exclusive detail hidden: cancelada_alumno
+NOTICE:  PASS: P2 board succeeds: cambiada
+NOTICE:  PASS: P2 exclusive session visibility: cambiada
+NOTICE:  PASS: P2 exclusive itinerary coherent: cambiada
+NOTICE:  PASS: P2 ordinary session remains visible: cambiada
+NOTICE:  PASS: P2 ordinary itinerary unchanged: cambiada
+NOTICE:  PASS: P2 reserve exclusive rejected: cambiada
+NOTICE:  PASS: P2 change to exclusive rejected: cambiada
+NOTICE:  PASS: P2 failed change retains original reservation: cambiada
+NOTICE:  PASS: P2 exclusive excluded from recommendations: cambiada
+NOTICE:  PASS: P2 exclusive detail hidden: cambiada
+NOTICE:  PASS: P2 board succeeds: cancelada_sesion
+NOTICE:  PASS: P2 exclusive session visibility: cancelada_sesion
+NOTICE:  PASS: P2 exclusive itinerary coherent: cancelada_sesion
+NOTICE:  PASS: P2 derived history preserved: cancelada_sesion
+NOTICE:  PASS: P2 ordinary session remains visible: cancelada_sesion
+NOTICE:  PASS: P2 ordinary itinerary unchanged: cancelada_sesion
+NOTICE:  PASS: P2 reserve exclusive rejected: cancelada_sesion
+NOTICE:  PASS: P2 change to exclusive rejected: cancelada_sesion
+NOTICE:  PASS: P2 failed change retains original reservation: cancelada_sesion
+NOTICE:  PASS: P2 exclusive excluded from recommendations: cancelada_sesion
+NOTICE:  PASS: P2 exclusive detail hidden: cancelada_sesion
+NOTICE:  PASS: P2 board succeeds: expirada
+NOTICE:  PASS: P2 exclusive session visibility: expirada
+NOTICE:  PASS: P2 exclusive itinerary coherent: expirada
+NOTICE:  PASS: P2 derived history preserved: expirada
+NOTICE:  PASS: P2 ordinary session remains visible: expirada
+NOTICE:  PASS: P2 ordinary itinerary unchanged: expirada
+NOTICE:  PASS: P2 reserve exclusive rejected: expirada
+NOTICE:  PASS: P2 change to exclusive rejected: expirada
+NOTICE:  PASS: P2 failed change retains original reservation: expirada
+NOTICE:  PASS: P2 exclusive excluded from recommendations: expirada
+NOTICE:  PASS: P2 exclusive detail hidden: expirada
 NOTICE:  PRIORITY_QA_OK
 DO
 ROLLBACK

@@ -118,3 +118,31 @@ Este PR no repara, borra ni reordena esa historia. La reparación reproducible d
 
 No se ejecutaron merge, despliegue ni migraciones remotas.
 
+## Revisión P2: visibilidad según historial de reservación (13 de octubre)
+
+Ajuste sobre el HEAD revisado `28e957238727b9dab66a4ace2c30aa620272f2da`, en el mismo PR #40.
+
+La excepción de audiencia en `my_reservation_board().sessions` ahora exige que la reservación propia tenga uno de los mismos estados que conserva `reservations`: `vigente`, `cancelada_sesion` o `expirada`. El cambio funcional es un solo predicado añadido a la migración pendiente del PR; no se agregan ni reestructuran migraciones.
+
+| Reservación propia | Sesión exclusiva en tablero | Itinerario |
+|---|---|---|
+| Ninguna | Oculta | Sin entrada |
+| vigente anterior a la clasificación | Visible | Conservado, estado active |
+| cancelada_alumno | Oculta | Sin entrada |
+| cambiada | Oculta | Sin entrada |
+| cancelada_sesion, sesión cancelada administrativamente | Visible | Conservado, estado cancelled |
+| expirada, sesión pasada | Visible | Conservado, estado expired |
+
+Para los seis casos se verifican el rechazo de reserva y de cambio con `ACTIVITY_EDUCATORS_ONLY`, la conservación de la reserva original cuando el cambio falla, y la exclusión en recomendador y detalle. Se prueban en paralelo actividades ordinarias para garantizar que sus sesiones continúan visibles y su itinerario conserva exactamente el comportamiento anterior.
+
+La nueva matriz reproduce el fallo con el código previo: `FAIL: P2 exclusive session visibility: cancelada_alumno`. Tras cargar únicamente la función corregida en PostgreSQL Docker local, pasa la matriz completa (63 comprobaciones P2). La suite acumulada tiene 145 comprobaciones aprobadas y termina con `ROLLBACK`; la evidencia actualizada está en `docs/qa-evidence/priority-postgres.txt`.
+
+Validación de esta revisión:
+- `npm run typecheck`: aprobado.
+- `npm run build`: aprobado.
+- `npm test`: 76 archivos, 920 pruebas aprobadas.
+- PostgreSQL local: `regression_qa_priority`, `regression_student_flexibility` (49), `regression_recommender` (24), `regression_admin_crud` y `regression_asistencia` aprobadas. Las excepciones finales `STUDENT_FLEX_OK` y `RECOMMENDER_OK` son los marcadores de éxito deliberados de esas suites.
+
+No se ejecutaron operaciones contra Supabase remoto, ni se tocaron los datos de producción. Para respetar la prohibición de despliegue al subir esta revisión, el PR y el commit se marcan con `[skip netlify]`, según el mecanismo documentado por Netlify.
+
+
