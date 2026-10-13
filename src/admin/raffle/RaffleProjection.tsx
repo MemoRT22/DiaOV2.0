@@ -1,13 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { openPublicChannel, type PublicState } from '../../lib/rafflePublic';
-import type { RaffleScope } from '../../lib/raffleShow';
 import { PublicStage } from './RaffleStage';
 import './raffle.css';
 
 const PING_MS = 3000;
 const HINT_MS = 12000;
 
-const standby = (scope: RaffleScope): PublicState => ({ scope, phase: 'standby', categoryName: null, prize: null, poolCount: 0, result: null });
+const standby = (rehearsal: boolean): PublicState => ({ rehearsal, phase: 'standby', categoryName: null, prize: null, poolCount: 0, result: null });
 
 /**
  * The public screen of the raffle: its own window, for the projector. It shows the stage that the operator's console
@@ -17,7 +16,7 @@ const standby = (scope: RaffleScope): PublicState => ({ scope, phase: 'standby',
 export default function RaffleProjection() {
   const supported = typeof BroadcastChannel !== 'undefined';
   const [state, setState] = useState<PublicState | null>(null);
-  const lastScope = useRef<RaffleScope>('real');
+  const lastRehearsal = useRef(false);
   const [hint, setHint] = useState(true);
   const [idle, setIdle] = useState(false);
 
@@ -25,7 +24,7 @@ export default function RaffleProjection() {
     document.title = 'Sorteo · pantalla pública';
     const channel = openPublicChannel((message) => {
       if (message.type !== 'state') return;
-      if (message.state) lastScope.current = message.state.scope;
+      if (message.state) lastRehearsal.current = message.state.rehearsal;
       setState(message.state);
     });
     channel?.post({ type: 'hello' });
@@ -54,7 +53,7 @@ export default function RaffleProjection() {
   if (!supported) {
     return <div className="rf-public" data-idle={idle || undefined}><p className="rf-public-note">Este navegador no puede recibir el sorteo desde la consola. Abre esta pantalla en un navegador actual.</p></div>;
   }
-  const shown = state ?? standby(lastScope.current);
+  const shown = state ?? standby(lastRehearsal.current);
   return (
     <div className="rf-public" data-idle={idle || undefined}>
       <PublicStage state={shown} />

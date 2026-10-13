@@ -3,18 +3,17 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { MemoryRouter } from 'react-router-dom';
 import { expect, vi } from 'vitest';
 import RaffleAdmin from '../RaffleAdmin';
-import { OFFICIAL, prize } from './raffleFixtures';
+import { writeSetChoice } from '../../lib/raffleSetChoice';
+import type { RaffleScope } from '../../lib/raffleShow';
+import { AMAZON, OFFICIAL, officialPrizes } from './raffleFixtures';
 
+/** What `draw_winner` answers for the prize drawn by default (the one the console suggests first: the Amazon cards). */
 export const drawn = (name = 'Ana López', over: Record<string, unknown> = {}) => ({
-  winner_id: 'w1', participant_id: 'p1', display_name: name, prize_id: 'tablet', prize_name: 'Tablet', category_id: 'un', category_name: 'Universo',
-  status: 'seleccionado', pool_size: 4, idempotent: false, ...over,
+  winner_id: 'w1', participant_id: 'p1', display_name: name, prize_id: 'amazon', prize_name: AMAZON, category_id: 'ss', category_name: 'Sistema Solar',
+  status: 'seleccionado', pool_size: 12, idempotent: false, ...over,
 });
 
-export const defaultPrizes = () => ({
-  un: [prize('tablet', 'un', 'Tablet', 3, 2), prize('audifonos', 'un', 'Audífonos', 1, 0)],
-  ga: [prize('bocina', 'ga', 'Bocina', 5, 5)],
-  ss: [] as ReturnType<typeof prize>[],
-});
+export const defaultPrizes = officialPrizes;
 
 export const setReducedMotion = () => {
   const real = window.matchMedia;
@@ -22,8 +21,11 @@ export const setReducedMotion = () => {
   return () => { window.matchMedia = real; };
 };
 
-export const openConsole = (Component: typeof RaffleAdmin = RaffleAdmin) =>
-  render(<MemoryRouter initialEntries={['/?seccion=ejecutar']}><Component /></MemoryRouter>);
+/** Coordinación's explicit choice of the rehearsal records (the mocked edition has no id: it is stored under «edition»). */
+export const chooseRehearsalSet = (set: RaffleScope) => writeSetChoice('edition', set);
+
+export const openConsole = (Component: typeof RaffleAdmin = RaffleAdmin, path = '/') =>
+  render(<MemoryRouter initialEntries={[path]}><Component /></MemoryRouter>);
 
 /** The operator's stage (the public screen and the rehearsal have a stage too; this is the one with the controls). */
 const consoleElement = () => document.querySelector('.rf-run .rf-stage') as HTMLElement;
@@ -41,4 +43,6 @@ export async function readyToDraw() {
 }
 export const view = (categories = OFFICIAL) => structuredClone({ categories, unassigned_combinations: [] });
 export const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+/** The prize card of the board, by (part of) its name. */
+export const card = (name: RegExp | string) => screen.getByRole('radio', { name });
 export { fireEvent, screen, waitFor, within, vi };

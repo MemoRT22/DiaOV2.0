@@ -1,7 +1,7 @@
 import { Check } from 'lucide-react';
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import type { PublicState } from '../../lib/rafflePublic';
-import { burstParticles, letterCount, orbitTokens, REVEAL_MS, scrambleParts, type Blocker, type RaffleScope } from '../../lib/raffleShow';
+import { burstParticles, letterCount, orbitTokens, REVEAL_MS, scrambleParts, type Blocker } from '../../lib/raffleShow';
 
 /** `uncertain` exists only on the operator's console: the outcome of a draw could not be confirmed. The audience never sees it. */
 export type StagePhase = 'idle' | 'drawing' | 'revealed' | 'confirmed' | 'uncertain';
@@ -78,7 +78,7 @@ type Props = {
   /** `panel` is the operator's console: it may show problems and carries the controls. `projection` is what the audience sees and has neither. */
   variant: 'panel' | 'projection';
   phase: StagePhase;
-  scope: RaffleScope;
+  rehearsal: boolean;
   categoryName?: string;
   prize?: StagePrize;
   poolCount: number;
@@ -97,7 +97,7 @@ type Props = {
 };
 
 /** What the audience sees: category, prize, how many compete and, at the end, the winner. The same stage serves the console and the public screen. */
-export default function RaffleStage({ variant, phase, scope, categoryName, prize, poolCount, result, ready = true, blocker = null, notice, onRevealDone, alreadyRevealed, children }: Props) {
+export default function RaffleStage({ variant, phase, rehearsal, categoryName, prize, poolCount, result, ready = true, blocker = null, notice, onRevealDone, alreadyRevealed, children }: Props) {
   const operator = variant === 'panel';
   const reduced = useReducedMotion();
   const animateReveal = phase === 'revealed' && !!result?.fresh && !reduced && !alreadyRevealed;
@@ -120,13 +120,13 @@ export default function RaffleStage({ variant, phase, scope, categoryName, prize
   const poolKnown = result?.poolSize != null && result.poolSize > 0;
 
   return (
-    <section className="rf-stage" data-variant={variant} data-phase={phase} data-scope={scope} data-motion={reduced ? 'reduced' : 'full'} aria-label="Escenario del sorteo">
+    <section className="rf-stage" data-variant={variant} data-phase={phase} data-rehearsal={rehearsal || undefined} data-motion={reduced ? 'reduced' : 'full'} aria-label="Escenario del sorteo">
       <Orbits pool={Math.max(poolCount, result?.poolSize ?? 0)} phase={phase} />
       {showBurst && <Burst key={result?.winnerId} />}
       <div className="rf-stage-top">
         <p className="rf-eyebrow">{categoryName ?? 'Sorteo final'}</p>
         <div className="rf-stage-top-end">
-          {scope === 'demo' && <span className="rf-tag">Ensayo · datos de prueba</span>}
+          {rehearsal && <span className="rf-tag">Ensayo del evento</span>}
         </div>
       </div>
 
@@ -183,7 +183,7 @@ export default function RaffleStage({ variant, phase, scope, categoryName, prize
 export function PublicStage({ state, alreadyRevealed }: { state: PublicState; alreadyRevealed?: boolean }) {
   const phase: StagePhase = state.phase === 'standby' || state.phase === 'ready' ? 'idle' : state.phase;
   return (
-    <RaffleStage variant="projection" phase={phase} scope={state.scope} categoryName={state.categoryName ?? undefined} prize={state.prize ?? undefined}
+    <RaffleStage variant="projection" phase={phase} rehearsal={state.rehearsal} categoryName={state.categoryName ?? undefined} prize={state.prize ?? undefined}
       poolCount={state.poolCount} ready={state.phase !== 'standby'} alreadyRevealed={alreadyRevealed}
       result={state.result ? { ...state.result, categoryName: state.categoryName ?? '' } : null} />
   );
