@@ -97,19 +97,19 @@ BEGIN
     RAISE EXCEPTION 'STUDENT_FLEX_FAIL[doble asistencia]'; END IF;
   n := n + 2;
 
-  -- 2) QR válido mucho antes de ends_at (sesión futura, 90 min antes del fin)
+  -- 2) Una reserva futura no autoriza el check-in antes de abrir la ventana.
   v := pg_temp.run(ub, format($q$select reserve_session(%L)$q$, f1->>'ses'));
   IF v LIKE 'ERR:%' THEN RAISE EXCEPTION 'STUDENT_FLEX_FAIL[reservar futura: %]', v; END IF;
   r_b_f1 := v::jsonb->>'reservation_id';
   v := pg_temp.run(ub, format($q$select check_in(%L)$q$, f1->>'qr'));
-  IF v LIKE 'ERR:%' THEN RAISE EXCEPTION 'STUDENT_FLEX_FAIL[check-in muy temprano: %]', v; END IF;
+  IF v <> 'ERR:CHECKIN_NOT_OPEN' THEN RAISE EXCEPTION 'STUDENT_FLEX_FAIL[check-in muy temprano: %]', v; END IF;
   n := n + 2;
 
-  -- 3) QR válido después del antiguo cierre (sesión terminada hace 30 min > 20)
+  -- 3) La ventana cierra 20 minutos después del final.
   INSERT INTO reservations (participant_id, session_id, activity_id)
   SELECT p.id, (e1->>'ses')::uuid, (e1->>'act')::uuid FROM participants p WHERE p.auth_user_id = ua::uuid RETURNING id::text INTO r_a_e1;
   v := pg_temp.run(ua, format($q$select check_in(%L)$q$, e1->>'qr'));
-  IF v LIKE 'ERR:%' THEN RAISE EXCEPTION 'STUDENT_FLEX_FAIL[check-in tardío: %]', v; END IF;
+  IF v <> 'ERR:CHECKIN_CLOSED' THEN RAISE EXCEPTION 'STUDENT_FLEX_FAIL[check-in tardío: %]', v; END IF;
   n := n + 1;
 
   -- 5) código inválido, 6) sin reservación, 7) sesión cancelada, 8) demo/real
@@ -219,7 +219,7 @@ BEGIN
   n := n + 1;
 
   -- 25) primera ya terminada y sin asistencia → se puede reservar la segunda; la anterior queda `expirada` (historial)
-  w11a := pg_temp.mk('W11', -60, -30);
+  w11a := pg_temp.mk('W11', -40, -10);
   INSERT INTO activity_sessions (activity_id, starts_at, ends_at, capacity, location, status, is_demo, credits)
   VALUES ((w11a->>'act')::uuid, now() + interval '400 minutes', now() + interval '430 minutes', 30, 'Salón SF', 'activa', true, 1)
   RETURNING jsonb_build_object('ses', id)::jsonb INTO w11b;
@@ -263,8 +263,8 @@ BEGIN
     IF pg_temp.run(uf, format($q$select reserve_session(%L)$q$, h[i]->>'ses')) LIKE 'ERR:%' THEN RAISE EXCEPTION 'STUDENT_FLEX_FAIL[F reserva H%]', i; END IF;
   END LOOP;
   IF pg_temp.run(uf, format($q$select reserve_session(%L)$q$, h[3]->>'ses')) <> 'ERR:MAX_RESERVATIONS' THEN RAISE EXCEPTION 'STUDENT_FLEX_FAIL[F debía estar en 4 de 4]'; END IF;
-  v := pg_temp.run(uf, format($q$select check_in(%L)$q$, q1->>'qr'));
-  IF v LIKE 'ERR:%' THEN RAISE EXCEPTION 'STUDENT_FLEX_FAIL[F check-in Q1: %]', v; END IF;
+  v := pg_temp.run(uf, format($q$select check_in(%L)$q$, p1->>'qr'));
+  IF v LIKE 'ERR:%' THEN RAISE EXCEPTION 'STUDENT_FLEX_FAIL[F check-in P1 en curso: %]', v; END IF;
   IF (SELECT active_reservation_count(id) FROM participants WHERE auth_user_id = uf::uuid) <> 3 THEN RAISE EXCEPTION 'STUDENT_FLEX_FAIL[el check-in no liberó el compromiso]'; END IF;
   IF pg_temp.run(uf, format($q$select reserve_session(%L)$q$, h[3]->>'ses')) LIKE 'ERR:%' THEN RAISE EXCEPTION 'STUDENT_FLEX_FAIL[no pudo reservar otro tras completar]'; END IF;
   n := n + 3;

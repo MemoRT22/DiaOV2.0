@@ -4,6 +4,7 @@ Ejecutar **solo en una base local/descartable** con las migraciones actuales. No
 
 | Contrato | Suite vigente | Éxito |
 |---|---|---|
+| Correcciones QA: ventana del servidor, QR/código, tres alumnos, audiencia, recomendaciones y sorteo | `regression_qa_priority.sql` | `PRIORITY_QA_OK`, salida 0 |
 | Importación en `preparacion` y `oficial` | `regression_official_participant_import.sql` | `OFFICIAL_IMPORT_OK`, salida 0 |
 | Correo, contraseña, autorregistro, consentimiento y conciliación | `regression_participant_access.sql` | `PARTICIPANT_ACCESS_OK` |
 | Reservaciones, cupos, cambio/cancelación, tiempo y check-in flexible | `regression_student_flexibility.sql` | `STUDENT_FLEX_OK` |

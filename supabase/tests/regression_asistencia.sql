@@ -143,7 +143,7 @@ BEGIN
   -- La cancelación conserva la reservación anterior como cancelada_sesion; la nueva credencial
   -- se comprueba con una sesión y una reservación nuevas del mismo taller.
   INSERT INTO activity_sessions(activity_id,starts_at,ends_at,capacity,location,status,is_demo,credits)
-  VALUES (a2,now()+interval '30 min',now()+interval '60 min',5,'Sala DEMO','activa',true,1) RETURNING id INTO s3;
+  VALUES (a2,now()-interval '4 min',now()+interval '26 min',5,'Sala DEMO','activa',true,1) RETURNING id INTO s3;
   INSERT INTO reservations(participant_id,session_id,activity_id) VALUES (pc,s3,a2);
   answer := pg_temp.as_user(uc,format('select check_in(%L)',new_cred->>'qr_token'));
   IF answer LIKE 'ERR:%' OR (answer::jsonb->>'already_registered') <> 'false'
