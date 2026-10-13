@@ -148,22 +148,23 @@ html[data-surface='admin'] .rf-stage .btn-secondary:hover:not(:disabled),
 html[data-surface='admin'] .rf-stage .btn-ghost:hover:not(:disabled) { background: #ffffff24; color: #fff; }
 .rf-stage .btn:focus-visible { outline: 3px solid #f6c778; outline-offset: 2px; }
 
-/* Órbitas: la multitud del sorteo. */
-.rf-orbits { position: absolute; z-index: 0; left: 50%; top: 50%; width: 125cqmin; aspect-ratio: 1; translate: -50% -50%; opacity: .5; pointer-events: none; transition: opacity .6s; }
-.rf-ring { position: absolute; left: 50%; top: 50%; width: calc(55% + var(--ring) * 22.5%); aspect-ratio: 1; translate: -50% -50%; border: 1px solid #ffffff12; border-radius: 50%; animation: rf-rotate calc(90s - var(--ring) * 20s) linear infinite; }
+/* La misma animación de main, con masas y trazos visibles en el LED 3968×1536.
+   No cambia la coreografía, el número de partículas ni los tiempos de revelado. */
+.rf-orbits { position: absolute; z-index: 0; left: 50%; top: 50%; width: 125cqmin; aspect-ratio: 1; translate: -50% -50%; opacity: .85; pointer-events: none; transition: opacity .6s; }
+.rf-ring { position: absolute; left: 50%; top: 50%; width: calc(55% + var(--ring) * 22.5%); aspect-ratio: 1; translate: -50% -50%; border: clamp(4px, .65cqmin, 12px) solid #ffffff40; border-radius: 50%; animation: rf-rotate calc(90s - var(--ring) * 20s) linear infinite; }
 .rf-ring:nth-child(even) { animation-direction: reverse; }
-.rf-ring i { position: absolute; width: clamp(5px, 1.25cqmin, 15px); aspect-ratio: 1; translate: -50% -50%; border-radius: 50%; background: var(--rf-orange); box-shadow: 0 0 14px #f08a5d99; }
-.rf-ring i:nth-child(3n) { background: #fff1e6; box-shadow: 0 0 12px #fff1e655; }
-.rf-ring i:nth-child(3n + 1) { background: #5fc2b1; box-shadow: 0 0 12px #5fc2b177; }
+.rf-ring i { position: absolute; width: clamp(12px, 2.4cqmin, 38px); aspect-ratio: 1; translate: -50% -50%; border-radius: 50%; background: #ffad79; box-shadow: 0 0 0 .3cqmin #ffad7930, 0 0 20px #ffad7999; }
+.rf-ring i:nth-child(3n) { background: #fff5df; box-shadow: 0 0 0 .3cqmin #fff5df25, 0 0 18px #fff5df80; }
+.rf-ring i:nth-child(3n + 1) { background: #7aead6; box-shadow: 0 0 0 .3cqmin #7aead625, 0 0 18px #7aead699; }
 .rf-core { position: absolute; left: 50%; top: 50%; width: 38%; aspect-ratio: 1; translate: -50% -50%; border-radius: 50%; background: radial-gradient(circle, #f08a5d44 0%, transparent 65%); animation: rf-breathe 4s ease-in-out infinite; }
 .rf-orbits[data-phase='drawing'] { opacity: 1; animation: rf-whirl 4.2s cubic-bezier(.5, 0, .2, 1) both; }
 .rf-orbits[data-phase='drawing'] .rf-core { animation: rf-breathe .7s ease-in-out infinite; }
-.rf-orbits[data-phase='revealed'], .rf-orbits[data-phase='confirmed'] { opacity: .32; }
+.rf-orbits[data-phase='revealed'], .rf-orbits[data-phase='confirmed'] { opacity: .55; }
 .rf-stage[data-phase='revealed'] .rf-winner[data-settled] { animation: rf-pop .55s cubic-bezier(.2, .9, .3, 1.2); }
 
 /* Estallido al revelar. */
 .rf-burst { position: absolute; z-index: 1; left: 50%; top: 48%; width: 0; height: 0; pointer-events: none; }
-.rf-burst i { position: absolute; width: clamp(5px, .9cqmin, 11px); height: clamp(9px, 1.7cqmin, 20px); border-radius: 2px; background: var(--rf-orange); animation: rf-burst 1.6s cubic-bezier(.15, .75, .3, 1) var(--delay) both; }
+.rf-burst i { position: absolute; width: clamp(10px, 1.8cqmin, 26px); height: clamp(16px, 3cqmin, 42px); border-radius: 3px; background: var(--rf-orange); animation: rf-burst 1.6s cubic-bezier(.15, .75, .3, 1) var(--delay) both; }
 .rf-burst i[data-tone='1'] { background: #fff1e6; }
 .rf-burst i[data-tone='2'] { background: #5fc2b1; }
 .rf-burst i[data-tone='3'] { background: #f6c778; }
@@ -183,6 +184,22 @@ html[data-surface='admin']:has(.rf-public) body { background: #0f1214; }
 .rf-public-hint { position: fixed; left: 50%; bottom: 1.6rem; translate: -50% 0; z-index: 5; padding: .35rem .8rem; border-radius: 999px; background: #ffffff12; color: #aab3b8; font-size: .8rem; pointer-events: none; }
 .rf-public-note { position: absolute; inset: 0; display: grid; place-content: center; padding: 2rem; color: #c2cacf; text-align: center; font-size: 1.1rem; }
 .rf-title { font-size: clamp(2.2rem, 11cqmin, 8rem); }
+
+/* Los topes de escritorio no deben empequeñecer los rótulos en el LED panorámico.
+   Estos tamaños son solo de proyección; la consola conserva los de main. */
+.rf-stage[data-variant='projection'] .rf-eyebrow { font-size: clamp(1rem, 3.2cqmin, 3.5rem); }
+.rf-stage[data-variant='projection'] .rf-pool strong { font-size: clamp(4rem, 22cqmin, 24rem); }
+.rf-stage[data-variant='projection'] .rf-prize { font-size: clamp(1.6rem, 7.2cqmin, 10rem); }
+.rf-stage[data-variant='projection'] .rf-title { font-size: clamp(3rem, 13cqmin, 15rem); }
+.rf-stage[data-variant='projection'] .rf-winner { font-size: clamp(2.5rem, 12cqmin, 18rem); text-shadow: 0 3px 8px #000, 0 0 48px #f08a5d66; }
+.rf-stage[data-variant='projection'] .rf-winner[data-size='l'] { font-size: clamp(2.1rem, 9.5cqmin, 15rem); }
+.rf-stage[data-variant='projection'] .rf-winner[data-size='xl'] { font-size: clamp(1.8rem, 7.5cqmin, 12rem); }
+.rf-stage[data-variant='projection'] .rf-prize-sub { font-size: clamp(1.2rem, 4.2cqmin, 5rem); }
+.rf-stage[data-variant='projection'] .rf-label { font-size: clamp(1rem, 3cqmin, 3.5rem); }
+.rf-stage[data-variant='projection'] .rf-facts { font-size: clamp(1rem, 2.5cqmin, 3rem); }
+.rf-stage[data-variant='projection'] .rf-confirmed { font-size: clamp(1rem, 2.5cqmin, 3rem); }
+.rf-stage[data-variant='projection'] .rf-confirmed svg { width: 1.2em; height: 1.2em; }
+.rf-stage[data-variant='projection'] .rf-tag { font-size: clamp(.8rem, 1.7cqmin, 2rem); }
 
 /* Consola: estado de la pantalla pública. */
 .rf-public-bar { display: flex; align-items: center; justify-content: space-between; gap: .6rem 1.2rem; flex-wrap: wrap; padding: .6rem 1rem; border: 1px solid var(--ad-line); border-radius: 10px; background: var(--ad-surface); }
