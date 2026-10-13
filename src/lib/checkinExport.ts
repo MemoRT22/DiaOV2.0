@@ -303,8 +303,9 @@ function byDivision(workshops: ExportWorkshop[]): ExportDocument[] {
     groups.set(key, group);
   };
   for (const workshop of workshops) {
-    if (workshop.divisions.length > 0) workshop.divisions.forEach((division) => add(division.id, division.name, 0, workshop));
-    else if (workshop.kind === 'vida_universitaria') add(VIDA_GROUP, 'Vida Universitaria', 1, workshop);
+    // El tipo de actividad manda: Vida Universitaria (incluida la heredada «liderazgo») va siempre en su grupo, aunque tenga una división registrada.
+    if (workshop.kind === 'vida_universitaria') add(VIDA_GROUP, 'Vida Universitaria', 1, workshop);
+    else if (workshop.divisions.length > 0) workshop.divisions.forEach((division) => add(division.id, division.name, 0, workshop));
     else add(NONE, 'Sin división asignada', 2, workshop);
   }
   const ranked = [...groups.entries()].map(([key, group]) => {
@@ -395,34 +396,41 @@ export type ControlRow = {
   notes: string[];
 };
 
-/** Una fila por taller con el PDF donde viaja. Sin tokens ni códigos manuales. `missing` = talleres cuyo QR no se pudo obtener. */
+/**
+ * Exactamente una fila por taller. Si viaja en más de un PDF (por ejemplo un taller de varias divisiones), la misma fila lista los
+ * nombres de todos sus documentos, separados por «; ». Sin tokens ni códigos manuales. `missing` = talleres cuyo QR no se pudo obtener.
+ */
 export function controlRows(plan: ExportPlan, missing: ReadonlySet<string> = new Set()): ControlRow[] {
-  const rows: ControlRow[] = [];
+  const files = new Map<string, string[]>();
+  const order: ExportWorkshop[] = [];
   for (const document of plan.documents) {
+    const name = document.folder ? `${document.folder}/${document.fileName}` : document.fileName;
     for (const workshop of document.workshops) {
-      const notes: string[] = [];
-      if (!workshop.responsible) notes.push('Sin responsable');
-      else {
-        if (!workshop.responsible.email) notes.push('Sin correo');
-        if (!workshop.responsible.name) notes.push('Sin nombre del responsable');
-      }
-      if (workshop.divisions.length === 0 && workshop.kind === 'academica') notes.push('Sin división asignada');
-      if (workshop.isDemo) notes.push('DEMO');
-      if (missing.has(workshop.id)) notes.push('QR no obtenido: no está incluido en el PDF');
-      const blocking = notes.filter((note) => note !== 'DEMO');
-      rows.push({
-        workshop,
-        pdf: missing.has(workshop.id) ? '' : document.folder ? `${document.folder}/${document.fileName}` : document.fileName,
-        status: blocking.length > 0 ? 'Requiere revisión' : 'Listo',
-        notes,
-      });
+      if (!files.has(workshop.id)) { files.set(workshop.id, []); order.push(workshop); }
+      files.get(workshop.id)!.push(name);
     }
   }
+  const rows: ControlRow[] = order.map((workshop) => {
+    const notes: string[] = [];
+    if (!workshop.responsible) notes.push('Sin responsable');
+    else {
+      if (!workshop.responsible.email) notes.push('Sin correo');
+      if (!workshop.responsible.name) notes.push('Sin nombre del responsable');
+    }
+    if (workshop.divisions.length === 0 && workshop.kind === 'academica') notes.push('Sin división asignada');
+    if (workshop.isDemo) notes.push('DEMO');
+    const absent = missing.has(workshop.id);
+    if (absent) notes.push('QR no obtenido: no está incluido en el PDF');
+    const blocking = notes.filter((note) => note !== 'DEMO');
+    const pdfs = absent ? [] : files.get(workshop.id)!;
+    return { workshop, pdf: pdfs.join('; '), status: blocking.length > 0 ? 'Requiere revisión' : 'Listo', notes };
+  });
   for (const entry of plan.excluded) {
+    if (files.has(entry.workshop.id)) continue;
     rows.push({ workshop: entry.workshop, pdf: '', status: 'Requiere revisión', notes: [EXCLUSION_TEXT[entry.reason]] });
   }
   return rows.sort((a, b) =>
-    (a.workshop.responsible?.email ?? '￿').localeCompare(b.workshop.responsible?.email ?? '￿') || a.workshop.title.localeCompare(b.workshop.title, 'es-MX'));
+    (a.workshop.responsible?.email ?? '\uffff').localeCompare(b.workshop.responsible?.email ?? '\uffff') || a.workshop.title.localeCompare(b.workshop.title, 'es-MX'));
 }
 
 // Las hojas de cálculo ejecutan fórmulas que empiezan con = + - @: se neutralizan, como en el resto de las exportaciones.

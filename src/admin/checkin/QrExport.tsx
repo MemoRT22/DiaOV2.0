@@ -73,6 +73,8 @@ export default function QrExport() {
   const abort = useRef<AbortController | null>(null);
   const lastFailures = useRef<Failure[]>([]);
   const mounted = useRef(true);
+  /** Identificador de la descarga vigente: solo la última puede actualizar la pantalla o guardar un archivo. */
+  const runId = useRef(0);
 
   // StrictMode monta, desmonta y vuelve a montar: la marca debe volver a encenderse al montar.
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; abort.current?.abort(); held.current = null; }; }, []);
@@ -85,24 +87,41 @@ export default function QrExport() {
   const realCount = workshops.filter((workshop) => !workshop.isDemo).length;
   const demoCount = workshops.length - realCount;
 
-  const change = (patch: Partial<ExportFilters>) => {
+  /**
+   * Cambiar la selección, el formato o la lista de control cancela la descarga en curso: lo que se estaba produciendo ya no
+   * corresponde a lo que se ve. Se invalida su identificador (sus estados y su archivo se descartan aunque termine) y se aborta.
+   */
+  const cancelActive = () => {
+    runId.current += 1;
+    abort.current?.abort();
+    abort.current = null;
     held.current = null;
+    setConfirmPartial(false);
+  };
+  const change = (patch: Partial<ExportFilters>) => {
+    cancelActive();
     setRun({ state: 'idle' });
     setFilters((current) => ({ ...current, ...patch }));
   };
-  const changeFormat = (next: ExportFormat) => { held.current = null; setRun({ state: 'idle' }); setFormat(next); };
+  const changeFormat = (next: ExportFormat) => { cancelActive(); setRun({ state: 'idle' }); setFormat(next); };
+  const changeControl = (next: boolean) => { cancelActive(); setRun({ state: 'idle' }); setIncludeControl(next); };
 
   const start = async (allowPartial = false) => {
+    // Nunca dos exportaciones a la vez desde esta pantalla.
+    if (abort.current || single.id !== null) return;
     const controller = new AbortController();
+    const id = ++runId.current;
+    const current = () => mounted.current && runId.current === id && !controller.signal.aborted;
     abort.current = controller;
     setConfirmPartial(false);
     setRun({ state: 'running', progress: null });
     try {
       const result = await runExport({
         workshopIds: selected.map((workshop) => workshop.id), format, includeControl, held: held.current ?? undefined, allowPartial, signal: controller.signal,
-        onProgress: (progress) => { if (mounted.current) setRun({ state: 'running', progress }); },
+        onProgress: (progress) => { if (current()) setRun({ state: 'running', progress }); },
       });
-      if (!mounted.current) return;
+      // Una descarga cancelada o reemplazada no guarda archivo ni toca el estado de la nueva.
+      if (!current()) return;
       if (result.kind === 'incomplete') {
         held.current = result.held;
         lastFailures.current = result.failures;
@@ -114,11 +133,17 @@ export default function QrExport() {
       void reload(); // las fechas de emisión de la lista quedan al día
       setRun({ state: 'done', fileName: result.file.name, workshops: result.included.length, pages: result.pages, documents: result.documents, missing: result.missing, excluded: result.plan.excluded.length });
     } catch (cause) {
-      if (!mounted.current) return;
+      if (!current()) return;
       setRun(cause instanceof ExportAborted ? { state: 'idle' } : { state: 'error', message: friendlyError(cause) });
     } finally {
-      abort.current = null;
+      if (abort.current === controller) abort.current = null;
     }
+  };
+
+  /** «Cancelar»: detiene la generación (credenciales, PDF o ZIP) y no descarga nada. */
+  const cancelRun = () => {
+    cancelActive();
+    setRun({ state: 'idle' });
   };
 
   const downloadControl = () => {
@@ -223,7 +248,7 @@ export default function QrExport() {
             </details>
           )}
           <label className="qx-control">
-            <input type="checkbox" checked={includeControl} onChange={(event) => setIncludeControl(event.target.checked)} />
+            <input type="checkbox" checked={includeControl} onChange={(event) => changeControl(event.target.checked)} />
             <span>Incluir la lista de control{format === 'tallerista' ? ' y la lista de destinatarios' : ''} (CSV, sin QR ni códigos) dentro del ZIP
               {format === 'general' && <small>Con el concentrado general, marcarla convierte la descarga en un ZIP.</small>}</span>
           </label>
@@ -232,7 +257,7 @@ export default function QrExport() {
             <div className="qx-progress" role="status" aria-live="polite">
               <div className="qx-bar" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent} aria-label="Avance de la descarga"><i style={{ width: `${percent}%` }} /></div>
               <p>{progress ? `${PHASE_TEXT[progress.phase]}${progress.phase === 'comprimiendo' ? ` · ${progress.done} %` : ` · ${progress.done} de ${progress.total}`}` : 'Preparando…'}</p>
-              <Button variant="secondary" onClick={() => abort.current?.abort()}><X aria-hidden size={16} />Cancelar</Button>
+              <Button variant="secondary" onClick={cancelRun}><X aria-hidden size={16} />Cancelar</Button>
             </div>
           )}
 
@@ -261,7 +286,7 @@ export default function QrExport() {
           )}
 
           <div className="qx-actions">
-            <Button onClick={() => void start(false)} disabled={busy || summary.qrCount === 0} loading={busy}>
+            <Button onClick={() => void start(false)} disabled={busy || single.id !== null || summary.qrCount === 0} loading={busy}>
               <Download aria-hidden size={16} />Descargar {summary.qrCount === 0 ? '' : `${outputKind} · ${plural(summary.qrCount, 'QR', 'QR')}`}
             </Button>
             <Button variant="secondary" onClick={downloadControl} disabled={busy || selected.length === 0}><FileSpreadsheet aria-hidden size={16} />Descargar solo la lista de control</Button>

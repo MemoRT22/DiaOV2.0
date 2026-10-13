@@ -168,6 +168,76 @@ describe('pantalla de descarga de QR', () => {
     expect(screen.getByRole('button', { name: 'Descargar PDF de Primeros auxilios 2' })).toBeDisabled();
   });
 
+  describe('cambiar la selección con una descarga en proceso', () => {
+    /** Las credenciales esperan a que la prueba las libere, para cambiar los filtros mientras la exportación está a medias. */
+    const gated = () => {
+      let release: () => void = () => undefined;
+      const gate = new Promise<void>((resolve) => { release = resolve; });
+      const base = vi.mocked(rpc).getMockImplementation()!;
+      vi.mocked(rpc).mockImplementation((async (name: string, args?: unknown) => {
+        if (name === 'activity_credential_display') { calls.push('gated'); await gate; }
+        return (base as (n: string, a?: unknown) => Promise<unknown>)(name, args);
+      }) as never);
+      return release;
+    };
+
+    test('cambiar un filtro cancela la anterior: no se guarda su archivo y la nueva descarga solo trae lo nuevo', async () => {
+      const user = userEvent.setup();
+      const release = gated();
+      show();
+      await screen.findByRole('heading', { name: 'Descargar QR de talleres' });
+      await user.click(screen.getByRole('radio', { name: /Concentrado general/ }));
+      await user.click(screen.getByRole('checkbox', { name: /Incluir la lista de control/ }));
+      await user.click(screen.getByRole('button', { name: /^Descargar PDF ·/ }));
+      await waitFor(() => expect(calls).toContain('gated'));
+      expect(screen.getByRole('progressbar')).toBeInTheDocument();
+      await user.click(screen.getByRole('checkbox', { name: 'Vida Universitaria' })); // la selección cambia con la descarga en curso
+      expect(screen.queryByRole('progressbar')).not.toBeInTheDocument(); // la anterior se canceló
+      release();
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      expect(saved).toHaveLength(0); // ni el archivo viejo ni estados viejos
+      expect(screen.queryByText(/Descarga lista/)).not.toBeInTheDocument();
+      expect(screen.queryByRole('alert')).toBeNull();
+      // la nueva descarga es de la nueva selección y no se mezcla con la cancelada
+      await user.click(screen.getByRole('button', { name: /^Descargar PDF ·/ }));
+      expect(await screen.findByText(/Descarga lista/, undefined, { timeout: 60_000 })).toBeInTheDocument();
+      expect(saved).toHaveLength(1);
+      expect(screen.getByText(/Incluye 12 talleres/)).toBeInTheDocument();
+    }, 120_000);
+
+    test('cambiar el formato también cancela y nunca hay dos exportaciones a la vez', async () => {
+      const user = userEvent.setup();
+      const release = gated();
+      show();
+      await screen.findByRole('heading', { name: 'Descargar QR de talleres' });
+      await user.click(screen.getByRole('checkbox', { name: 'Vida Universitaria' }));
+      await user.click(screen.getByRole('button', { name: /^Descargar ZIP/ }));
+      await waitFor(() => expect(calls).toContain('gated'));
+      expect(screen.getByRole('button', { name: /^Descargar ZIP/ })).toBeDisabled(); // no se puede lanzar otra
+      await user.click(screen.getByRole('radio', { name: /Por división/ }));
+      expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+      release();
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      expect(saved).toHaveLength(0);
+    }, 60_000);
+
+    test('«Cancelar» detiene la descarga y no guarda nada', async () => {
+      const user = userEvent.setup();
+      const release = gated();
+      show();
+      await screen.findByRole('heading', { name: 'Descargar QR de talleres' });
+      await user.click(screen.getByRole('checkbox', { name: 'Vida Universitaria' }));
+      await user.click(screen.getByRole('button', { name: /^Descargar ZIP/ }));
+      await waitFor(() => expect(calls).toContain('gated'));
+      await user.click(screen.getByRole('button', { name: 'Cancelar' }));
+      expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+      release();
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      expect(saved).toHaveLength(0);
+      expect(screen.getByRole('button', { name: /^Descargar ZIP/ })).toBeEnabled();
+    }, 60_000);
+  });
+
   test('si no se pueden leer los metadatos muestra el error con reintento', async () => {
     vi.mocked(rpc).mockRejectedValue(new Error('NOT_AUTHORIZED'));
     show();

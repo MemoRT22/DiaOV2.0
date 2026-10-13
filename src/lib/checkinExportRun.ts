@@ -183,12 +183,14 @@ export async function runExport(options: RunOptions): Promise<RunResult> {
 
   const credentials = new Map([...held].map(([id, value]) => [id, value.credential]));
   const logo = await deps.loadLogo();
+  throwIfAborted(signal);
   const now = deps.now();
   const built: { name: string; folder: string | null; bytes: Uint8Array }[] = [];
   report('documentos', 0, documents.length);
   for (const document of documents) {
     throwIfAborted(signal);
     const pdf = await buildDocumentPdf(document, credentials, { logo, now });
+    throwIfAborted(signal); // cancelar durante la generación de un PDF descarta el resultado en cuanto termina
     built.push({ name: document.fileName, folder: document.folder, bytes: pdf.bytes });
     report('documentos', built.length, documents.length);
     await new Promise((resolve) => setTimeout(resolve, 0)); // cede el hilo: la barra de progreso se pinta entre documentos
@@ -201,6 +203,7 @@ export async function runExport(options: RunOptions): Promise<RunResult> {
   const stamp = slugDate(now);
   if (options.format === 'general' && !options.includeControl && missing.length === 0 && built.length === 1) {
     const only = built[0];
+    throwIfAborted(signal);
     return { kind: 'done', file: { name: only.name, blob: new Blob([only.bytes], { type: 'application/pdf' }), mime: 'application/pdf' }, plan: fullPlan, included, missing, pages, documents: 1 };
   }
   const { default: JSZip } = await import('jszip');
@@ -220,9 +223,10 @@ export async function runExport(options: RunOptions): Promise<RunResult> {
   }
   report('comprimiendo', 0, 100);
   const bytes = await zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE', compressionOptions: { level: 6 } }, (metadata) => {
-    throwIfAborted(signal);
-    report('comprimiendo', Math.round(metadata.percent), 100);
+    // No se lanza desde aquí: JSZip no garantiza propagar el error. Se revisa al terminar y se descarta el archivo.
+    if (!signal?.aborted) report('comprimiendo', Math.round(metadata.percent), 100);
   });
+  throwIfAborted(signal);
   const label = options.format === 'tallerista' ? 'Talleristas' : options.format === 'division' ? 'Divisiones' : 'Concentrado';
   return {
     kind: 'done',

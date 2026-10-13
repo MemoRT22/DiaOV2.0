@@ -309,6 +309,52 @@ describe('talleres que no se pueden producir', () => {
   });
 });
 
+describe('cancelación durante la generación', () => {
+  test('cancelar mientras se generan los PDF no entrega nada', async () => {
+    const server = createFakeServer();
+    const controller = new AbortController();
+    await expect(runExport({
+      workshopIds: realIds(server).slice(0, 10), format: 'tallerista', includeControl: true, signal: controller.signal, deps: server.deps(),
+      onProgress: (p) => { if (p.phase === 'documentos' && p.done === 2) controller.abort(); },
+    })).rejects.toBeInstanceOf(ExportAborted);
+  }, 120_000);
+  test('cancelar durante la compresión ZIP descarta el archivo', async () => {
+    const server = createFakeServer();
+    const controller = new AbortController();
+    await expect(runExport({
+      workshopIds: realIds(server).slice(0, 10), format: 'tallerista', includeControl: true, signal: controller.signal, deps: server.deps(),
+      onProgress: (p) => { if (p.phase === 'comprimiendo') controller.abort(); },
+    })).rejects.toBeInstanceOf(ExportAborted);
+  }, 120_000);
+  test('cancelar justo después del último PDF de un concentrado sin ZIP también descarta el archivo', async () => {
+    const server = createFakeServer();
+    const controller = new AbortController();
+    await expect(runExport({
+      workshopIds: realIds(server).slice(0, 3), format: 'general', includeControl: false, signal: controller.signal, deps: server.deps(),
+      onProgress: (p) => { if (p.phase === 'documentos' && p.done === 1) controller.abort(); },
+    })).rejects.toBeInstanceOf(ExportAborted);
+  }, 120_000);
+});
+
+describe('Vida Universitaria heredada con división: mismos QR y códigos', () => {
+  test('el ZIP por división agrupa por tipo y cada PDF conserva su QR y código manual', async () => {
+    const server = createFakeServer();
+    for (const id of ['act-55', 'act-63']) { const m = server.meta.get(id)!; m.activity_type = 'liderazgo'; m.divisions = [server.meta.get('act-00')!.divisions[0]]; }
+    const ids = ['act-00', 'act-04', 'act-55', 'act-63', 'act-08'];
+    const result = done(await runExport({ workshopIds: ids, format: 'division', includeControl: true, deps: server.deps() }));
+    const zip = await unzip(result);
+    const vida = result.plan.documents.find((d) => d.title === 'Vida Universitaria')!;
+    expect(vida.workshops.map((w) => w.id).sort()).toEqual(['act-55', 'act-63']);
+    const decoded = await decodeAllQr(await zip.file(vida.fileName)!.async('uint8array'));
+    decoded.forEach((token, index) => {
+      expect(token).toBe(server.current(vida.workshops[index].id).qr_token);
+      expect(server.checkIn(server.current(vida.workshops[index].id).manual_code)).toBe(vida.workshops[index].id);
+    });
+    const control = (await zip.file('Lista-de-control.csv')!.async('string')).trim().split('\r\n');
+    expect(control).toHaveLength(1 + ids.length);
+  }, 120_000);
+});
+
 describe('progreso y cancelación', () => {
   test('avanza por fases, en orden y sin retroceder dentro de cada una', async () => {
     const server = createFakeServer();

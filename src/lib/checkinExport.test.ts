@@ -272,3 +272,84 @@ describe('nombres', () => {
     expect(slugify('a'.repeat(200)).length).toBeLessThanOrEqual(60);
   });
 });
+
+// Regresión: la clasificación por tipo manda sobre la división registrada.
+describe('Vida Universitaria heredada (liderazgo) con division_id', () => {
+  const legacy = () => {
+    const meta = buildFixtureMeta();
+    // act-55 y act-63 son Vida Universitaria / liderazgo; el heredado conserva una división.
+    for (const id of ['act-55', 'act-63']) {
+      const item = meta.find((m) => m.activity_id === id)!;
+      item.activity_type = 'liderazgo';
+      item.divisions = [DIVISIONS[0], DIVISIONS[1]];
+    }
+    return applyFilters(normalizeWorkshops(meta), DEFAULT_FILTERS);
+  };
+  test('van siempre al grupo «Vida Universitaria» y no a las divisiones académicas', () => {
+    const plan = buildPlan(legacy(), 'division');
+    const vida = plan.documents.find((d) => d.title === 'Vida Universitaria')!;
+    expect(vida.workshops).toHaveLength(12);
+    expect(vida.workshops.map((w) => w.id)).toEqual(expect.arrayContaining(['act-55', 'act-63']));
+    for (const doc of plan.documents.filter((d) => d.id.startsWith('division:div-'))) {
+      expect(doc.workshops.every((w) => w.kind === 'academica')).toBe(true);
+    }
+  });
+  test('los académicos siguen en sus divisiones: multidisciplinarios en varias, sin división en «Sin división asignada»', () => {
+    const plan = buildPlan(legacy(), 'division');
+    expect(plan.documents.filter((d) => d.workshops.some((w) => w.id === 'act-04'))).toHaveLength(2);
+    expect(plan.documents.filter((d) => d.workshops.some((w) => w.id === 'act-30'))).toHaveLength(3);
+    expect(plan.documents.find((d) => d.id === `division:${NONE}`)!.workshops.map((w) => w.id).sort()).toEqual(['act-08', 'act-21', 'act-40']);
+  });
+  test('no se pierde ningún taller ni se cambia el conteo de QR', () => {
+    const plan = buildPlan(legacy(), 'division');
+    expect(new Set(plan.documents.flatMap((d) => d.workshops.map((w) => w.id))).size).toBe(64);
+    expect(plan.summary.qrCount).toBe(64);
+    expect(plan.summary.groups).toBe(8);
+  });
+  test('el filtro por división sigue encontrando la asociación real del heredado', () => {
+    const found = applyFilters(legacy(), { ...DEFAULT_FILTERS, divisionIds: ['div-salud'] });
+    expect(found.map((w) => w.id)).toContain('act-55');
+  });
+});
+
+// Regresión: exactamente una fila por taller en la lista de control.
+describe('lista de control: una fila por taller aunque viaje en varios PDF', () => {
+  const plan = buildPlan(filtered({}), 'division');
+  const rows = controlRows(plan);
+  test('64 filas, sin ids repetidos, aunque hay páginas repetidas entre documentos', () => {
+    expect(plan.summary.pages).toBeGreaterThan(64);
+    expect(rows).toHaveLength(64);
+    expect(new Set(rows.map((r) => r.workshop.id)).size).toBe(64);
+    expect(controlCsv(rows).replace('\uFEFF', '').trim().split('\r\n')).toHaveLength(65);
+  });
+  test('un taller de dos divisiones lista ambos documentos, legible, en la misma fila', () => {
+    const row = rows.find((r) => r.workshop.id === 'act-04')!;
+    const names = row.pdf.split('; ');
+    expect(names).toHaveLength(2);
+    expect(names.every((n) => /^DiaOV2026_QR_.+\.pdf$/.test(n))).toBe(true);
+    expect(rows.find((r) => r.workshop.id === 'act-30')!.pdf.split('; ')).toHaveLength(3);
+    expect(rows.find((r) => r.workshop.id === 'act-00')!.pdf.split('; ')).toHaveLength(1);
+  });
+  test('conserva estado, responsable, correo, división y observaciones', () => {
+    const row = rows.find((r) => r.workshop.id === 'act-10')!;
+    expect(row.status).toBe('Requiere revisión');
+    expect(row.notes).toContain('Sin correo');
+    const line = controlCsv(rows).split('\r\n').find((l) => l.startsWith(row.workshop.title))!;
+    expect(line).toContain(row.workshop.responsible!.name!);
+    expect(controlCsv(rows)).toContain(DIVISIONS[4].name.split(' ')[1]);
+  });
+  test('un taller sin QR obtenido sigue marcado, sin PDF, y sin duplicarse', () => {
+    const missingRows = controlRows(plan, new Set(['act-04']));
+    expect(missingRows).toHaveLength(64);
+    const row = missingRows.find((r) => r.workshop.id === 'act-04')!;
+    expect(row.pdf).toBe('');
+    expect(row.notes.join(' ')).toMatch(/QR no obtenido/);
+  });
+  test('los excluidos aparecen una sola vez', () => {
+    const meta = buildFixtureMeta();
+    meta[3].has_credential = false;
+    const excluded = controlRows(buildPlan(applyFilters(normalizeWorkshops(meta), DEFAULT_FILTERS), 'division'));
+    expect(excluded).toHaveLength(64);
+    expect(excluded.filter((r) => r.workshop.id === 'act-03')).toHaveLength(1);
+  });
+});
