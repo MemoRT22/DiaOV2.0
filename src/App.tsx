@@ -22,6 +22,7 @@ const WorkshopRegistration = lazy(() => import('./public/WorkshopRegistration'))
 
 const AdminLayout = lazy(() => import('./admin/AdminLayout'));
 const CoordinationOnly = lazy(() => import('./admin/CoordinationOnly'));
+const QrExport = lazy(() => import('./admin/checkin/QrExport'));
 const Overview = lazy(() => import('./admin/Overview'));
 const SettingsHome = lazy(() => import('./admin/SettingsHome'));
 const Participants = lazy(() => import('./admin/participants/Participants'));
@@ -112,6 +113,7 @@ export default function App() {
                 <Route path="operacion-en-vivo" element={<OperationsCenter />} />
                 <Route path="checkin" element={<CheckinModule />} />
                 <Route element={<CoordinationOnly />}>
+                  <Route path="checkin/qr-talleres" element={<QrExport />} />
                   <Route path="sorteo-admin" element={<RaffleAdmin />} />
                 </Route>
               </Route>
