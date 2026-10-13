@@ -8,6 +8,7 @@ import {
   changeReservation,
   fetchBoard,
   reserveSession,
+  reservationWindow,
   type AvailabilityPatch,
   type Board,
 } from './reservations';
@@ -16,7 +17,10 @@ const CLOCK_TICK_MS = 30_000;
 
 export function applyClock(board: Board, offsetMs: number): Board {
   const now = Date.now() + offsetMs;
-  let changed = false;
+  // El servidor es la autoridad para reservar; el frontend solo actualiza su estado visual
+  // al cruzar la apertura/cierre, incluso si el estudiante deja la pagina abierta.
+  const nextWindow = board.opens_at ? reservationWindow(board.opens_at, board.closes_at, now) : board.window;
+  let changed = nextWindow !== board.window;
   const sessions = board.sessions.map((s) => {
     const started = new Date(s.starts_at).getTime() <= now;
     const ended = new Date(s.ends_at).getTime() <= now;
@@ -57,6 +61,7 @@ export function applyClock(board: Board, offsetMs: number): Board {
         });
   return {
     ...board,
+    window: nextWindow,
     sessions: sessionsOut,
     reservations,
     active_reservation_count: Math.max(0, board.active_reservation_count - released),
@@ -98,6 +103,21 @@ export function useReservationBoard(editionId: string | undefined) {
     const id = window.setInterval(() => setBoard((b) => (b ? applyClock(b, offset.current) : b)), CLOCK_TICK_MS);
     return () => window.clearInterval(id);
   }, []);
+
+  // Desbloqueo preciso en la hora de apertura, sin esperar el tick de 30 segundos
+  // ni necesitar que el estudiante recargue la pagina. El backend revalida cada reserva.
+  useEffect(() => {
+    if (!board?.opens_at || board.window !== 'not_open') return;
+    const remaining = new Date(board.opens_at).getTime() - (Date.now() + offset.current);
+    if (remaining <= 0) {
+      setBoard((current) => (current ? applyClock(current, offset.current) : current));
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      setBoard((current) => (current ? applyClock(current, offset.current) : current));
+    }, remaining + 10);
+    return () => window.clearTimeout(timer);
+  }, [board?.window, board?.opens_at]);
 
   // Personal state: another tab of this browser changed my reservations/attendance, or this tab was hidden for a while.
   // (Seat counts come from the availability broadcast below; these are different concerns.)
