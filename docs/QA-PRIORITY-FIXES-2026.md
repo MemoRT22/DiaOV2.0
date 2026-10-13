@@ -1,13 +1,13 @@
 # Correcciones prioritarias QA - Día OV 2026
 
 Base: `58c7c7a1231c598d1b140d9c56e9b057031eab29`. Rama: `codex/qa-priority-fixes`.
-Las modificaciones están preparadas para revisión. No se aplicaron a Supabase remoto y no se desplegó la aplicación.
+Las modificaciones están preparadas para revisión. Las dos migraciones ya están aplicadas y verificadas en Supabase remoto. El PR continúa sin merge y el frontend no se desplegó desde esta rama.
 
 ## Cambios
 
-- `20261013034241_qa_checkin_window_and_student_audience.sql`: reemplaza únicamente `check_in(text)`, partiendo de la definición desplegada consultada mediante `pg_get_functiondef`. Usa `statement_timestamp()` del servidor capturado una vez por solicitud. Apertura y cierre inclusivos según `editions.checkin_open_before_minutes` y `checkin_close_after_minutes`.
+- `20261013141639_qa_checkin_window_and_student_audience.sql`: reemplaza únicamente `check_in(text)`, partiendo de la definición desplegada consultada mediante `pg_get_functiondef`. Usa `statement_timestamp()` del servidor capturado una vez por solicitud. Apertura y cierre inclusivos según `editions.checkin_open_before_minutes` y `checkin_close_after_minutes`.
 - La asistencia ya registrada se devuelve antes de validar la ventana, incluso tras cierre o cancelación. Se mantiene el bloqueo por participante, el índice único por actividad, las reservas expiradas válidas y la regla 60 minutos = 2 sellos / otras duraciones = 1.
-- `20261013034404_student_audience_and_recommender_contract.sql`: agrega `activities.audience` con valores explícitos `students` y `educators`. Solo clasifica como `educators` la actividad `cef9d429-d193-49fc-8883-d15a5ee30fdc`.
+- `20261013141720_student_audience_and_recommender_contract.sql`: agrega `activities.audience` con valores explícitos `students` y `educators`. Solo clasifica como `educators` la actividad `cef9d429-d193-49fc-8883-d15a5ee30fdc`.
 - `assert_reservable` protege tanto reserva como cambio de reserva; el tablero y el detalle estudiantil omiten actividades educativas exclusivas. Las reservaciones anteriores se conservan en el itinerario para que puedan cancelarse legítimamente.
 - Coordinación puede consultar/cambiar la audiencia mediante RPC autorizados y la sección “Público del taller” de los talleres publicados. El cambio queda auditado. No depende de título, descripción o cantidad de carreras.
 - El recomendador incremental restablece `recommendation_type`, `matched_careers`, `matched_division`, `interest_priority`, `has_open_session` y `summary`. Conserva claves anteriores para clientes en caché, cálculo de cupos incluyendo reservas expiradas e aislamiento de edición/DEMO.
@@ -17,7 +17,7 @@ Las modificaciones están preparadas para revisión. No se aplicaron a Supabase 
 
 El historial remoto consultado no contiene `deterministic_workshop_recommender`. La definición instalada conserva el contrato anterior. Se revisaron las funciones desplegadas de check-in, reserva, tablero y detalle, y las migraciones posteriores de sellos, sorteo, CRUD y exportación de QR. La nueva migración del recomendador integra esas reglas; no requiere aplicar la migración antigua omitida.
 
-La configuración remota consultada sigue siendo 5 minutos antes y 20 después. Las consultas remotas fueron de solo lectura.
+La configuración remota sigue siendo 5 minutos antes y 20 después. Tras la auditoría inicial de solo lectura, las dos migraciones de este PR fueron aplicadas y verificadas con autorización.
 
 ## Validación aislada
 
@@ -108,21 +108,21 @@ El arranque desde cero observado durante la auditoría anterior falla en:
 
 Este PR no repara, borra ni reordena esa historia. La reparación reproducible del bootstrap y la conciliación global de versiones requieren un trabajo separado.
 
-## Aplicación futura y pendientes del reporte QA
+## Estado de aplicación y pendientes del reporte QA
 
 1. Revisar y fusionar el PR solo con autorización.
-2. Aplicar exclusivamente las dos migraciones nuevas en su orden; evitar `db push` indiscriminado mientras el historial global no esté reconciliado.
+2. Las dos migraciones ya están aplicadas en Supabase como versiones `20261013141639` y `20261013141720`. Evitar `db push` indiscriminado mientras el historial global no esté reconciliado.
 3. Desplegar el frontend después del backend para habilitar los RPC de audiencia.
-4. Repetir el recorrido HTTP/navegador sobre el entorno autorizado. Producción mantiene los defectos hasta que las migraciones se apliquen.
+4. Repetir el recorrido HTTP/navegador sobre el entorno autorizado. El backend remoto ya tiene los cambios; falta desplegar los mensajes y controles nuevos del frontend tras el merge.
 5. Quedan pendientes el ensayo completo del sorteo público/animación/no presentado y último cupo simultáneo por HTTP, además de limpieza autorizada de las cuentas y reservas de la auditoría original.
 
-No se ejecutaron merge, despliegue ni migraciones remotas.
+No se ejecutaron merge ni despliegue desde este PR. Las dos migraciones remotas ya fueron ejecutadas y verificadas con autorización.
 
 ## Revisión P2: visibilidad según historial de reservación (13 de octubre)
 
 Ajuste sobre el HEAD revisado `28e957238727b9dab66a4ace2c30aa620272f2da`, en el mismo PR #40.
 
-La excepción de audiencia en `my_reservation_board().sessions` ahora exige que la reservación propia tenga uno de los mismos estados que conserva `reservations`: `vigente`, `cancelada_sesion` o `expirada`. El cambio funcional es un solo predicado añadido a la migración pendiente del PR; no se agregan ni reestructuran migraciones.
+La excepción de audiencia en `my_reservation_board().sessions` ahora exige que la reservación propia tenga uno de los mismos estados que conserva `reservations`: `vigente`, `cancelada_sesion` o `expirada`. El cambio funcional es un solo predicado añadido a la migración de este PR (ya aplicada); no se agregan ni reestructuran migraciones.
 
 | Reservación propia | Sesión exclusiva en tablero | Itinerario |
 |---|---|---|
@@ -143,5 +143,5 @@ Validación de esta revisión:
 - `npm test`: 76 archivos, 920 pruebas aprobadas.
 - PostgreSQL local: `regression_qa_priority`, `regression_student_flexibility` (49), `regression_recommender` (24), `regression_admin_crud` y `regression_asistencia` aprobadas. Las excepciones finales `STUDENT_FLEX_OK` y `RECOMMENDER_OK` son los marcadores de éxito deliberados de esas suites.
 
-No se ejecutaron operaciones contra Supabase remoto, ni se tocaron los datos de producción. Para respetar la prohibición de despliegue al subir esta revisión, el PR y el commit se marcan con `[skip netlify]`, según el mecanismo documentado por Netlify.
+Las pruebas locales del PR no escribieron en Supabase remoto. Posteriormente se aplicaron las dos migraciones autorizadas: los únicos cambios oficiales de datos fueron el campo de audiencia y su asignación al taller exclusivo; los talleres, sesiones, reservaciones y QR permanecen intactos. Para respetar la prohibición de despliegue al subir esta revisión, el PR y el commit se marcan con `[skip netlify]`, según el mecanismo documentado por Netlify.
 
