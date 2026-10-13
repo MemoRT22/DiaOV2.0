@@ -1,7 +1,7 @@
-import { ArrowLeft, Clock, Maximize2, Minimize2, Printer, QrCode, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Clock, Download, Maximize2, Minimize2, Printer, QrCode, RefreshCw } from 'lucide-react';
 import QRCode from 'qrcode';
 import { useEffect, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Alert, Badge, Button, Field, LoadError, Modal, PageSkeleton, Spinner } from '../components/ui';
 import { formatTime } from '../lib/catalog';
 import {
@@ -122,7 +122,8 @@ export default function CheckinModule() {
   return (
     <div className="ad-page">
       <PageHeader eyebrow="Operación / Acceso" title="Check-in por taller"
-        description="Consulta reservas y asistencias por horario. Abre la credencial cuando necesites proyectar o imprimir el acceso." />
+        description="Consulta reservas y asistencias por horario. Abre la credencial cuando necesites proyectar o imprimir el acceso."
+        action={isCoord ? <Link to="/coordinacion/checkin/qr-talleres" className="btn btn-secondary inline-flex min-h-12 items-center justify-center gap-2 rounded-full px-6 text-sm font-semibold"><Download aria-hidden size={16} />Descargar QR de talleres</Link> : undefined} />
       <div className="ad-toolbar">
         <SearchField label="Buscar taller" value={query} onChange={(value) => { setQuery(value); setSelected(null); }} placeholder="Buscar taller o ubicación" />
         <span className="ad-context-help">{filtered.length} {filtered.length === 1 ? 'taller' : 'talleres'}</span>
