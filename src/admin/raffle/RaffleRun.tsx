@@ -15,6 +15,7 @@ import { useRafflePublicScreen } from '../../lib/useRafflePublicScreen';
 import { DataPanel, EmptyState } from '../design/Primitives';
 import { deliveryText, kindOf, plural, PrizeIcon, prizeTally, StockDots, toneOf, verified } from './PrizeParts';
 import { InvalidateModal } from './RaffleModals';
+import { useWinnerFolios } from './useWinnerFolios';
 import RaffleStage, { PublicStage, useReducedMotion, type StagePhase, type StageResult } from './RaffleStage';
 import type { RaffleContext } from './types';
 
@@ -49,6 +50,7 @@ export default function RaffleRun({ ctx }: { ctx: RaffleContext }) {
   const [prizeId, setPrizeId] = useState('');
   const [phase, setPhase] = useState<StagePhase>('idle');
   const [result, setResult] = useState<StageResult | null>(null);
+  const { folioOf } = useWinnerFolios(result ? [result.winnerId] : []);
   const [revealDone, setRevealDone] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -329,7 +331,7 @@ export default function RaffleRun({ ctx }: { ctx: RaffleContext }) {
 
         <div className="rf-live">
           {error && <Alert tone="error">{error}</Alert>}
-          <RaffleStage variant="panel" rehearsal={rehearsal} phase={phase} prize={prize} poolCount={poolCount} result={result} blocker={blocker}
+          <RaffleStage variant="panel" rehearsal={rehearsal} phase={phase} prize={prize} poolCount={poolCount} result={result} blocker={blocker} folio={result ? folioOf(result.winnerId) : undefined}
             notice={notice} categoryName={category?.name} onRevealDone={() => setRevealDone(true)} alreadyRevealed={revealDone}>
             <RoundActions phase={phase} revealDone={revealDone} busy={busy} refreshing={prizesLoading} checking={checking} drawLabel={drawLabel}
               blockerCode={blocker?.code} canDraw={!blocker && !!prize}

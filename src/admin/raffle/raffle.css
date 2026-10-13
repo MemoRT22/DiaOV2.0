@@ -261,3 +261,8 @@ html[data-surface='admin']:has(.rf-public) body { background: #0f1214; }
 .rf-setline .rf-link { margin-left: .6rem; }
 .rf-setline .rf-link:disabled { opacity: .45; text-decoration: none; cursor: not-allowed; }
 @media (max-width: 640px) { .rf-chooser { padding: 1rem; } .rf-chooser-actions .btn { flex: 1 1 100%; } }
+
+/* Folio del ganador: solo en la consola del operador, para cotejarlo con la Bitácora de la persona. */
+.rf-folio { margin-top: .35rem; font-size: clamp(.95rem, 2.6cqmin, 1.5rem); color: var(--rf-muted); }
+.rf-folio strong { color: #fff; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .1em; font-size: 1.15em; }
+.rf-folio-text { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .08em; }

@@ -7,6 +7,12 @@ import { FakeBroadcastChannel } from './fakeBroadcastChannel';
 import { AMAZON, IPAD, MACBOOK, officialPrizes, prize, winner } from './raffleFixtures';
 import { drawn, fireEvent, readyToDraw, screen, setReducedMotion, stage, view, waitFor, within } from './raffleRunHarness';
 
+// El folio lo asigna el servidor; aquí se simula con uno derivado del id para no consultar la red.
+vi.mock('../../lib/raffleWinner', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../lib/raffleWinner')>()),
+  fetchWinnerFolios: async (ids: string[]) => new Map(ids.map((id) => [id, `GAN-${id.replace(/\D/g, '').padStart(6, '0')}`])),
+}));
+
 const m = vi.hoisted(() => ({ view: vi.fn(), prizes: vi.fn(), winners: vi.fn(), draw: vi.fn(), confirm: vi.fn(), pending: vi.fn() }));
 
 vi.mock('../../lib/raffleApi', async (importOriginal) => ({

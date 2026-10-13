@@ -4,6 +4,9 @@ import { buttonClasses, PageSkeleton } from '../components/ui';
 import { useAuth } from '../lib/auth';
 import { fetchDivisions, fetchProgress } from '../lib/catalog';
 import { fetchMyRaffleStatus } from '../lib/raffleApi';
+import { useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
+import { useRafflePrizes } from './RafflePrizeProvider';
 import { useLoad } from '../lib/useLoad';
 import { useParticipantSync } from '../lib/useParticipantSync';
 import { usePublicTheme } from '../theme/PublicThemeProvider';
@@ -29,6 +32,11 @@ export default function PassportPage() {
     [],
   );
   useParticipantSync(reload);
+  const { prizes } = useRafflePrizes();
+  const { hash } = useLocation();
+  const ready = !!data;
+  // «Ver mi premio» del aviso llega con #premio: se lleva a la tarjeta en cuanto la Bitácora está pintada.
+  useEffect(() => { if (ready && hash === '#premio') document.getElementById('premio')?.scrollIntoView({ block: 'start' }); }, [ready, hash, prizes.length]);
 
   if (loading && !data) return <PageSkeleton />;
   if (!data) return <ErrorState error={error} onRetry={reload} />;
@@ -103,7 +111,7 @@ export default function PassportPage() {
         </p>
       </section>
 
-      <RaffleStatusCard raffle={raffle} />
+      <RaffleStatusCard raffle={raffle} prizes={prizes} />
 
       {(showInterestsLink || progress.post_event_interests_completed) && (
         <section className="space-card p-5" aria-label="Carreras de interés">
