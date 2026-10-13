@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { rpc } from './adminApi';
 import {
-  DEFAULT_POLL_SECONDS, FOLIO_BATCH, fetchMyRafflePrizes, fetchWinnerFolios, markSeen, MAX_BACKOFF_MS, nextDelay, normalizeMyPrizes, normalizeReading, pendingNotice,
+  DEFAULT_POLL_SECONDS, FOLIO_BATCH, RECOVERY_SECONDS, fetchMyRafflePrizes, fetchWinnerFolios, markSeen, MAX_BACKOFF_MS, nextDelay, normalizeMyPrizes, normalizeReading, pendingNotice,
   readSeen, resetSeenMemory, RETRY_MS, SEEN_STORAGE_KEY, verifiedForMs, type MyRafflePrize,
 } from './raffleWinner';
 
@@ -36,8 +36,8 @@ describe('respuesta del servidor', () => {
     expect(reading.pollSeconds).toBe(20);
     expect(vi.mocked(rpc).mock.calls).toEqual([['my_raffle_prizes']]);
   });
-  test('la cadencia que dicta el servidor: null = sin consulta periódica; fuera de rango se acota; sin dato, latido lento', () => {
-    expect(normalizeReading({ prizes: [], poll_seconds: null }).pollSeconds).toBeNull();
+  test('la cadencia que dicta el servidor: «null» no significa dejar de consultar sino el latido de recuperación; fuera de rango se acota', () => {
+    expect(normalizeReading({ prizes: [], poll_seconds: null }).pollSeconds).toBe(RECOVERY_SECONDS);
     expect(normalizeReading({ prizes: [], poll_seconds: 1 }).pollSeconds).toBe(10);
     expect(normalizeReading({ prizes: [], poll_seconds: 99999 }).pollSeconds).toBe(600);
     expect(normalizeReading({ prizes: [] }).pollSeconds).toBe(DEFAULT_POLL_SECONDS);
@@ -116,21 +116,27 @@ describe('aviso: cuándo toca mostrarlo', () => {
 });
 
 describe('cadencia de consulta', () => {
-  test('sin sorteo en curso el servidor dice «no consultes»: no hay consulta periódica', () => {
-    expect(nextDelay(0, null)).toBeNull();
+  test('nunca hay «sin consulta»: aun la cadencia más lenta es un latido de recuperación de 10 min', () => {
+    expect(RECOVERY_SECONDS).toBe(600);
+    for (const seconds of [undefined, null, 15, 20, 120, 180, 300, 600, 99999]) {
+      const delay = nextDelay(0, seconds as number | null | undefined, () => 0.5);
+      expect(delay).toBeGreaterThan(0);
+      expect(delay).toBeLessThanOrEqual(RECOVERY_SECONDS * 1000 * 1.15);
+    }
+    expect(nextDelay(0, 600, () => 0.5)).toBe(600_000);
   });
   test('con cadencia del servidor, con variación de ±15 %', () => {
     expect(nextDelay(0, 20, () => 0.5)).toBe(20_000);
     expect(nextDelay(0, 20, () => 0)).toBe(17_000);
     expect(nextDelay(0, 20, () => 1)).toBe(23_000);
-    expect(nextDelay(0, 300, () => 0.5)).toBe(300_000);
+    expect(nextDelay(0, 180, () => 0.5)).toBe(180_000);
   });
   test('tras fallos se espacia hasta un tope; si el servidor nunca dijo nada se reintenta cada minuto', () => {
     expect(nextDelay(1, 20, () => 0.5)).toBe(40_000);
     expect(nextDelay(3, 20, () => 0.5)).toBe(160_000);
     expect(nextDelay(10, 300, () => 0.5)).toBeLessThanOrEqual(MAX_BACKOFF_MS);
+    expect(nextDelay(0, undefined, () => 0.5)).toBe(RETRY_MS);
     expect(nextDelay(1, undefined, () => 0.5)).toBe(RETRY_MS * 2);
-    expect(nextDelay(1, null, () => 0.5)).toBeGreaterThan(0); // aunque la cadencia fuera «ninguna», un fallo se reintenta
   });
   test('lo mostrado vale como verificado ~2.5 veces la cadencia, nunca menos de un minuto', () => {
     expect(verifiedForMs(15)).toBe(60_000);

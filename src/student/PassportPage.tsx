@@ -34,6 +34,8 @@ export default function PassportPage() {
   useParticipantSync(reload);
   const { prizes, verified, refresh } = useRafflePrizes();
   const { hash } = useLocation();
+  // Abrir la Bitácora es el lugar donde se consulta el premio: se pone al día (una lectura; la ya en curso se reutiliza).
+  useEffect(() => { void refresh(); }, [refresh]);
   const ready = !!data;
   // «Ver mi premio» del aviso llega con #premio: se lleva a la tarjeta en cuanto la Bitácora está pintada.
   useEffect(() => { if (ready && hash === '#premio') document.getElementById('premio')?.scrollIntoView({ block: 'start' }); }, [ready, hash, prizes.length]);

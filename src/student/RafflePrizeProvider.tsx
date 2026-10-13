@@ -1,14 +1,16 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { subscribeParticipantChanges } from '../lib/participantSync';
 import { fetchMyRafflePrizes, MIN_GAP_MS, nextDelay, verifiedForMs, type MyRafflePrize } from '../lib/raffleWinner';
 
 /*
  * Un solo consultor de «mis premios» para toda la plataforma del alumno. No depende de Realtime ni guarda resultados en el
  * dispositivo: la fuente de verdad es Supabase y lo que se muestra vive solo en memoria.
  *
- * Carga: la cadencia la dicta el servidor (`poll_seconds`). Mientras se explora y se reserva, el servidor contesta «no consultes
- * periódicamente» (o un latido de 5 min si la persona ya participó); cuando hay un sorteo en curso y la persona está en una
- * categoría pregunta cada ~20 s, y cada ~15 s si tiene un resultado pendiente de entrega. Además consulta al abrir, al volver a la
- * pestaña/desbloquear y al recuperar la conexión (con un mínimo de 10 s entre consultas de este tipo).
+ * Carga: la cadencia la dicta el servidor (`poll_seconds`) y nunca es «ninguna»: siempre hay un latido de recuperación (≤ 10 min)
+ * para que una pantalla abierta no se quede sin enterarse. Mientras se explora y se reserva el latido es lento (3–10 min según
+ * si la persona ya participa o está en una categoría); con un sorteo en curso y la persona en una categoría baja a ~20 s, y a ~15 s
+ * si tiene un resultado pendiente. Además consulta al abrir, al registrar una asistencia (esta pestaña u otra), al volver a la
+ * pestaña/desbloquear y al recuperar la conexión (mínimo de 10 s entre consultas por eventos).
  *
  * Verificado: lo que se muestra como reclamable solo vale si la última consulta salió bien y es reciente. Si la consulta falla, si
  * pasó demasiado tiempo o si se vuelve a la pantalla tras un rato, el resultado se marca «sin verificar» hasta confirmarlo.
@@ -47,9 +49,12 @@ export function RafflePrizeProvider({ children, enabled = true }: { children: Re
 
   const schedule = useCallback((refreshFn: () => Promise<void>) => {
     window.clearTimeout(timer.current);
-    const delay = nextDelay(failures.current, hint.current);
-    if (delay === null || !alive.current) return;
-    timer.current = window.setTimeout(() => { if (document.visibilityState === 'visible') void refreshFn(); }, delay);
+    if (!alive.current) return;
+    // Siempre hay un temporizador armado: con la pestaña oculta simplemente se vuelve a armar, así la cadena nunca se rompe.
+    const arm = () => {
+      timer.current = window.setTimeout(() => { if (document.visibilityState === 'visible') void refreshFn(); else arm(); }, nextDelay(failures.current, hint.current));
+    };
+    arm();
   }, []);
 
   const refresh = useCallback(async (): Promise<void> => {
@@ -94,6 +99,8 @@ export function RafflePrizeProvider({ children, enabled = true }: { children: Re
     const onVisible = () => wake(false);
     const onFocus = () => wake(false);
     const onOnline = () => wake(true);
+    // Otra pestaña registró una asistencia o una reservación: cambió lo que el servidor sabe de esta persona.
+    const unsubscribe = subscribeParticipantChanges((kind) => { if (kind === 'attendance') wake(true); });
     void refresh();
     document.addEventListener('visibilitychange', onVisible);
     window.addEventListener('focus', onFocus);
@@ -102,6 +109,7 @@ export function RafflePrizeProvider({ children, enabled = true }: { children: Re
       alive.current = false;
       window.clearTimeout(timer.current);
       window.clearTimeout(expiry.current);
+      unsubscribe();
       document.removeEventListener('visibilitychange', onVisible);
       window.removeEventListener('focus', onFocus);
       window.removeEventListener('online', onOnline);

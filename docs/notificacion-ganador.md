@@ -9,18 +9,27 @@
 - No cambian `draw_winner`, `confirm_winner`, `mark_no_show`, `invalidate_winner`, `my_raffle_status`, elegibilidad, sellos, categorías ni inventario.
 
 ## Carga sobre el servidor (hasta ~2,000 alumnos)
-La cadencia la dicta el servidor (`poll_seconds`) para que **mientras se explora y se reserva no haya consultas continuas**:
+La cadencia la dicta el servidor (`poll_seconds`) y **nunca es «ninguna»**: siempre queda un latido de recuperación, para que una pantalla abierta no se quede indefinidamente sin enterarse de que la persona ya participa, de que empezó el sorteo o de que ganó.
 
 | Situación de la persona | `poll_seconds` |
 |---|---|
 | Resultado pendiente de entrega (para ver pronto la confirmación) | 15 |
 | Sorteo en curso (hubo un ganador en la última hora) y está en una categoría | 20 |
 | Sorteo en curso y no está en ninguna categoría | 120 |
-| Sin sorteo en curso, pero ya tiene asistencias | 300 (latido lento) |
-| Sin sorteo en curso y sin asistencias | `null`: sin consulta periódica |
+| Sin sorteo en curso, en una categoría (puede ganar) | 180 |
+| Sin sorteo en curso, con asistencias pero sin categoría todavía | 300 |
+| Sin sorteo en curso y sin asistencias | 600 (latido de recuperación) |
 
-Además la plataforma consulta siempre al abrirse, al volver a la pestaña/desbloquear el teléfono y al recuperar la conexión (mínimo 10 s entre consultas por eventos; con la pestaña oculta no consulta). Con fallos espacia los reintentos (×2 hasta 10 min). Estimación: durante la exploración, ~0 consultas periódicas para quien aún no participa y ~1 por 5 min para quien ya participó (≈ 7 consultas/s en el peor caso de 2,000 participantes); solo durante el sorteo, y solo quien está en una categoría, ~1 por 20 s.
-**Límite conocido:** hasta que sale el primer ganador del sorteo nadie sabe que «hay sorteo en curso», así que el primero en ganar lo ve cuando la plataforma consulte (al abrirla, al desbloquear el teléfono —lo normal cuando anuncian su nombre—, o en el siguiente latido de ≤ 5 min). Del segundo ganador en adelante el aviso llega en ≈ 20 s.
+Además la plataforma consulta siempre: al abrirse, **al registrar una asistencia (en esa pestaña, y en otra del mismo navegador por el aviso entre pestañas)**, al abrir la Bitácora, al volver a la pestaña/desbloquear el teléfono y al recuperar la conexión (mínimo 10 s entre consultas por eventos). El temporizador siempre está armado: con la pestaña oculta se vuelve a armar sin consultar, y con fallos se espacian los reintentos (×2 hasta 10 min). Cada respuesta reprograma el temporizador con la cadencia nueva.
+
+**Paso de «sin asistencias» a «con asistencias» con la app abierta:** el check-in de la propia pestaña vuelve a consultar al instante (la cadencia pasa de 600 a 180 s); si la asistencia se registró por un camino que la pantalla no ve, se entera en el siguiente latido (≤ 690 s).
+
+**Latencias máximas conocidas del aviso** (cuando no hay ningún evento que despierte la app; con el teléfono en la mano, al abrirla o desbloquearla es inmediato):
+- Primer ganador del sorteo, persona en reposo y en una categoría: ≤ 207 s (180 s + 15 %).
+- Persona en reposo pero que aún no figura en una categoría, o sin asistencias: ≤ 345 s / ≤ 690 s (se entera de que ya participa y de que hay sorteo en su siguiente latido).
+- Cuando empieza el sorteo (primer ganador) los demás siguen en su latido de reposo hasta su siguiente consulta (≤ 207 s en categoría); ahí pasan a ~20 s. Por eso los **primeros** ganadores pueden tardar hasta ~3.5 min en aparecerle a quien no toca su teléfono; una vez «en vivo» cada aviso llega en ≤ 23 s (≤ 17 s si ya tenía un resultado pendiente).
+
+**Carga:** peor caso en reposo, 2,000 alumnos todos en una categoría: 2,000 / 180 s ≈ 11 consultas/s (antes ≈ 100/s); sin asistencias ≈ 3 consultas/s (2,000 / 600 s). Solo con el sorteo en curso, y solo para quien está en una categoría, ≈ 1 consulta cada 20 s.
 
 ## Verificado: Supabase manda
 Nada del resultado se guarda en el dispositivo (solo los ids de avisos ya cerrados, para no repetirlos). Un premio **pendiente** solo se presenta como reclamable si la última consulta salió bien y es reciente (≈ 2.5 × la cadencia, mínimo 1 min; y al volver a la pantalla tras > 30 s se marca por verificar hasta que el servidor responda). Si la consulta falla, se cuelga o está vencida: la tarjeta pasa a «Premio sin verificar» (sin «Presenta esta pantalla…»), el aviso se retira sin darse por visto, y «Verificar ahora» reintenta. Si al reconectar el servidor dice `confirmado`, `no_presentado` o `invalidado`, eso es lo que se ve.

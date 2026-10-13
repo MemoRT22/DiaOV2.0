@@ -49,11 +49,13 @@ export function normalizeMyPrizes(raw: unknown): MyRafflePrize[] {
   return prizes;
 }
 
-/** Lo que contesta el servidor: los resultados vigentes y cada cuánto conviene volver a preguntar (null = no consultar periódicamente). */
-export type MyPrizesReading = { prizes: MyRafflePrize[]; pollSeconds: number | null };
+/** Lo que contesta el servidor: los resultados vigentes y cada cuánto conviene volver a preguntar. */
+export type MyPrizesReading = { prizes: MyRafflePrize[]; pollSeconds: number };
 
 /** Latido lento por omisión cuando el servidor no indica cadencia (respuesta antigua o incompleta). */
 export const DEFAULT_POLL_SECONDS = 300;
+/** Latido de recuperación: la cadencia más lenta posible. Nunca se deja de consultar del todo («null» del servidor = este latido). */
+export const RECOVERY_SECONDS = 600;
 
 export function normalizeReading(raw: unknown): MyPrizesReading {
   // Compatibilidad: una respuesta que sea solo la lista (sin cadencia) se trata con el latido lento.
@@ -62,7 +64,7 @@ export function normalizeReading(raw: unknown): MyPrizesReading {
   const seconds = body.poll_seconds;
   return {
     prizes: normalizeMyPrizes(body.prizes),
-    pollSeconds: seconds === null ? null : typeof seconds === 'number' && Number.isFinite(seconds) ? Math.min(600, Math.max(10, seconds)) : DEFAULT_POLL_SECONDS,
+    pollSeconds: seconds === null ? RECOVERY_SECONDS : typeof seconds === 'number' && Number.isFinite(seconds) ? Math.min(RECOVERY_SECONDS, Math.max(10, seconds)) : DEFAULT_POLL_SECONDS,
   };
 }
 
@@ -140,12 +142,12 @@ export const RETRY_MS = 60_000;
 
 /**
  * Espera hasta la siguiente consulta periódica, con ±15 % de variación para que miles de teléfonos no consulten a la vez.
- * `pollSeconds` lo dicta el servidor; `null` = no hay consulta periódica (solo al abrir, volver a la pestaña o recuperar la red).
- * Tras fallos se espacia (x2 por intento, hasta 10 min) y, si el servidor nunca dijo nada, se reintenta cada minuto.
+ * `pollSeconds` lo dicta el servidor y nunca hay «sin consulta»: como mucho, el latido de recuperación de 10 min.
+ * Tras fallos se espacia (×2 por intento, hasta 10 min); si el servidor nunca dijo nada, se reintenta cada minuto.
  */
-export function nextDelay(failures: number, pollSeconds: number | null | undefined, random: () => number = Math.random): number | null {
-  if (failures === 0 && pollSeconds === null) return null;
-  const base = (failures > 0 && pollSeconds == null ? RETRY_MS : (pollSeconds ?? RETRY_MS / 1000) * 1000) * 2 ** Math.min(failures, 4);
+export function nextDelay(failures: number, pollSeconds: number | null | undefined, random: () => number = Math.random): number {
+  const seconds = pollSeconds == null ? RETRY_MS / 1000 : Math.min(RECOVERY_SECONDS, pollSeconds);
+  const base = seconds * 1000 * 2 ** Math.min(failures, 4);
   return Math.round(Math.min(MAX_BACKOFF_MS, base) * (0.85 + random() * 0.3));
 }
 

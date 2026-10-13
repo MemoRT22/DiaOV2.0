@@ -134,20 +134,32 @@ BEGIN
   IF ((pg_temp.as_user(ua, 'select my_raffle_prizes()::text'))::jsonb->>'poll_seconds')::int = 15 THEN pass:=pass+1; ELSE fail:=fail+1; msg:=msg||E'\nFAIL poll pendiente'; END IF;
   -- C no tiene resultado propio vigente: con sorteo en curso (hay ganadores recientes) y sin categoría → 120 s.
   IF ((pg_temp.as_user(uc, 'select my_raffle_prizes()::text'))::jsonb->>'poll_seconds')::int = 120 THEN pass:=pass+1; ELSE fail:=fail+1; msg:=msg||E'\nFAIL poll en vivo sin categoría: '||coalesce(pg_temp.as_user(uc, 'select my_raffle_prizes()::text'),'null'); END IF;
-  -- Sin sorteo en curso (nada reciente) y sin asistencias → null: no se consulta periódicamente mientras explora y reserva.
+  -- Sin sorteo en curso (nada reciente) y sin asistencias → latido de recuperación de 600 s: NUNCA null, nunca «sin consultar».
   UPDATE raffle_winners SET drawn_at = now() - interval '3 hours' WHERE edition_id = ed;
-  IF (pg_temp.as_user(uc, 'select my_raffle_prizes()::text'))::jsonb->'poll_seconds' = 'null'::jsonb THEN pass:=pass+1; ELSE fail:=fail+1; msg:=msg||E'\nFAIL poll idle sin asistencias'; END IF;
-  -- Con asistencias pero sin sorteo en curso → latido lento de 300 s.
+  IF ((pg_temp.as_user(uc, 'select my_raffle_prizes()::text'))::jsonb->>'poll_seconds')::int = 600 THEN pass:=pass+1; ELSE fail:=fail+1; msg:=msg||E'\nFAIL poll idle sin asistencias'; END IF;
+  -- Con asistencias, sin sorteo en curso y SIN categoría todavía → latido lento de 300 s.
   INSERT INTO activities(edition_id,title,is_demo) VALUES (ed,'RF Taller',true) RETURNING id INTO act;
   INSERT INTO activity_sessions(activity_id,starts_at,ends_at,capacity,is_demo,status) VALUES (act,now(),now()+interval '30 min',5,true,'activa') RETURNING id INTO sess;
   INSERT INTO attendances(participant_id,session_id,activity_id,method) VALUES (pc,sess,act,'qr');
-  IF ((pg_temp.as_user(uc, 'select my_raffle_prizes()::text'))::jsonb->>'poll_seconds')::int = 300 THEN pass:=pass+1; ELSE fail:=fail+1; msg:=msg||E'\nFAIL poll idle con asistencias'; END IF;
+  -- (la categoría de prueba no pide sellos de este tipo: se desactiva un momento para aislar el caso «asistencias sin categoría»)
+  UPDATE raffle_categories SET is_active = false WHERE id = cat;
+  IF ((pg_temp.as_user(uc, 'select my_raffle_prizes()::text'))::jsonb->>'poll_seconds')::int = 300 THEN pass:=pass+1; ELSE fail:=fail+1; msg:=msg||E'\nFAIL poll idle con asistencias sin categoría: '||coalesce(pg_temp.as_user(uc, 'select my_raffle_prizes()::text'),'null'); END IF;
+  -- Con asistencias y en una categoría, sin sorteo en curso → latido de 180 s (acota cuándo se entera de que empezó).
+  UPDATE raffle_categories SET is_active = true WHERE id = cat;
+  IF ((pg_temp.as_user(uc, 'select my_raffle_prizes()::text'))::jsonb->>'poll_seconds')::int = 180 THEN pass:=pass+1; ELSE fail:=fail+1; msg:=msg||E'\nFAIL poll idle en categoría: '||coalesce(pg_temp.as_user(uc, 'select my_raffle_prizes()::text'),'null'); END IF;
+  -- El paso de «sin asistencias» a «con asistencias» cambia la cadencia (600 → 180) sin más que volver a preguntar; y cuando empieza el sorteo
+  -- (aparece un ganador reciente) esa misma persona pasa a 20 s.
+  UPDATE raffle_winners SET drawn_at = now() WHERE id = w2;
+  IF ((pg_temp.as_user(uc, 'select my_raffle_prizes()::text'))::jsonb->>'poll_seconds')::int = 20 THEN pass:=pass+1; ELSE fail:=fail+1; msg:=msg||E'\nFAIL poll al empezar el sorteo: '||coalesce(pg_temp.as_user(uc, 'select my_raffle_prizes()::text'),'null'); END IF;
+  UPDATE raffle_winners SET drawn_at = now() - interval '3 hours' WHERE id = w2;
   -- Un pendiente propio sigue en 15 s aunque el sorteo ya no sea reciente (para ver pronto la confirmación).
   IF ((pg_temp.as_user(ua, 'select my_raffle_prizes()::text'))::jsonb->>'poll_seconds')::int = 15 THEN pass:=pass+1; ELSE fail:=fail+1; msg:=msg||E'\nFAIL poll pendiente (sin sorteo reciente)'; END IF;
   -- Una persona con resultado ya entregado (y sus asistencias, como toda ganadora real) no se consulta rápido.
   INSERT INTO attendances(participant_id,session_id,activity_id,method) VALUES (pa,sess,act,'qr');
   UPDATE raffle_winners SET status = 'confirmado', confirmed_at = now() WHERE id = w_a2;
-  IF ((pg_temp.as_user(ua, 'select my_raffle_prizes()::text'))::jsonb->>'poll_seconds')::int = 300 THEN pass:=pass+1; ELSE fail:=fail+1; msg:=msg||E'\nFAIL poll tras entrega'; END IF;
+  IF ((pg_temp.as_user(ua, 'select my_raffle_prizes()::text'))::jsonb->>'poll_seconds')::int IN (180, 300) THEN pass:=pass+1; ELSE fail:=fail+1; msg:=msg||E'\nFAIL poll tras entrega'; END IF;
+  -- Ninguna respuesta trae poll_seconds nulo.
+  IF NOT EXISTS (SELECT 1 FROM unnest(ARRAY[ua,ub,uc,ureal]) u WHERE (pg_temp.as_user(u, 'select my_raffle_prizes()::text'))::jsonb->'poll_seconds' = 'null'::jsonb) THEN pass:=pass+1; ELSE fail:=fail+1; msg:=msg||E'\nFAIL poll nulo'; END IF;
   -- La respuesta solo trae las dos llaves previstas.
   IF (SELECT array_agg(k ORDER BY k) FROM jsonb_object_keys((pg_temp.as_user(ua, 'select my_raffle_prizes()::text'))::jsonb) k) = ARRAY['poll_seconds','prizes'] THEN pass:=pass+1; ELSE fail:=fail+1; msg:=msg||E'\nFAIL llaves de la respuesta'; END IF;
 

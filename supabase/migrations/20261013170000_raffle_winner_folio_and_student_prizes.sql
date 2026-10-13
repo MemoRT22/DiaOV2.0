@@ -44,14 +44,16 @@ CREATE TRIGGER raffle_winners_folio_immutable BEFORE UPDATE ON public.raffle_win
 
 -- Resultados vigentes del propio alumno + cada cuánto conviene volver a preguntar.
 --
--- `poll_seconds` evita que miles de teléfonos consulten sin necesidad mientras se explora y se reserva: lo decide el servidor con el
--- estado real del sorteo, y `null` significa «no consultes periódicamente» (la plataforma igual consulta al abrirse, al volver a la
--- pestaña y al recuperar la conexión).
+-- `poll_seconds` evita que miles de teléfonos consulten sin necesidad mientras se explora y se reserva, y NUNCA es null: siempre
+-- hay un latido de recuperación, para que una pantalla abierta no se quede indefinidamente sin enterarse de que la persona ya
+-- participa, de que empezó el sorteo o de que ganó. Además la plataforma consulta al abrirse, al registrar una asistencia, al volver
+-- a la pestaña y al recuperar la conexión.
 --   · 15 s  si la persona tiene un resultado pendiente de entrega (para ver la confirmación pronto)
---   · 20 s  si hay un sorteo en curso (alguien resultó ganador en la última hora) y la persona está en alguna categoría
---   · 120 s si hay un sorteo en curso y la persona no está en ninguna categoría
---   · 300 s si no hay sorteo en curso pero la persona ya participó (tiene asistencias)
---   · null  si no hay sorteo en curso y la persona aún no tiene asistencias (no puede ganar todavía)
+--   · 20 s  sorteo en curso (alguien resultó ganador en la última hora) y la persona está en alguna categoría
+--   · 120 s sorteo en curso y la persona no está en ninguna categoría
+--   · 180 s sin sorteo en curso y la persona está en alguna categoría (puede ganar): latido que acota cuándo se entera de que empezó
+--   · 300 s sin sorteo en curso, con asistencias pero sin categoría todavía
+--   · 600 s sin sorteo en curso y sin asistencias: latido de recuperación (la asistencia propia se detecta al registrarla)
 CREATE OR REPLACE FUNCTION public.my_raffle_prizes()
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -97,11 +99,13 @@ BEGIN
       SELECT 1 FROM raffle_winners x
       WHERE x.edition_id = v_p.edition_id AND x.is_demo IS NOT DISTINCT FROM v_p.is_demo
         AND x.status IN ('seleccionado', 'confirmado') AND x.drawn_at > now() - interval '60 minutes');
-    IF v_live THEN
-      v_poll := CASE WHEN participant_raffle_category(v_pid) IS NOT NULL THEN 20 ELSE 120 END;
-    ELSIF EXISTS (SELECT 1 FROM attendances a WHERE a.participant_id = v_pid) THEN
-      v_poll := 300;
-    END IF; -- si no, v_poll queda en null
+    IF EXISTS (SELECT 1 FROM attendances a WHERE a.participant_id = v_pid) THEN
+      v_poll := CASE
+        WHEN participant_raffle_category(v_pid) IS NOT NULL THEN (CASE WHEN v_live THEN 20 ELSE 180 END)
+        ELSE (CASE WHEN v_live THEN 120 ELSE 300 END) END;
+    ELSE
+      v_poll := CASE WHEN v_live THEN 120 ELSE 600 END;
+    END IF;
   END IF;
 
   RETURN jsonb_build_object('prizes', v_prizes, 'poll_seconds', v_poll);

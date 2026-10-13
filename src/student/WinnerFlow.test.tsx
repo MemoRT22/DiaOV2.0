@@ -8,7 +8,12 @@ import PassportPage from './PassportPage';
 import { RafflePrizeProvider } from './RafflePrizeProvider';
 import WinnerNotice from './WinnerNotice';
 
-const m = vi.hoisted(() => ({ fetchProgress: vi.fn(), fetchDivisions: vi.fn(), fetchMyRaffleStatus: vi.fn() }));
+const m = vi.hoisted(() => ({ fetchProgress: vi.fn(), fetchDivisions: vi.fn(), fetchMyRaffleStatus: vi.fn(), listeners: [] as Array<(kind: string) => void> }));
+// «Otra pestaña» del mismo navegador: la prueba dispara lo que anunciaría.
+vi.mock('../lib/participantSync', () => ({
+  announceParticipantChange: vi.fn(),
+  subscribeParticipantChanges: (cb: (kind: string) => void) => { m.listeners.push(cb); return () => { m.listeners = m.listeners.filter((l) => l !== cb); }; },
+}));
 vi.mock('../lib/adminApi', async (importOriginal) => ({ ...await importOriginal<typeof import('../lib/adminApi')>(), rpc: vi.fn() }));
 vi.mock('../lib/catalog', async (importOriginal) => ({ ...(await importOriginal<typeof import('../lib/catalog')>()), fetchProgress: m.fetchProgress, fetchDivisions: m.fetchDivisions }));
 vi.mock('../lib/raffleApi', () => ({ fetchMyRaffleStatus: m.fetchMyRaffleStatus }));
@@ -24,7 +29,8 @@ vi.mock('../theme/PublicThemeProvider', () => ({
 
 type Row = { id: string; participant: string; folio: string; status: string; prize: string; category: string; name: string };
 /** Un servidor mínimo que replica el contrato de `my_raffle_prizes`: solo los resultados vigentes de LA persona autenticada. */
-const db = { rows: [] as Row[], me: 'A', offline: false, calls: [] as string[], poll: 20 as number | null };
+/** `forcePoll`: cadencia fija (las pruebas de aviso); `undefined`: la calcula como el servidor real. */
+const db = { rows: [] as Row[], me: 'A', offline: false, calls: [] as string[], forcePoll: 20 as number | undefined, attended: true, eligible: true };
 const A: Row = { id: 'w-a', participant: 'A', folio: 'GAN-000123', status: 'seleccionado', prize: 'Nintendo Switch OLED', category: 'Galaxia', name: 'Valeria Méndez Castillo' };
 const B: Row = { id: 'w-b', participant: 'B', folio: 'GAN-000124', status: 'seleccionado', prize: 'Tarjeta de regalo Amazon', category: 'Sistema Solar', name: 'Valeria Méndez Castillo' };
 
@@ -59,7 +65,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'] });
   window.localStorage.clear(); resetSeenMemory();
-  db.rows = []; db.me = 'A'; db.offline = false; db.calls = []; db.poll = 20;
+  db.rows = []; db.me = 'A'; db.offline = false; db.calls = []; db.forcePoll = 20; db.attended = true; db.eligible = true; m.listeners = [];
   m.fetchProgress.mockResolvedValue(progress());
   m.fetchDivisions.mockResolvedValue([]);
   m.fetchMyRaffleStatus.mockImplementation(async () => status());
@@ -70,7 +76,11 @@ beforeEach(() => {
     const prizes = db.rows.filter((r) => r.participant === db.me && ['seleccionado', 'confirmado'].includes(r.status)).map((r) => ({
       winner_id: r.id, folio: r.folio, status: r.status, prize_name: r.prize, category_name: r.category, display_name: r.name, drawn_at: '2026-10-22T16:00:00Z', confirmed_at: r.status === 'confirmado' ? '2026-10-22T16:05:00Z' : null,
     }));
-    return { prizes, poll_seconds: db.poll };
+    // Mismas reglas que `my_raffle_prizes()` en la base.
+    const live = db.rows.some((r) => ['seleccionado', 'confirmado'].includes(r.status));
+    const pending = prizes.some((p) => p.status === 'seleccionado');
+    const model = pending ? 15 : db.attended ? (db.eligible ? (live ? 20 : 180) : (live ? 120 : 300)) : (live ? 120 : 600);
+    return { prizes, poll_seconds: db.forcePoll ?? model };
   }) as never);
 });
 afterEach(() => { vi.useRealTimers(); });
@@ -309,28 +319,40 @@ describe('conexión y arquitectura', () => {
 describe('cadencia que dicta el servidor', () => {
   const calls = () => db.calls.filter((name) => name === 'my_raffle_prizes').length;
 
-  test('«no consultes» (explorando y reservando): una lectura al abrir y ninguna periódica en media hora', async () => {
-    db.poll = null;
+  test('aun en la cadencia más lenta nunca se deja de consultar: latido de recuperación de 10 min', async () => {
+    db.forcePoll = 600;
     app('/ruta');
     await tick(100);
     expect(calls()).toBe(1);
-    await tick(30 * 60_000);
-    expect(calls()).toBe(1);
+    await tick(31 * 60_000);
+    expect(calls()).toBeGreaterThanOrEqual(3);
+    expect(calls()).toBeLessThanOrEqual(5);
   });
 
-  test('aun sin consulta periódica, volver a la pestaña o desbloquear el teléfono consulta (y un aviso llega)', async () => {
-    db.poll = null;
+  test('aun sin ningún evento (sin foco, sin visibilidad), el aviso llega con el latido de recuperación', async () => {
+    db.forcePoll = 600;
+    app('/ruta');
+    await tick(100);
+    db.rows = [A];
+    await tick(5 * 60_000);
+    expect(popup()).toBeNull(); // todavía no tocaba preguntar
+    await tick(7 * 60_000); // ≤ 600 s + 15 %
+    expect(popup()).not.toBeNull();
+  });
+
+  test('aun sin consulta periódica reciente, volver a la pestaña o desbloquear el teléfono consulta y el aviso llega', async () => {
+    db.forcePoll = 600;
     app('/ruta');
     await tick(100);
     db.rows = [A];
     await tick(60_000);
-    expect(popup()).toBeNull(); // nadie preguntó todavía
+    expect(popup()).toBeNull();
     await act(async () => { window.dispatchEvent(new Event('focus')); await vi.advanceTimersByTimeAsync(10); });
     expect(popup()).not.toBeNull();
   });
 
   test('un latido lento (300 s) mientras la persona ya participa, no cada 20 s', async () => {
-    db.poll = 300;
+    db.forcePoll = 300;
     app('/ruta');
     await tick(100);
     await tick(4 * 60_000);
@@ -340,7 +362,7 @@ describe('cadencia que dicta el servidor', () => {
   });
 
   test('con el sorteo en curso el servidor pide ~20 s; con un resultado pendiente ~15 s', async () => {
-    db.poll = 20;
+    db.forcePoll = 20;
     app('/ruta');
     await tick(100);
     await tick(5 * 60_000);
@@ -349,10 +371,10 @@ describe('cadencia que dicta el servidor', () => {
   });
 
   test('la cadencia se adapta a lo que contesta el servidor, sin recargar', async () => {
-    db.poll = 300;
+    db.forcePoll = 300;
     app('/ruta');
     await tick(100);
-    db.poll = 15; // empezó el sorteo
+    db.forcePoll = 15; // empezó el sorteo
     await tick(6 * 60_000); // el siguiente latido lo descubre
     const before = calls();
     await tick(2 * 60_000);
@@ -360,7 +382,7 @@ describe('cadencia que dicta el servidor', () => {
   });
 
   test('con la pestaña oculta no se consulta aunque corra el reloj', async () => {
-    db.poll = 20;
+    db.forcePoll = 20;
     app('/ruta');
     await tick(100);
     const visible = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
@@ -371,7 +393,7 @@ describe('cadencia que dicta el servidor', () => {
   });
 
   test('una ráfaga de eventos (foco, visibilidad) no se convierte en una ráfaga de consultas', async () => {
-    db.poll = null;
+    db.forcePoll = 600;
     app('/ruta');
     await tick(100);
     await act(async () => {
@@ -586,5 +608,110 @@ describe('accesibilidad del aviso', () => {
     await tick(25_000);
     expect(popup()).toBeNull();
     expect(root).not.toHaveAttribute('inert');
+  });
+});
+
+// ------------------------------------------------------------------ transiciones de cadencia con las reglas del servidor
+
+describe('transiciones de cadencia (reglas del servidor, sin atajos)', () => {
+  const calls = () => db.calls.filter((name) => name === 'my_raffle_prizes').length;
+  /** Consultas hechas en una ventana de tiempo. */
+  const within = async (ms: number) => { const before = calls(); await tick(ms); return calls() - before; };
+  const OTHER: Row = { id: 'w-x', participant: 'C', folio: 'GAN-000050', status: 'confirmado', prize: 'Audífonos', category: 'Galaxia', name: 'Otra Persona' };
+  const announce = (kind: string) => act(async () => { m.listeners.forEach((listener) => listener(kind)); await vi.advanceTimersByTimeAsync(10); });
+
+  beforeEach(() => { db.forcePoll = undefined; });
+
+  test('sin asistencias el latido es de 10 min; al llegar la primera, la cadencia baja a 3 min (sin depender de eventos)', async () => {
+    db.attended = false; db.eligible = false;
+    app('/ruta');
+    await tick(100);
+    expect(await within(25 * 60_000)).toBeLessThanOrEqual(4); // latido de recuperación: ~1 cada 10 min
+    db.attended = true; db.eligible = true; // registró asistencias y entró a una categoría (la app siguió abierta)
+    await tick(11.6 * 60_000); // a lo sumo un latido después la plataforma ya lo sabe…
+    const since = await within(10 * 60_000);
+    expect(since).toBeGreaterThanOrEqual(3); // …y desde entonces consulta cada ~3 min (180 s), no cada 10
+  });
+
+  test('si lo registra en esta pestaña o en otra, no espera al latido: la cadencia cambia al momento', async () => {
+    db.attended = false; db.eligible = false;
+    app('/ruta');
+    await tick(100);
+    db.attended = true; db.eligible = true;
+    const before = calls();
+    await announce('attendance'); // otra pestaña registró la asistencia
+    expect(calls()).toBe(before + 1);
+    expect(await within(10 * 60_000)).toBeGreaterThanOrEqual(3); // ya en la cadencia de 180 s
+  });
+
+  test('un anuncio que no es de asistencia (reservaciones) no provoca consultas', async () => {
+    app('/ruta');
+    await tick(100);
+    const before = calls();
+    await announce('reservation');
+    expect(calls()).toBe(before);
+  });
+
+  test('primera selección del sorteo: quien estaba en el latido de 3 min pasa a ~20 s en su siguiente consulta, y desde entonces se entera en ~20 s', async () => {
+    app('/ruta');
+    await tick(100);
+    expect(await within(5 * 60_000)).toBeLessThanOrEqual(3); // idle: ~1 cada 3 min
+    db.rows = [OTHER]; // empieza el sorteo: aparece el primer ganador (otra persona)
+    await tick(3.6 * 60_000); // como mucho, un latido (180 s + 15 %) después esta persona lo descubre
+    expect(await within(2 * 60_000)).toBeGreaterThanOrEqual(5); // ya consulta cada ~20 s
+    db.rows = [OTHER, A]; // ahora le toca a ella
+    await tick(24_000); // ≤ 20 s + 15 %
+    expect(popup()).not.toBeNull();
+  });
+
+  test('latencia máxima del PRIMER aviso estando en reposo: un latido de 3 min (≤ 207 s); nunca más', async () => {
+    app('/ruta');
+    await tick(100);
+    await tick(60_000);
+    db.rows = [A]; // la seleccionan justo después de su última consulta
+    await tick(100_000);
+    expect(popup()).toBeNull(); // el latido más corto posible es 153 s
+    await tick(110_000); // 100 + 110 = 210 s > 207 s
+    expect(popup()).not.toBeNull();
+  });
+
+  test('persona sin categoría: latido de 5 min; con el sorteo en curso, 2 min (su premio no depende de ella)', async () => {
+    db.eligible = false;
+    app('/ruta');
+    await tick(100);
+    expect(await within(31 * 60_000)).toBeLessThanOrEqual(7);
+    db.rows = [OTHER];
+    await tick(6 * 60_000);
+    const live = await within(10 * 60_000);
+    expect(live).toBeGreaterThanOrEqual(4);
+    expect(live).toBeLessThanOrEqual(7);
+  });
+
+  test('nunca queda sin temporizador: tras 12 horas, con fallos y pestaña oculta de por medio, sigue consultando', async () => {
+    db.attended = false; db.eligible = false;
+    app('/ruta');
+    await tick(100);
+    db.offline = true;
+    await tick(30 * 60_000); // fallos: los reintentos se espacian pero continúan
+    db.offline = false;
+    const hidden = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+    await tick(2 * 3600_000); // oculta: no consulta, pero la cadena sigue armada
+    hidden.mockReturnValue('visible'); // vuelve sin que llegue ningún evento
+    const before = calls();
+    await tick(12 * 60_000);
+    expect(calls()).toBeGreaterThan(before);
+    hidden.mockRestore();
+    const total = calls();
+    await tick(9 * 3600_000);
+    expect(calls() - total).toBeGreaterThanOrEqual(40); // ~1 cada 10 min durante 9 h
+  });
+
+  test('en reposo la carga es baja: 2,000 alumnos ≈ 11 consultas/s como máximo (antes ≈ 100/s)', async () => {
+    // Un alumno en la cadencia más frecuente de reposo (en categoría, 180 s) hace ≈ 1 consulta cada 3 min.
+    app('/ruta');
+    await tick(100);
+    const perMinute = (await within(30 * 60_000)) / 30;
+    expect(perMinute).toBeLessThanOrEqual(0.4); // ≈ 0.33/min
+    expect((2000 * perMinute) / 60).toBeLessThanOrEqual(11.5);
   });
 });

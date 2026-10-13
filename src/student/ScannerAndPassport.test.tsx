@@ -6,6 +6,7 @@ import type { MyRaffleStatus } from '../lib/raffleRules';
 import { neutralTheme } from '../theme/neutralTheme';
 import PassportPage from './PassportPage';
 import Scanner from './Scanner';
+import { RafflePrizeProvider } from './RafflePrizeProvider';
 
 const m = vi.hoisted(() => ({
   checkIn: vi.fn(),
@@ -14,6 +15,7 @@ const m = vi.hoisted(() => ({
   fetchDivisions: vi.fn(),
   fetchMyRaffleStatus: vi.fn(),
   fetchBoard: vi.fn(),
+  fetchPrizes: vi.fn(),
   listeners: [] as Array<(kind: string) => void>,
 }));
 
@@ -36,6 +38,7 @@ vi.mock('../lib/reservations', async (importOriginal) => ({
   fetchBoard: m.fetchBoard,
 }));
 vi.mock('../lib/raffleApi', () => ({ fetchMyRaffleStatus: m.fetchMyRaffleStatus }));
+vi.mock('../lib/raffleWinner', async (importOriginal) => ({ ...(await importOriginal<typeof import('../lib/raffleWinner')>()), fetchMyRafflePrizes: m.fetchPrizes }));
 vi.mock('../lib/auth', () => ({ useAuth: () => ({ profile: { display_name: 'Alumno E2E' }, signOut: vi.fn() }) }));
 vi.mock('../theme/PublicThemeProvider', () => ({
   usePublicTheme: () => ({
@@ -75,6 +78,7 @@ beforeEach(() => {
   m.fetchDivisions.mockResolvedValue([]);
   m.fetchBoard.mockResolvedValue(null);
   m.fetchMyRaffleStatus.mockResolvedValue(raffle(1, 0));
+  m.fetchPrizes.mockResolvedValue({ prizes: [], pollSeconds: 600 });
 });
 
 async function scan(res: CheckInResult | Error) {
@@ -263,4 +267,28 @@ test('a failed quiet refresh keeps the data already on screen', async () => {
   vi.useRealTimers();
   await waitFor(() => expect(m.fetchProgress).toHaveBeenCalledTimes(2));
   expect(screen.getByText(/^4 sellos ·/)).toBeInTheDocument();
+});
+
+// ----------------------------------------------------------- el sorteo se entera de que la persona ya participa
+
+async function scanWithRaffleProvider(res: CheckInResult | Error) {
+  if (res instanceof Error) m.checkIn.mockRejectedValue(res);
+  else m.checkIn.mockResolvedValue(res);
+  render(<MemoryRouter><RafflePrizeProvider><Scanner /></RafflePrizeProvider></MemoryRouter>);
+  await waitFor(() => expect(m.fetchPrizes).toHaveBeenCalledTimes(1)); // lectura al abrir
+  fireEvent.change(screen.getByPlaceholderText('ABCDEF'), { target: { value: 'ABCDEF' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Validar' }));
+}
+
+test('de cero asistencias a una: el primer check-in vuelve a consultar el sorteo de inmediato, sin esperar el latido', async () => {
+  await scanWithRaffleProvider(result());
+  await screen.findByRole('heading', { name: 'Misión completada' });
+  await waitFor(() => expect(m.fetchPrizes).toHaveBeenCalledTimes(2));
+});
+
+test('un check-in repetido o fallido no vuelve a consultar el sorteo', async () => {
+  await scanWithRaffleProvider(result({ already_registered: true }));
+  await screen.findByRole('heading', { name: /./ });
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  expect(m.fetchPrizes).toHaveBeenCalledTimes(1);
 });
