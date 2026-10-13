@@ -56,6 +56,22 @@ describe('lectura de folios', () => {
     render(<Probe ids={['w9']} />);
     await waitFor(() => expect(screen.getByTestId('probe')).toHaveTextContent('w9=null'));
   });
+  test('al llegar resultados nuevos solo se piden esos, no todo el historial otra vez', async () => {
+    m.folios.mockImplementation(async (ids: string[]) => new Map(ids.map((id) => [id, `GAN-${id.slice(1).padStart(6, '0')}`])));
+    const view = render(<Probe ids={['w1', 'w2']} />);
+    await waitFor(() => expect(screen.getByTestId('probe')).toHaveTextContent('w2=GAN-000002'));
+    view.rerender(<Probe ids={['w1', 'w2', 'w3']} />);
+    await waitFor(() => expect(screen.getByTestId('probe')).toHaveTextContent('w3=GAN-000003'));
+    expect(m.folios.mock.calls.map((call) => call[0])).toEqual([['w1', 'w2'], ['w3']]);
+  });
+  test('un historial grande (1,200 resultados) llega completo: nadie queda «no disponible» por el tamaño', async () => {
+    const many = Array.from({ length: 1200 }, (_, n) => `w${n}`);
+    m.folios.mockImplementation(async (ids: string[]) => new Map(ids.map((id) => [id, `GAN-${id.slice(1).padStart(6, '0')}`])));
+    render(<Probe ids={many} />);
+    await waitFor(() => expect(screen.getByTestId('probe').textContent).toContain('w1199=GAN-001199'));
+    expect(screen.getByTestId('probe').textContent).not.toContain('=null');
+    expect(m.folios).toHaveBeenCalledTimes(1); // el reparto en lotes lo hace fetchWinnerFolios
+  });
   test('sin resultados no consulta nada', () => {
     render(<Probe ids={[]} />);
     expect(m.folios).not.toHaveBeenCalled();

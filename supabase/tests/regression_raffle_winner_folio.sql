@@ -30,7 +30,7 @@ DECLARE
   cat uuid; cat_real uuid; prize uuid; prize2 uuid; prize_real uuid;
   w1 uuid; w2 uuid; w3 uuid; w4 uuid; wreal uuid; w_a2 uuid;
   folio1 text; folio2 text; answer text; res jsonb; pass int := 0; fail int := 0; msg text := '';
-  mode_before text;
+  mode_before text; act uuid; sess uuid;
 BEGIN
   INSERT INTO auth.users(id,instance_id,aud,role,email,raw_app_meta_data,raw_user_meta_data,created_at,updated_at)
   SELECT u,'00000000-0000-0000-0000-000000000000','authenticated','authenticated','rf.'||right(u::text,6)||'@test.invalid','{}','{}',now(),now()
@@ -77,34 +77,34 @@ BEGIN
   UPDATE raffle_winners SET status = 'seleccionado', confirmed_at = NULL WHERE id = w2;
 
   -- 3. Solo el participante seleccionado ve su premio; mismo nombre ≠ mismo resultado.
-  res := (pg_temp.as_user(ua, 'select my_raffle_prizes()::text'))::jsonb;
+  res := (pg_temp.as_user(ua, 'select my_raffle_prizes()::text'))::jsonb->'prizes';
   IF jsonb_array_length(res) = 1 AND res->0->>'winner_id' = w1::text AND res->0->>'folio' = folio1 AND res->0->>'status' = 'seleccionado'
      AND res->0->>'prize_name' = 'Nintendo Switch OLED' AND res->0->>'display_name' = 'Valeria Méndez Castillo' AND res->0->>'category_name' = 'RF Galaxia'
     THEN pass:=pass+1; ELSE fail:=fail+1; msg:=msg||E'\nFAIL premio de A: '||res::text; END IF;
-  res := (pg_temp.as_user(ub, 'select my_raffle_prizes()::text'))::jsonb;
+  res := (pg_temp.as_user(ub, 'select my_raffle_prizes()::text'))::jsonb->'prizes';
   IF jsonb_array_length(res) = 1 AND res->0->>'winner_id' = w2::text AND res->0->>'folio' = folio2 THEN pass:=pass+1; ELSE fail:=fail+1; msg:=msg||E'\nFAIL premio de B (invalidado oculto): '||res::text; END IF;
-  res := (pg_temp.as_user(uc, 'select my_raffle_prizes()::text'))::jsonb;
+  res := (pg_temp.as_user(uc, 'select my_raffle_prizes()::text'))::jsonb->'prizes';
   IF res = '[]'::jsonb THEN pass:=pass+1; ELSE fail:=fail+1; msg:=msg||E'\nFAIL no_presentado visible: '||res::text; END IF;
   -- 4. Sin datos de terceros ni ids de otros: la respuesta solo trae las llaves previstas.
-  res := (pg_temp.as_user(ua, 'select my_raffle_prizes()::text'))::jsonb;
+  res := (pg_temp.as_user(ua, 'select my_raffle_prizes()::text'))::jsonb->'prizes';
   IF (SELECT array_agg(k ORDER BY k) FROM jsonb_object_keys(res->0) k) = ARRAY['category_name','confirmed_at','display_name','drawn_at','folio','prize_name','status','winner_id']
     THEN pass:=pass+1; ELSE fail:=fail+1; msg:=msg||E'\nFAIL llaves inesperadas'; END IF;
   -- 5. Separación real/DEMO: el alumno real no ve el resultado DEMO ni a la inversa.
-  res := (pg_temp.as_user(ureal, 'select my_raffle_prizes()::text'))::jsonb;
+  res := (pg_temp.as_user(ureal, 'select my_raffle_prizes()::text'))::jsonb->'prizes';
   IF jsonb_array_length(res) = 1 AND res->0->>'winner_id' = wreal::text THEN pass:=pass+1; ELSE fail:=fail+1; msg:=msg||E'\nFAIL real: '||res::text; END IF;
   -- un resultado DEMO atribuido a un alumno real (dato inconsistente) no se le muestra
   INSERT INTO raffle_winners(edition_id,category_id,prize_id,participant_id,status,origin,is_demo) VALUES (ed,cat,prize2,preal,'confirmado','online',true);
-  res := (pg_temp.as_user(ureal, 'select my_raffle_prizes()::text'))::jsonb;
+  res := (pg_temp.as_user(ureal, 'select my_raffle_prizes()::text'))::jsonb->'prizes';
   IF jsonb_array_length(res) = 1 THEN pass:=pass+1; ELSE fail:=fail+1; msg:=msg||E'\nFAIL DEMO visible a real'; END IF;
   -- 6. Estados: confirmado se ve como tal; luego no_presentado/invalidado lo retiran.
   UPDATE raffle_winners SET status = 'confirmado', confirmed_at = now() WHERE id = w1;
-  res := (pg_temp.as_user(ua, 'select my_raffle_prizes()::text'))::jsonb;
+  res := (pg_temp.as_user(ua, 'select my_raffle_prizes()::text'))::jsonb->'prizes';
   IF res->0->>'status' = 'confirmado' AND res->0->>'folio' = folio1 AND res->0->>'confirmed_at' IS NOT NULL THEN pass:=pass+1; ELSE fail:=fail+1; msg:=msg||E'\nFAIL confirmado'; END IF;
   UPDATE raffle_winners SET status = 'invalidado' WHERE id = w1;
-  IF (pg_temp.as_user(ua, 'select my_raffle_prizes()::text'))::jsonb = '[]'::jsonb THEN pass:=pass+1; ELSE fail:=fail+1; msg:=msg||E'\nFAIL invalidado visible'; END IF;
+  IF (pg_temp.as_user(ua, 'select my_raffle_prizes()::text'))::jsonb->'prizes' = '[]'::jsonb THEN pass:=pass+1; ELSE fail:=fail+1; msg:=msg||E'\nFAIL invalidado visible'; END IF;
   -- 7. Un alumno puede tener otro resultado en otro premio (orden por fecha, ambos con folio propio).
   INSERT INTO raffle_winners(edition_id,category_id,prize_id,participant_id,status,origin,is_demo) VALUES (ed,cat,prize2,pa,'seleccionado','online',true) RETURNING id INTO w_a2;
-  res := (pg_temp.as_user(ua, 'select my_raffle_prizes()::text'))::jsonb;
+  res := (pg_temp.as_user(ua, 'select my_raffle_prizes()::text'))::jsonb->'prizes';
   IF jsonb_array_length(res) = 1 AND res->0->>'winner_id' = w_a2::text AND res->0->>'folio' <> folio1 THEN pass:=pass+1; ELSE fail:=fail+1; msg:=msg||E'\nFAIL segundo resultado'; END IF;
   -- 8. Permisos: anon, Staff y Sorteo no son participantes; el alumno no escribe ni lee la tabla.
   IF pg_temp.as_anon('select my_raffle_prizes()::text') LIKE 'ERR:%' THEN pass:=pass+1; ELSE fail:=fail+1; msg:=msg||E'\nFAIL anon'; END IF;
@@ -124,10 +124,32 @@ BEGIN
   IF jsonb_array_length(res) = 2 THEN pass:=pass+1; ELSE fail:=fail+1; msg:=msg||E'\nFAIL folios de coordinación'; END IF;
   UPDATE editions SET mode = mode_before WHERE id = ed;
   -- el folio del alumno y el del panel son el mismo
-  IF (pg_temp.as_user(ub, 'select my_raffle_prizes()::text'))::jsonb->0->>'folio' = folio2 THEN pass:=pass+1; ELSE fail:=fail+1; msg:=msg||E'\nFAIL folio alumno ≠ panel'; END IF;
+  IF (pg_temp.as_user(ub, 'select my_raffle_prizes()::text'))::jsonb->'prizes'->0->>'folio' = folio2 THEN pass:=pass+1; ELSE fail:=fail+1; msg:=msg||E'\nFAIL folio alumno ≠ panel'; END IF;
   -- 10. Solo lectura: consultar no cambia el estado.
   IF (SELECT status FROM raffle_winners WHERE id = w2) = 'seleccionado' THEN pass:=pass+1; ELSE fail:=fail+1; msg:=msg||E'\nFAIL la lectura cambió el estado'; END IF;
   IF NOT has_function_privilege('anon','public.my_raffle_prizes()','EXECUTE') AND NOT has_function_privilege('anon','public.raffle_winner_folios(uuid[])','EXECUTE') THEN pass:=pass+1; ELSE fail:=fail+1; msg:=msg||E'\nFAIL privilegios'; END IF;
+
+  -- 11. Cadencia que dicta el servidor (`poll_seconds`): sin carga continua mientras se explora.
+  -- A tiene un resultado pendiente → 15 s.
+  IF ((pg_temp.as_user(ua, 'select my_raffle_prizes()::text'))::jsonb->>'poll_seconds')::int = 15 THEN pass:=pass+1; ELSE fail:=fail+1; msg:=msg||E'\nFAIL poll pendiente'; END IF;
+  -- C no tiene resultado propio vigente: con sorteo en curso (hay ganadores recientes) y sin categoría → 120 s.
+  IF ((pg_temp.as_user(uc, 'select my_raffle_prizes()::text'))::jsonb->>'poll_seconds')::int = 120 THEN pass:=pass+1; ELSE fail:=fail+1; msg:=msg||E'\nFAIL poll en vivo sin categoría: '||coalesce(pg_temp.as_user(uc, 'select my_raffle_prizes()::text'),'null'); END IF;
+  -- Sin sorteo en curso (nada reciente) y sin asistencias → null: no se consulta periódicamente mientras explora y reserva.
+  UPDATE raffle_winners SET drawn_at = now() - interval '3 hours' WHERE edition_id = ed;
+  IF (pg_temp.as_user(uc, 'select my_raffle_prizes()::text'))::jsonb->'poll_seconds' = 'null'::jsonb THEN pass:=pass+1; ELSE fail:=fail+1; msg:=msg||E'\nFAIL poll idle sin asistencias'; END IF;
+  -- Con asistencias pero sin sorteo en curso → latido lento de 300 s.
+  INSERT INTO activities(edition_id,title,is_demo) VALUES (ed,'RF Taller',true) RETURNING id INTO act;
+  INSERT INTO activity_sessions(activity_id,starts_at,ends_at,capacity,is_demo,status) VALUES (act,now(),now()+interval '30 min',5,true,'activa') RETURNING id INTO sess;
+  INSERT INTO attendances(participant_id,session_id,activity_id,method) VALUES (pc,sess,act,'qr');
+  IF ((pg_temp.as_user(uc, 'select my_raffle_prizes()::text'))::jsonb->>'poll_seconds')::int = 300 THEN pass:=pass+1; ELSE fail:=fail+1; msg:=msg||E'\nFAIL poll idle con asistencias'; END IF;
+  -- Un pendiente propio sigue en 15 s aunque el sorteo ya no sea reciente (para ver pronto la confirmación).
+  IF ((pg_temp.as_user(ua, 'select my_raffle_prizes()::text'))::jsonb->>'poll_seconds')::int = 15 THEN pass:=pass+1; ELSE fail:=fail+1; msg:=msg||E'\nFAIL poll pendiente (sin sorteo reciente)'; END IF;
+  -- Una persona con resultado ya entregado (y sus asistencias, como toda ganadora real) no se consulta rápido.
+  INSERT INTO attendances(participant_id,session_id,activity_id,method) VALUES (pa,sess,act,'qr');
+  UPDATE raffle_winners SET status = 'confirmado', confirmed_at = now() WHERE id = w_a2;
+  IF ((pg_temp.as_user(ua, 'select my_raffle_prizes()::text'))::jsonb->>'poll_seconds')::int = 300 THEN pass:=pass+1; ELSE fail:=fail+1; msg:=msg||E'\nFAIL poll tras entrega'; END IF;
+  -- La respuesta solo trae las dos llaves previstas.
+  IF (SELECT array_agg(k ORDER BY k) FROM jsonb_object_keys((pg_temp.as_user(ua, 'select my_raffle_prizes()::text'))::jsonb) k) = ARRAY['poll_seconds','prizes'] THEN pass:=pass+1; ELSE fail:=fail+1; msg:=msg||E'\nFAIL llaves de la respuesta'; END IF;
 
   IF fail = 0 THEN RAISE EXCEPTION E'RAFFLE_FOLIO_OK: % passed, 0 failed', pass;
   ELSE RAISE EXCEPTION E'RAFFLE_FOLIO_FAILED: % passed, % failed%', pass, fail, msg; END IF;

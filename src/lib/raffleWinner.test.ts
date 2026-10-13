@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { rpc } from './adminApi';
 import {
-  fetchMyRafflePrizes, fetchWinnerFolios, markSeen, MAX_BACKOFF_MS, nextDelay, normalizeMyPrizes, pendingNotice, POLL_MS, readSeen, resetSeenMemory,
-  SEEN_STORAGE_KEY, type MyRafflePrize,
+  DEFAULT_POLL_SECONDS, FOLIO_BATCH, fetchMyRafflePrizes, fetchWinnerFolios, markSeen, MAX_BACKOFF_MS, nextDelay, normalizeMyPrizes, normalizeReading, pendingNotice,
+  readSeen, resetSeenMemory, RETRY_MS, SEEN_STORAGE_KEY, verifiedForMs, type MyRafflePrize,
 } from './raffleWinner';
 
 vi.mock('./adminApi', async (importOriginal) => ({ ...await importOriginal<typeof import('./adminApi')>(), rpc: vi.fn() }));
@@ -30,9 +30,46 @@ describe('respuesta del servidor', () => {
     expect(normalizeMyPrizes({ error: true })).toEqual([]);
   });
   test('lee con el RPC del alumno y no escribe nada', async () => {
-    vi.mocked(rpc).mockResolvedValue([row()] as never);
-    expect(await fetchMyRafflePrizes()).toHaveLength(1);
+    vi.mocked(rpc).mockResolvedValue({ prizes: [row()], poll_seconds: 20 } as never);
+    const reading = await fetchMyRafflePrizes();
+    expect(reading.prizes).toHaveLength(1);
+    expect(reading.pollSeconds).toBe(20);
     expect(vi.mocked(rpc).mock.calls).toEqual([['my_raffle_prizes']]);
+  });
+  test('la cadencia que dicta el servidor: null = sin consulta periódica; fuera de rango se acota; sin dato, latido lento', () => {
+    expect(normalizeReading({ prizes: [], poll_seconds: null }).pollSeconds).toBeNull();
+    expect(normalizeReading({ prizes: [], poll_seconds: 1 }).pollSeconds).toBe(10);
+    expect(normalizeReading({ prizes: [], poll_seconds: 99999 }).pollSeconds).toBe(600);
+    expect(normalizeReading({ prizes: [] }).pollSeconds).toBe(DEFAULT_POLL_SECONDS);
+    expect(normalizeReading({ prizes: [], poll_seconds: 'rápido' }).pollSeconds).toBe(DEFAULT_POLL_SECONDS);
+    expect(normalizeReading([row()]).prizes).toHaveLength(1); // forma antigua: solo la lista
+    expect(normalizeReading(null)).toEqual({ prizes: [], pollSeconds: DEFAULT_POLL_SECONDS });
+  });
+  describe('folios por lotes (el servidor rechaza más de 1000 ids)', () => {
+    const ids = (n: number) => Array.from({ length: n }, (_, i) => `w${i}`);
+    const answerWith = (list: string[]) => list.map((id) => ({ winner_id: id, folio: `GAN-${id.slice(1).padStart(6, '0')}` }));
+    test('1,200 resultados se piden en lotes que caben y se juntan', async () => {
+      vi.mocked(rpc).mockImplementation((async (_name: string, args: { p_winner_ids: string[] }) => answerWith(args.p_winner_ids)) as never);
+      const folios = await fetchWinnerFolios(ids(1200));
+      const sizes = vi.mocked(rpc).mock.calls.map((call) => (call[1] as { p_winner_ids: string[] }).p_winner_ids.length);
+      expect(sizes.every((size) => size <= FOLIO_BATCH && size <= 1000)).toBe(true);
+      expect(sizes.reduce((a, b) => a + b, 0)).toBe(1200);
+      expect(folios.size).toBe(1200);
+      expect(folios.get('w1199')).toBe('GAN-001199');
+    });
+    test('ids repetidos no se piden dos veces', async () => {
+      vi.mocked(rpc).mockImplementation((async (_name: string, args: { p_winner_ids: string[] }) => answerWith(args.p_winner_ids)) as never);
+      await fetchWinnerFolios(['w1', 'w1', 'w2']);
+      expect((vi.mocked(rpc).mock.calls[0][1] as { p_winner_ids: string[] }).p_winner_ids).toEqual(['w1', 'w2']);
+    });
+    test('si falla un lote se conservan los demás; si fallan todos, se informa', async () => {
+      let call = 0;
+      vi.mocked(rpc).mockImplementation((async (_name: string, args: { p_winner_ids: string[] }) => { call += 1; if (call === 2) throw new Error('timeout'); return answerWith(args.p_winner_ids); }) as never);
+      const partial = await fetchWinnerFolios(ids(1200));
+      expect(partial.size).toBe(1200 - FOLIO_BATCH);
+      vi.mocked(rpc).mockRejectedValue(new Error('network'));
+      await expect(fetchWinnerFolios(ids(3))).rejects.toThrow('network');
+    });
   });
   test('folios del operador: mapa por resultado; lo que no existe no aparece; sin ids no hay consulta', async () => {
     vi.mocked(rpc).mockResolvedValue([{ winner_id: 'w1', folio: 'GAN-000123' }, { winner_id: 'w2', folio: 'mal' }] as never);
@@ -79,11 +116,26 @@ describe('aviso: cuándo toca mostrarlo', () => {
 });
 
 describe('cadencia de consulta', () => {
-  test('cada ~20 s con variación, y más espaciada tras fallos hasta un tope', () => {
-    expect(nextDelay(0, () => 0.5)).toBe(POLL_MS);
-    expect(nextDelay(0, () => 0)).toBeLessThan(POLL_MS);
-    expect(nextDelay(1, () => 0.5)).toBe(POLL_MS * 2);
-    expect(nextDelay(10, () => 0.5)).toBeLessThanOrEqual(MAX_BACKOFF_MS);
-    expect(nextDelay(10, () => 1)).toBeLessThanOrEqual(MAX_BACKOFF_MS * 1.15);
+  test('sin sorteo en curso el servidor dice «no consultes»: no hay consulta periódica', () => {
+    expect(nextDelay(0, null)).toBeNull();
+  });
+  test('con cadencia del servidor, con variación de ±15 %', () => {
+    expect(nextDelay(0, 20, () => 0.5)).toBe(20_000);
+    expect(nextDelay(0, 20, () => 0)).toBe(17_000);
+    expect(nextDelay(0, 20, () => 1)).toBe(23_000);
+    expect(nextDelay(0, 300, () => 0.5)).toBe(300_000);
+  });
+  test('tras fallos se espacia hasta un tope; si el servidor nunca dijo nada se reintenta cada minuto', () => {
+    expect(nextDelay(1, 20, () => 0.5)).toBe(40_000);
+    expect(nextDelay(3, 20, () => 0.5)).toBe(160_000);
+    expect(nextDelay(10, 300, () => 0.5)).toBeLessThanOrEqual(MAX_BACKOFF_MS);
+    expect(nextDelay(1, undefined, () => 0.5)).toBe(RETRY_MS * 2);
+    expect(nextDelay(1, null, () => 0.5)).toBeGreaterThan(0); // aunque la cadencia fuera «ninguna», un fallo se reintenta
+  });
+  test('lo mostrado vale como verificado ~2.5 veces la cadencia, nunca menos de un minuto', () => {
+    expect(verifiedForMs(15)).toBe(60_000);
+    expect(verifiedForMs(20)).toBe(60_000);
+    expect(verifiedForMs(300)).toBe(750_000);
+    expect(verifiedForMs(null)).toBe(750_000);
   });
 });

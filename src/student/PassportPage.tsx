@@ -32,7 +32,7 @@ export default function PassportPage() {
     [],
   );
   useParticipantSync(reload);
-  const { prizes } = useRafflePrizes();
+  const { prizes, verified, refresh } = useRafflePrizes();
   const { hash } = useLocation();
   const ready = !!data;
   // «Ver mi premio» del aviso llega con #premio: se lleva a la tarjeta en cuanto la Bitácora está pintada.
@@ -111,7 +111,7 @@ export default function PassportPage() {
         </p>
       </section>
 
-      <RaffleStatusCard raffle={raffle} prizes={prizes} />
+      <RaffleStatusCard raffle={raffle} prizes={prizes} verified={verified} onRetry={() => void refresh()} />
 
       {(showInterestsLink || progress.post_event_interests_completed) && (
         <section className="space-card p-5" aria-label="Carreras de interés">

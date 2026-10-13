@@ -29,3 +29,4 @@
 .pz-card dd { margin: 0; font-weight: 700; text-align: right; overflow-wrap: anywhere; }
 .pz-folio { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .08em; }
 .pz-prize { margin-top: .25rem; font-size: 1.15rem; font-weight: 800; color: rgb(var(--c-accent-400)); overflow-wrap: anywhere; }
+.pz-card[data-state='sin-verificar'] { border-color: rgb(var(--line)); opacity: .9; }

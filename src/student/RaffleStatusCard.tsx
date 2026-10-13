@@ -8,7 +8,7 @@ import PrizeCard from './PrizeCard';
  * the category reached (always the highest one), the closest step up and how each category is unlocked.
  * Everything shown comes from the server; this card never decides the category.
  */
-export default function RaffleStatusCard({ raffle, prizes = [] }: { raffle: MyRaffleStatus | null; prizes?: MyRafflePrize[] }) {
+export default function RaffleStatusCard({ raffle, prizes = [], verified = true, onRetry }: { raffle: MyRaffleStatus | null; prizes?: MyRafflePrize[]; verified?: boolean; onRetry?: () => void }) {
   const hint = raffle && !raffle.has_won ? nextTierHint(raffle) : null;
   return (
     <section id="premio" className="space-card scroll-mt-20 p-5" aria-label="Sorteo">
@@ -18,7 +18,7 @@ export default function RaffleStatusCard({ raffle, prizes = [] }: { raffle: MyRa
       </div>
       {prizes.length > 0 ? (
         // El resultado vigente que el servidor tiene de esta persona manda sobre el progreso: ya ganó.
-        <div className="mt-4 space-y-3">{prizes.map((prize) => <PrizeCard key={prize.winnerId} prize={prize} />)}</div>
+        <div className="mt-4 space-y-3">{prizes.map((prize) => <PrizeCard key={prize.winnerId} prize={prize} verified={verified} onRetry={onRetry} />)}</div>
       ) : !raffle ? (
         <p className="mt-4 text-sm text-ink-muted">Acepta el Aviso de Privacidad para ver tu progreso en el sorteo.</p>
       ) : raffle.has_won ? (

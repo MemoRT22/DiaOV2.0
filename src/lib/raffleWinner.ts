@@ -49,18 +49,52 @@ export function normalizeMyPrizes(raw: unknown): MyRafflePrize[] {
   return prizes;
 }
 
-export const fetchMyRafflePrizes = async (): Promise<MyRafflePrize[]> => normalizeMyPrizes(await rpc<unknown>('my_raffle_prizes'));
+/** Lo que contesta el servidor: los resultados vigentes y cada cuánto conviene volver a preguntar (null = no consultar periódicamente). */
+export type MyPrizesReading = { prizes: MyRafflePrize[]; pollSeconds: number | null };
 
-/** Folios para el panel del operador (Sorteo/Coordinación). Un id sin folio simplemente no aparece. */
+/** Latido lento por omisión cuando el servidor no indica cadencia (respuesta antigua o incompleta). */
+export const DEFAULT_POLL_SECONDS = 300;
+
+export function normalizeReading(raw: unknown): MyPrizesReading {
+  // Compatibilidad: una respuesta que sea solo la lista (sin cadencia) se trata con el latido lento.
+  if (Array.isArray(raw)) return { prizes: normalizeMyPrizes(raw), pollSeconds: DEFAULT_POLL_SECONDS };
+  const body = (raw && typeof raw === 'object' ? raw : {}) as { prizes?: unknown; poll_seconds?: unknown };
+  const seconds = body.poll_seconds;
+  return {
+    prizes: normalizeMyPrizes(body.prizes),
+    pollSeconds: seconds === null ? null : typeof seconds === 'number' && Number.isFinite(seconds) ? Math.min(600, Math.max(10, seconds)) : DEFAULT_POLL_SECONDS,
+  };
+}
+
+export const fetchMyRafflePrizes = async (): Promise<MyPrizesReading> => normalizeReading(await rpc<unknown>('my_raffle_prizes'));
+
+/** El servidor rechaza más de 1000 ids por llamada: se pide por lotes bastante menores. */
+export const FOLIO_BATCH = 500;
+
+/**
+ * Folios para el panel del operador (Sorteo/Coordinación), por lotes. Un id sin folio simplemente no aparece. Si un lote falla se
+ * conservan los demás (solo esos resultados quedan «no disponible»); si fallan todos, se lanza el error.
+ */
 export async function fetchWinnerFolios(ids: string[]): Promise<Map<string, string>> {
   const folios = new Map<string, string>();
-  if (ids.length === 0) return folios;
-  const rows = await rpc<unknown>('raffle_winner_folios', { p_winner_ids: ids });
-  if (!Array.isArray(rows)) return folios;
-  for (const row of rows) {
-    const item = row as { winner_id?: unknown; folio?: unknown };
-    if (typeof item?.winner_id === 'string' && typeof item.folio === 'string' && FOLIO.test(item.folio)) folios.set(item.winner_id, item.folio);
+  const unique = [...new Set(ids)];
+  if (unique.length === 0) return folios;
+  let failure: unknown = null;
+  let answered = 0;
+  for (let start = 0; start < unique.length; start += FOLIO_BATCH) {
+    try {
+      const rows = await rpc<unknown>('raffle_winner_folios', { p_winner_ids: unique.slice(start, start + FOLIO_BATCH) });
+      answered += 1;
+      if (!Array.isArray(rows)) continue;
+      for (const row of rows) {
+        const item = row as { winner_id?: unknown; folio?: unknown };
+        if (typeof item?.winner_id === 'string' && typeof item.folio === 'string' && FOLIO.test(item.folio)) folios.set(item.winner_id, item.folio);
+      }
+    } catch (cause) {
+      failure = cause;
+    }
   }
+  if (answered === 0 && failure) throw failure;
   return folios;
 }
 
@@ -98,11 +132,22 @@ export const pendingNotice = (prizes: MyRafflePrize[], seen: ReadonlySet<string>
 
 // ---------- Cadencia de consulta ----------
 
-export const POLL_MS = 20_000;
-export const MAX_BACKOFF_MS = 120_000;
+/** Mínimo entre dos consultas disparadas por eventos (volver a la pestaña, foco, red): evita ráfagas al desbloquear el teléfono. */
+export const MIN_GAP_MS = 10_000;
+export const MAX_BACKOFF_MS = 600_000;
+/** Sin cadencia conocida (primer intento fallido), se reintenta pronto. */
+export const RETRY_MS = 60_000;
 
-/** Siguiente espera: la normal con un poco de variación (para que miles de teléfonos no consulten a la vez) o, tras fallos, más larga. */
-export function nextDelay(failures: number, random: () => number = Math.random): number {
-  const base = Math.min(MAX_BACKOFF_MS, POLL_MS * 2 ** Math.min(failures, 3));
-  return Math.round(base * (0.85 + random() * 0.3));
+/**
+ * Espera hasta la siguiente consulta periódica, con ±15 % de variación para que miles de teléfonos no consulten a la vez.
+ * `pollSeconds` lo dicta el servidor; `null` = no hay consulta periódica (solo al abrir, volver a la pestaña o recuperar la red).
+ * Tras fallos se espacia (x2 por intento, hasta 10 min) y, si el servidor nunca dijo nada, se reintenta cada minuto.
+ */
+export function nextDelay(failures: number, pollSeconds: number | null | undefined, random: () => number = Math.random): number | null {
+  if (failures === 0 && pollSeconds === null) return null;
+  const base = (failures > 0 && pollSeconds == null ? RETRY_MS : (pollSeconds ?? RETRY_MS / 1000) * 1000) * 2 ** Math.min(failures, 4);
+  return Math.round(Math.min(MAX_BACKOFF_MS, base) * (0.85 + random() * 0.3));
 }
+
+/** Tiempo máximo que una lectura exitosa puede considerarse al día: ~2.5 veces la cadencia, con un mínimo de un minuto. */
+export const verifiedForMs = (pollSeconds: number | null | undefined): number => Math.max(60_000, (pollSeconds ?? DEFAULT_POLL_SECONDS) * 2500);
