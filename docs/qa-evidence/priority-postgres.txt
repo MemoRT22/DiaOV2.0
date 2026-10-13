@@ -1,0 +1,89 @@
+BEGIN
+CREATE FUNCTION
+CREATE FUNCTION
+CREATE FUNCTION
+NOTICE:  PASS: recommendation summary student 1
+NOTICE:  PASS: exact career student 1
+NOTICE:  PASS: division complement student 1
+NOTICE:  PASS: educator recommendation excluded student 1
+NOTICE:  PASS: educator backend reserve rejected student 1
+NOTICE:  PASS: educator discovery excluded student 1
+NOTICE:  PASS: educator direct detail hidden student 1
+NOTICE:  PASS: reservation student 1
+NOTICE:  PASS: availability reduces 30 to 29 student 1
+NOTICE:  PASS: reserved recommendation student 1
+NOTICE:  PASS: duration stamps student 1
+NOTICE:  PASS: manual/QR idempotence student 1
+NOTICE:  PASS: attended recommendation student 1
+NOTICE:  PASS: no category without university life student 1
+NOTICE:  PASS: university life checkin student 1
+NOTICE:  PASS: raffle category student 1
+NOTICE:  PASS: recommendation summary student 2
+NOTICE:  PASS: exact career student 2
+NOTICE:  PASS: division complement student 2
+NOTICE:  PASS: educator recommendation excluded student 2
+NOTICE:  PASS: educator backend reserve rejected student 2
+NOTICE:  PASS: educator discovery excluded student 2
+NOTICE:  PASS: educator direct detail hidden student 2
+NOTICE:  PASS: reservation student 2
+NOTICE:  PASS: availability reduces 30 to 29 student 2
+NOTICE:  PASS: reserved recommendation student 2
+NOTICE:  PASS: duration stamps student 2
+NOTICE:  PASS: manual/QR idempotence student 2
+NOTICE:  PASS: attended recommendation student 2
+NOTICE:  PASS: no category without university life student 2
+NOTICE:  PASS: university life checkin student 2
+NOTICE:  PASS: raffle category student 2
+NOTICE:  PASS: recommendation summary student 3
+NOTICE:  PASS: exact career student 3
+NOTICE:  PASS: division complement student 3
+NOTICE:  PASS: educator recommendation excluded student 3
+NOTICE:  PASS: educator backend reserve rejected student 3
+NOTICE:  PASS: educator discovery excluded student 3
+NOTICE:  PASS: educator direct detail hidden student 3
+NOTICE:  PASS: reservation student 3
+NOTICE:  PASS: availability reduces 30 to 29 student 3
+NOTICE:  PASS: reserved recommendation student 3
+NOTICE:  PASS: duration stamps student 3
+NOTICE:  PASS: manual/QR idempotence student 3
+NOTICE:  PASS: attended recommendation student 3
+NOTICE:  PASS: no category without university life student 3
+NOTICE:  PASS: university life checkin student 3
+NOTICE:  PASS: raffle category student 3
+NOTICE:  PASS: boundary rejection offset seconds 259200 method 1
+NOTICE:  PASS: boundary rejection offset seconds 259200 method 2
+NOTICE:  PASS: boundary rejection offset seconds 360 method 1
+NOTICE:  PASS: boundary rejection offset seconds 360 method 2
+NOTICE:  PASS: boundary rejection offset seconds 301 method 1
+NOTICE:  PASS: boundary rejection offset seconds 301 method 2
+NOTICE:  PASS: boundary offset seconds 300 method 1
+NOTICE:  PASS: boundary offset seconds 300 method 2
+NOTICE:  PASS: boundary offset seconds 0 method 1
+NOTICE:  PASS: boundary offset seconds 0 method 2
+NOTICE:  PASS: boundary offset seconds -600 method 1
+NOTICE:  PASS: boundary offset seconds -600 method 2
+NOTICE:  PASS: boundary offset seconds -4200 method 1
+NOTICE:  PASS: boundary offset seconds -4200 method 2
+NOTICE:  PASS: boundary offset seconds -4800 method 1
+NOTICE:  PASS: boundary offset seconds -4800 method 2
+NOTICE:  PASS: boundary rejection offset seconds -4801 method 1
+NOTICE:  PASS: boundary rejection offset seconds -4801 method 2
+NOTICE:  PASS: QR without reservation
+NOTICE:  PASS: cancelled session
+NOTICE:  PASS: DEMO QR rejected for real student
+NOTICE:  PASS: DEMO excluded from real recommendations
+NOTICE:  PASS: student cannot edit audience
+NOTICE:  PASS: student cannot use audience admin RPC
+NOTICE:  PASS: idempotence after closure and cancellation
+NOTICE:  PASS: legitimate expired reservation preferred to future session
+NOTICE:  PASS: configured 10 minute opening respected
+NOTICE:  PASS: configured 30 minute closure respected
+NOTICE:  PASS: audience RPC permissions
+NOTICE:  PASS: coordination reads explicit audience
+NOTICE:  PASS: coordination can select students
+NOTICE:  PASS: coordination can select educators
+NOTICE:  PASS: audience change preserves sessions capacities QR and career relationships
+NOTICE:  PASS: educator catalog and QR retained
+NOTICE:  PRIORITY_QA_OK
+DO
+ROLLBACK

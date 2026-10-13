@@ -7,6 +7,7 @@ import { formatEventDateTime, formatEventTime } from '../../lib/eventTime';
 import { useLoad } from '../../lib/useLoad';
 import PhraseConfirmModal from '../PhraseConfirmModal';
 import WorkshopDeleteSummary from './WorkshopDeleteSummary';
+import WorkshopAudience from './WorkshopAudience';
 import {
   CATEGORY_LABELS, GROUP_LABELS, TYPE_LABELS, groupForStatus, workshopAdminApi,
   type WorkshopCareer, type WorkshopDetail as Detail,
@@ -112,6 +113,7 @@ export default function WorkshopDetail() {
         <p className="mt-1 text-sm text-ink-muted">{careers.join(', ')}</p></div>)}</Section>}
 
     {group === 'published' && <Operational detail={data} />}
+    {group === 'published' && data.published_activity_id && <WorkshopAudience key={data.published_activity_id} activityId={data.published_activity_id} />}
     {pending && <section className="card space-y-3 p-5" aria-label="Decisión sobre el taller">
       <div><h2 className="text-lg font-bold">Decisión sobre la propuesta</h2><p className="mt-1 text-sm text-ink-muted">Verifica los datos anteriores antes de publicar o descartar.</p></div>
       <div className="flex flex-wrap gap-3">

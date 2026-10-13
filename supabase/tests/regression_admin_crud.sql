@@ -222,6 +222,12 @@ BEGIN
   -- Datos de prueba sobre el taller publicado: reservaciones, asistencias con sellos (check_in real) y sorteo.
   SELECT id INTO ses FROM activity_sessions WHERE activity_id = act_pub ORDER BY starts_at LIMIT 1;
   SELECT id INTO ses_life FROM activity_sessions WHERE activity_id = act_life ORDER BY starts_at LIMIT 1;
+  -- Fixtures isolated: place the sessions inside the configured check-in window
+  -- before reserving them. Keep their duration and calculated stamp credits.
+  UPDATE activity_sessions SET
+    starts_at = now() - interval '1 minute',
+    ends_at = now() - interval '1 minute' + (ends_at - starts_at)
+  WHERE id IN (ses, ses_life);
   INSERT INTO reservations(participant_id,session_id,activity_id) VALUES (pa,ses,act_pub),(pb,ses,act_pub),(pa,ses_life,act_life),(pc,ses_life,act_life);
   cred := jsonb_build_object('qr_token', (SELECT pgp_sym_decrypt(qr_token_encrypted, credential_encryption_key()) FROM activity_credentials WHERE activity_id = act_pub));
   answer := pg_temp.as_user(ua, format('select check_in(%L)', cred->>'qr_token'));
