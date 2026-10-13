@@ -4,7 +4,7 @@ import { PUBLIC_PATH, parsePublicMessage, toPublicState } from '../../lib/raffle
 import { FakeBroadcastChannel } from './fakeBroadcastChannel';
 import { AMAZON, demoCategories, demoPrizes } from './raffleFixtures';
 import RaffleProjection from './RaffleProjection';
-import { consoleStage, defaultPrizes, drawn, fireEvent, openConsole, readyToDraw, screen, setReducedMotion, view, waitFor, within } from './raffleRunHarness';
+import { chooseRehearsalSet, consoleStage, defaultPrizes, drawn, fireEvent, openConsole, readyToDraw, screen, setReducedMotion, view, waitFor, within } from './raffleRunHarness';
 
 const m = vi.hoisted(() => ({ mode: { current: 'operacion_real' }, view: vi.fn(), prizes: vi.fn(), winners: vi.fn(), draw: vi.fn(), confirm: vi.fn(), noShow: vi.fn(), pending: vi.fn(), invalidate: vi.fn() }));
 
@@ -170,6 +170,7 @@ test('in rehearsal mode the public screen carries the «Ensayo» mark; in offici
   document.body.innerHTML = '';
 
   m.mode.current = 'preparacion';
+  chooseRehearsalSet('demo');
   m.view.mockImplementation(async () => view(demoCategories()));
   m.prizes.mockImplementation(async (id: string) => (demoPrizes() as Record<string, unknown[]>)[id] ?? []);
   const rehearsal = openPublic();
@@ -181,6 +182,7 @@ test('in rehearsal mode the public screen carries the «Ensayo» mark; in offici
 
 test('leaving the console leaves the title on the projector and keeps the rehearsal mark', async () => {
   m.mode.current = 'preparacion';
+  chooseRehearsalSet('demo');
   m.view.mockImplementation(async () => view(demoCategories()));
   m.prizes.mockImplementation(async (id: string) => (demoPrizes() as Record<string, unknown[]>)[id] ?? []);
   const pub = openPublic();
@@ -228,6 +230,7 @@ test('a problem closes the rehearsal so the operator sees it', async () => {
 
 test('the on-screen rehearsal of the event rehearsal is unmistakably marked', async () => {
   m.mode.current = 'preparacion';
+  chooseRehearsalSet('demo');
   m.view.mockImplementation(async () => view(demoCategories()));
   m.prizes.mockImplementation(async (id: string) => (demoPrizes() as Record<string, unknown[]>)[id] ?? []);
   openConsole();

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import type { RaffleCategory, RafflePrize } from './raffleApi';
-import { burstParticles, drawBlocker, isDefinitiveDrawError, pickDataSet, initialCategory, initialPrize, isDrawable, letterCount, nextTarget, orbitTokens, scrambleName, unitsLeft } from './raffleShow';
+import { burstParticles, drawBlocker, isDefinitiveDrawError, resolveDataSet, initialCategory, initialPrize, isDrawable, letterCount, nextTarget, orbitTokens, scrambleName, unitsLeft } from './raffleShow';
 
 const category = (id: string, pool: number, over: Partial<RaffleCategory> = {}): RaffleCategory => ({
   id, name: id, sort_order: 0, rules: [{ total: 3 }], required_academic: 0, required_leadership: 0,
@@ -128,25 +128,34 @@ describe('uncertainty and server refusals', () => {
   });
 });
 
-describe('pickDataSet: which set of server records the raffle uses', () => {
-  const cat = (is_demo: boolean, pool_count: number, name = 'Universo') => ({ is_demo, pool_count, name });
-  const pick = (rehearsal: boolean, canConfigure: boolean, categories: ReturnType<typeof cat>[]) => pickDataSet({ rehearsal, canConfigure, categories });
+describe('resolveDataSet: which set of server records the raffle uses', () => {
+  const resolve = (rehearsal: boolean, canConfigure: boolean, choice: 'real' | 'demo' | null = null) => resolveDataSet({ rehearsal, canConfigure, choice });
 
-  test('official operation uses the real records', () => {
-    expect(pick(false, true, [cat(false, 5), cat(true, 9)])).toBe('real');
-    expect(pick(false, false, [cat(false, 0), cat(true, 9)])).toBe('real');
+  test('official operation always uses the official records, whatever was chosen for the rehearsal', () => {
+    for (const choice of [null, 'real', 'demo'] as const) {
+      expect(resolve(false, true, choice)).toBe('real');
+      expect(resolve(false, false, choice)).toBe('real');
+    }
   });
   test('raffle staff in a rehearsal can only use what the server allows them: the test records', () => {
-    expect(pick(true, false, [cat(false, 50), cat(true, 0)])).toBe('demo');
+    for (const choice of [null, 'real', 'demo'] as const) expect(resolve(true, false, choice)).toBe('demo');
   });
-  test('Coordinación in a rehearsal uses the set that holds the rehearsal participants', () => {
-    expect(pick(true, true, [cat(false, 40), cat(true, 0)])).toBe('real');
-    expect(pick(true, true, [cat(false, 0), cat(true, 7)])).toBe('demo');
+  test('Coordinación in a rehearsal uses exactly what it chose, and nothing until it chooses', () => {
+    expect(resolve(true, true, null)).toBeNull();
+    expect(resolve(true, true, 'real')).toBe('real');
+    expect(resolve(true, true, 'demo')).toBe('demo');
   });
-  test('with candidates in both, or in neither, it prefers the rehearsal set when it exists and falls back to the other one', () => {
-    expect(pick(true, true, [cat(false, 40), cat(true, 7)])).toBe('demo');
-    expect(pick(true, true, [cat(false, 0), cat(true, 0)])).toBe('demo');
-    expect(pick(true, true, [cat(false, 0)])).toBe('real');
-    expect(pick(true, true, [])).toBe('demo');
+  test('it takes no counts: there is no way to give it the number of participants', () => {
+    expect(resolveDataSet.length).toBe(1);
+    expect(Object.keys({ rehearsal: true, canConfigure: true, choice: 'demo' })).not.toContain('categories');
+  });
+});
+
+describe('a stale read holds back new draws', () => {
+  const cat = category('un', 10);
+  const p = prize('tablet', 'un', 2);
+  test('the stock may be out of date, so no new round starts, whatever else looks fine', () => {
+    expect(drawBlocker(cat, [p], p, 10, { stale: true })?.code).toBe('stale');
+    expect(drawBlocker(cat, [p], p, 10, { stale: false })).toBeNull();
   });
 });

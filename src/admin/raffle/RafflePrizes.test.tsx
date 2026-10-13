@@ -206,6 +206,28 @@ test('the technical details are folded away and name the set of records in use',
   open();
   const details = (await screen.findByText('Detalles técnicos')).closest('details')!;
   expect(details).not.toHaveAttribute('open');
-  expect(details).toHaveTextContent(/reales \(no is_demo\)/);
+  expect(details).toHaveTextContent(/oficiales \(no is_demo\)/);
   expect(screen.getAllByRole('article')).toHaveLength(3); // never a duplicated category
+});
+
+test('if another window of this browser is preparing the catalog, this one writes nothing and says so; afterwards it can continue', async () => {
+  let held = true;
+  Object.defineProperty(navigator, 'locks', {
+    configurable: true,
+    value: { request: async (_name: string, _options: unknown, callback: (lock: object | null) => Promise<unknown>) => callback(held ? null : {}) },
+  });
+  try {
+    open();
+    fireEvent.click(await screen.findByRole('button', { name: 'Preparar premios oficiales' }));
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Preparar' }));
+    expect(await screen.findByText(/Otra ventana de este navegador está preparando los premios/)).toBeInTheDocument();
+    expect(m.save).not.toHaveBeenCalled();
+    expect(rows).toHaveLength(0);
+    held = false; // the other window finished
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Preparar' }));
+    expect(await screen.findByText(/Premios oficiales listos: 5 registrados/)).toBeInTheDocument();
+    expect(rows).toHaveLength(5);
+  } finally {
+    Reflect.deleteProperty(navigator, 'locks');
+  }
 });

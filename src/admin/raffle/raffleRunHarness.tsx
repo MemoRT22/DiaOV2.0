@@ -3,6 +3,8 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { MemoryRouter } from 'react-router-dom';
 import { expect, vi } from 'vitest';
 import RaffleAdmin from '../RaffleAdmin';
+import { writeSetChoice } from '../../lib/raffleSetChoice';
+import type { RaffleScope } from '../../lib/raffleShow';
 import { AMAZON, OFFICIAL, officialPrizes } from './raffleFixtures';
 
 /** What `draw_winner` answers for the prize drawn by default (the one the console suggests first: the Amazon cards). */
@@ -18,6 +20,9 @@ export const setReducedMotion = () => {
   window.matchMedia = ((query: string) => ({ matches: query.includes('reduce'), media: query, addEventListener: () => undefined, removeEventListener: () => undefined })) as unknown as typeof window.matchMedia;
   return () => { window.matchMedia = real; };
 };
+
+/** Coordinación's explicit choice of the rehearsal records (the mocked edition has no id: it is stored under «edition»). */
+export const chooseRehearsalSet = (set: RaffleScope) => writeSetChoice('edition', set);
 
 export const openConsole = (Component: typeof RaffleAdmin = RaffleAdmin, path = '/') =>
   render(<MemoryRouter initialEntries={[path]}><Component /></MemoryRouter>);

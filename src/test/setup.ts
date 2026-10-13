@@ -2,7 +2,7 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup } from '@testing-library/react';
 import { afterEach } from 'vitest';
 
-afterEach(() => cleanup());
+afterEach(() => { cleanup(); try { window.localStorage.clear(); } catch { /* none */ } });
 
 // jsdom no implementa estas APIs de layout.
 if (!window.matchMedia) {
@@ -18,3 +18,16 @@ if (!window.matchMedia) {
   })) as typeof window.matchMedia;
 }
 Element.prototype.scrollIntoView = () => undefined;
+
+// Node's experimental global localStorage can shadow jsdom's and leave `window.localStorage` unusable: give tests a working one.
+try { window.localStorage.setItem('probe', '1'); window.localStorage.removeItem('probe'); } catch {
+  const store = new Map<string, string>();
+  Object.defineProperty(window, 'localStorage', {
+    configurable: true,
+    value: {
+      getItem: (key: string) => store.get(key) ?? null, setItem: (key: string, value: string) => { store.set(key, String(value)); },
+      removeItem: (key: string) => { store.delete(key); }, clear: () => store.clear(), key: (index: number) => [...store.keys()][index] ?? null,
+      get length() { return store.size; },
+    },
+  });
+}

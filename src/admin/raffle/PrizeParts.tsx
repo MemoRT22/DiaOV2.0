@@ -20,25 +20,43 @@ export function PrizeIcon({ kind, size = 22 }: { kind: PrizeKind | null; size?: 
 export const kindOf = (categoryName: string, prizeName: string): PrizeKind | null => officialItemFor(categoryName, prizeName)?.kind ?? null;
 
 /**
- * What the server says about a prize, in the words of the event: delivered (confirmed), waiting to be confirmed, still to
- * draw. Stock always comes from `raffle_prizes_read`; the results only refine «delivered» when they could be read.
+ * What the server says about a prize, in the words of the event. `left` always comes from `raffle_prizes_read`.
+ * `confirmed` (delivered) and `waiting` (selected, not yet confirmed) come only from the results: `raffle_prizes_read`
+ * counts both together as `delivered`, so when the results could not be read they are UNKNOWN (null), never zero and
+ * never guessed. `committed` is the one figure that is known either way.
  */
 export function prizeTally(prize: Pick<RafflePrize, 'id' | 'quantity' | 'available' | 'delivered'>, winners: RaffleWinner[] | null) {
   const mine = winners?.filter((winner) => winner.prize_id === prize.id);
-  const confirmed = mine ? mine.filter((winner) => winner.status === 'confirmado').length : prize.delivered;
-  const waiting = mine ? mine.filter((winner) => winner.status === 'seleccionado').length : 0;
-  return { quantity: prize.quantity, confirmed, waiting, left: Math.max(0, prize.available) };
+  return {
+    quantity: prize.quantity,
+    confirmed: mine ? mine.filter((winner) => winner.status === 'confirmado').length : null,
+    waiting: mine ? mine.filter((winner) => winner.status === 'seleccionado').length : null,
+    committed: prize.delivered,
+    left: Math.max(0, prize.available),
+  };
 }
+export type Tally = ReturnType<typeof prizeTally>;
+/** The results of this prize could be read. */
+export const verified = (tally: Tally): tally is Tally & { confirmed: number; waiting: number } => tally.confirmed !== null && tally.waiting !== null;
 
-/** «3 de 10 entregadas» + one dot per unit (up to twelve; filled = delivered, ring = waiting). */
-export function StockDots({ confirmed, waiting, quantity }: { confirmed: number; waiting: number; quantity: number }) {
-  if (quantity > 12) return null;
+/** «3 de 10 entregadas» + one dot per unit (up to twelve; filled = delivered, ring = waiting, hatched = committed but not verified). */
+export function StockDots({ tally }: { tally: Tally }) {
+  if (tally.quantity > 12) return null;
   return (
     <span className="rf-dots-row" aria-hidden>
-      {Array.from({ length: quantity }, (_, index) => <i key={index} data-state={index < confirmed ? 'done' : index < confirmed + waiting ? 'waiting' : 'free'} />)}
+      {Array.from({ length: tally.quantity }, (_, index) => {
+        const state = verified(tally)
+          ? index < tally.confirmed ? 'done' : index < tally.confirmed + tally.waiting ? 'waiting' : 'free'
+          : index < tally.committed ? 'unknown' : 'free';
+        return <i key={index} data-state={state} />;
+      })}
     </span>
   );
 }
 
 export const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 export const deliveredText = (confirmed: number, quantity: number) => `${confirmed} de ${quantity} ${quantity === 1 ? 'entregado' : 'entregadas'}`;
+/** What to say about deliveries: the figure when it is known, otherwise how much is committed and that the detail is unverified. */
+export const deliveryText = (tally: Tally) => (verified(tally)
+  ? deliveredText(tally.confirmed, tally.quantity)
+  : `${plural(tally.committed, 'comprometida', 'comprometidas')} · entregas sin verificar`);

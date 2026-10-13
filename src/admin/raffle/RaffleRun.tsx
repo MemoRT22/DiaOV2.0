@@ -13,7 +13,7 @@ import {
 } from '../../lib/raffleShow';
 import { useRafflePublicScreen } from '../../lib/useRafflePublicScreen';
 import { DataPanel, EmptyState } from '../design/Primitives';
-import { deliveredText, kindOf, plural, PrizeIcon, prizeTally, StockDots, toneOf } from './PrizeParts';
+import { deliveryText, kindOf, plural, PrizeIcon, prizeTally, StockDots, toneOf, verified } from './PrizeParts';
 import { InvalidateModal } from './RaffleModals';
 import RaffleStage, { PublicStage, useReducedMotion, type StagePhase, type StageResult } from './RaffleStage';
 import type { RaffleContext } from './types';
@@ -41,7 +41,7 @@ const recovered = (current: { winner_id: string | null; display_name?: string; p
  * notice stays here.
  */
 export default function RaffleRun({ ctx }: { ctx: RaffleContext }) {
-  const { categories, prizes, rehearsal, canConfigure, prizesLoading, winners } = ctx;
+  const { categories, prizes, rehearsal, canConfigure, prizesLoading, winners, stale } = ctx;
   // The suggested order of the event: from the smaller prizes to the big ones. Any prize can be picked at any time.
   const drawOrder = useMemo(() => [...categories].reverse(), [categories]);
   const reduced = useReducedMotion();
@@ -74,7 +74,7 @@ export default function RaffleRun({ ctx }: { ctx: RaffleContext }) {
   const prize = categoryPrizes.find((item) => item.id === prizeId);
   const poolCount = category?.pool_count ?? 0;
   const serverEmptyHere = !!serverEmpty && serverEmpty.prizeId === prizeId && serverEmpty.pool === poolCount && serverEmpty.available === prize?.available;
-  const blocker = prizesLoading ? null : drawBlocker(category, categoryPrizes, prize, poolCount, { unverified: !!prize && !!unverified[prize.id], serverEmpty: serverEmptyHere });
+  const blocker = prizesLoading ? null : drawBlocker(category, categoryPrizes, prize, poolCount, { unverified: !!prize && !!unverified[prize.id], serverEmpty: serverEmptyHere, stale });
   const unverifiedHere = categoryPrizes.filter((item) => unverified[item.id]);
   const locked = busy || phase === 'drawing' || phase === 'uncertain';
 
@@ -248,6 +248,10 @@ export default function RaffleRun({ ctx }: { ctx: RaffleContext }) {
     document.querySelector('.rf-module .rf-stats')?.scrollIntoView({ block: 'start', behavior: reduced ? 'auto' : 'smooth' });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Tells the module a round is in progress, so the records of the rehearsal cannot be changed under it.
+  useEffect(() => { ctx.setRoundActive(phase !== 'idle' || busy); }, [phase, busy]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => () => ctx.setRoundActive(false), []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // What the audience may see: no blockers, no notices, no errors, no controls.
   const publicState: PublicState = useMemo(() => toPublicState({
     rehearsal, phase, ready: !blocker && !!prize, categoryName: category?.name, poolCount,
@@ -264,11 +268,11 @@ export default function RaffleRun({ ctx }: { ctx: RaffleContext }) {
   };
 
   // The rehearsal has no way to show a problem, so a problem takes the operator back to the console.
-  const problem = !!error || phase === 'uncertain' || blocker?.code === 'unverified' || blocker?.code === 'server-empty';
+  const problem = !!error || phase === 'uncertain' || blocker?.code === 'unverified' || blocker?.code === 'server-empty' || blocker?.code === 'stale';
   useEffect(() => { if (rehearsing && problem) setRehearsing(false); }, [rehearsing, problem]);
 
   const registeredPrizes = categories.flatMap((item) => prizes[item.id] ?? EMPTY);
-  if (registeredPrizes.length === 0 && !prizesLoading) {
+  if (registeredPrizes.length === 0 && !prizesLoading && ctx.loaded) {
     return (
       <DataPanel><EmptyState title="Los premios todavía no están preparados."
         description={canConfigure ? 'Registra los premios oficiales de Día OV 2026 para poder sortearlos. Es un solo paso.' : 'Avisa a Coordinación: hay que preparar los premios oficiales antes de sortear.'}
@@ -329,6 +333,7 @@ export default function RaffleRun({ ctx }: { ctx: RaffleContext }) {
             notice={notice} categoryName={category?.name} onRevealDone={() => setRevealDone(true)} alreadyRevealed={revealDone}>
             <RoundActions phase={phase} revealDone={revealDone} busy={busy} refreshing={prizesLoading} checking={checking} drawLabel={drawLabel}
               blockerCode={blocker?.code} canDraw={!blocker && !!prize}
+              onRetryRead={() => void ctx.refresh()}
               onDraw={() => void draw()} onConfirm={() => void confirm()} onNoShow={() => void noShow()} onNext={nextRound}
               onVerify={() => { if (category && prize) void verify(prize, category); }} onRecheck={() => void recheck()} onRefresh={() => void ctx.refresh()}
               onInvalidate={canConfigure ? () => setInvalidating(true) : undefined} />
@@ -370,16 +375,16 @@ function PrizeCard({ category, prize, winners, pending, unverified, checked, dis
   category: RaffleCategory; prize: RafflePrize; winners: RaffleContext['winners']; pending: boolean; unverified: boolean; checked: boolean; disabled: boolean; onSelect: () => void;
 }) {
   const tally = prizeTally(prize, winners);
-  const done = tally.left === 0 && tally.waiting === 0 && !pending;
-  const flag = pending ? 'Ganador pendiente' : unverified ? 'Sin comprobar' : !prize.is_active ? 'Inactivo' : done ? 'Completo' : null;
+  const done = tally.left === 0 && verified(tally) && tally.waiting === 0 && !pending;
+  const flag = pending ? 'Ganador pendiente' : unverified ? 'Sin comprobar' : !prize.is_active ? 'Inactivo' : done ? 'Completo' : tally.left === 0 ? (verified(tally) ? 'Por confirmar' : 'Sin unidades') : null;
   return (
     <label className="rf-pcard" data-checked={checked || undefined} data-done={done || undefined}>
       <input type="radio" name="rf-prize" checked={checked} disabled={disabled} onChange={onSelect} />
       <span className="rf-prize-icon"><PrizeIcon kind={kindOf(category.name, prize.name)} /></span>
       <span className="rf-pcard-body">
         <span className="rf-pcard-title">{prize.name}</span>
-        <span className="rf-pcard-meta">{done ? deliveredText(tally.confirmed, tally.quantity) : `${tally.left} por sortear · ${deliveredText(tally.confirmed, tally.quantity)}`}</span>
-        <StockDots confirmed={tally.confirmed} waiting={tally.waiting} quantity={tally.quantity} />
+        <span className="rf-pcard-meta">{done ? deliveryText(tally) : `${tally.left} por sortear · ${deliveryText(tally)}`}</span>
+        <StockDots tally={tally} />
       </span>
       {flag && <Badge tone={pending || unverified ? 'warning' : 'neutral'}>{flag}</Badge>}
     </label>
@@ -388,10 +393,10 @@ function PrizeCard({ category, prize, winners, pending, unverified, checked, dis
 
 type ActionsProps = {
   phase: StagePhase; revealDone: boolean; busy: boolean; refreshing: boolean; checking: boolean; canDraw: boolean; drawLabel: string; blockerCode?: string;
-  onDraw: () => void; onConfirm: () => void; onNoShow: () => void; onNext: () => void; onVerify: () => void; onRecheck: () => void; onRefresh: () => void; onInvalidate?: () => void;
+  onDraw: () => void; onConfirm: () => void; onNoShow: () => void; onNext: () => void; onVerify: () => void; onRecheck: () => void; onRefresh: () => void; onRetryRead: () => void; onInvalidate?: () => void;
 };
 
-function RoundActions({ phase, revealDone, busy, refreshing, checking, canDraw, drawLabel, blockerCode, onDraw, onConfirm, onNoShow, onNext, onVerify, onRecheck, onRefresh, onInvalidate }: ActionsProps) {
+function RoundActions({ phase, revealDone, busy, refreshing, checking, canDraw, drawLabel, blockerCode, onDraw, onConfirm, onNoShow, onNext, onVerify, onRecheck, onRefresh, onRetryRead, onInvalidate }: ActionsProps) {
   const [askNoShow, setAskNoShow] = useState(false);
   useEffect(() => setAskNoShow(false), [phase]);
   const big = 'rf-draw-btn';
@@ -399,6 +404,7 @@ function RoundActions({ phase, revealDone, busy, refreshing, checking, canDraw, 
   if (phase === 'drawing') return <Button className={big} disabled loading>Sorteando…</Button>;
   if (phase === 'uncertain') return <Button className={big} onClick={onVerify} loading={busy}>Comprobar de nuevo</Button>;
   if (phase === 'idle') {
+    if (blockerCode === 'stale') return <Button className={big} onClick={onRetryRead} loading={refreshing}>Reintentar actualización</Button>;
     if (blockerCode === 'unverified') return <Button className={big} onClick={onRecheck} loading={checking}>Reintentar comprobación</Button>;
     return (
       <>

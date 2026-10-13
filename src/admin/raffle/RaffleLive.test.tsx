@@ -3,7 +3,7 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import RaffleOperator from '../RaffleOperator';
 import { FakeBroadcastChannel } from './fakeBroadcastChannel';
 import { AMAZON, category, demoCategories, demoPrizes, IPAD, MACBOOK, OFFICIAL, officialPrizes, SWITCH, WATCH } from './raffleFixtures';
-import { fireEvent, openConsole, readyToDraw, screen, setReducedMotion, stage, view, waitFor, within } from './raffleRunHarness';
+import { chooseRehearsalSet, fireEvent, openConsole, readyToDraw, screen, setReducedMotion, stage, view, waitFor, within } from './raffleRunHarness';
 
 type Server = { prizes: ReturnType<typeof officialPrizes>; winners: { id: string; prize_id: string; status: string; name: string }[] };
 
@@ -192,14 +192,17 @@ test('official operation says «Sorteo oficial» and has no switch between kinds
   expect(screen.queryByRole('button', { name: /Datos (reales|de prueba)/ })).not.toBeInTheDocument();
 });
 
-test('the rehearsal mode says «Ensayo del evento», on the console and on the stage', async () => {
+test('the rehearsal mode says «Ensayo del evento», on the console and on the stage, and what the selections are', async () => {
   m.mode.current = 'preparacion';
+  chooseRehearsalSet('demo');
   m.view.mockImplementation(async () => view(demoCategories()));
   m.prizes.mockImplementation(async (id: string) => (demoPrizes() as Record<string, unknown[]>)[id] ?? []);
   openConsole();
   await readyToDraw();
   expect(screen.getAllByText('Ensayo del evento').length).toBeGreaterThanOrEqual(2);
   expect(screen.queryByText('Sorteo oficial')).not.toBeInTheDocument();
+  expect(screen.getByText('Las selecciones se guardan como pruebas y deberán limpiarse antes del evento.')).toBeInTheDocument();
+  expect(document.body.textContent).not.toMatch(/aún no cuenta como entrega/);
 });
 
 test('both sets of records answer together but only one is ever used: no duplicated categories, no mixed prizes', async () => {
@@ -213,16 +216,6 @@ test('both sets of records answer together but only one is ever used: no duplica
   await stage().findByText('Alumno 1').catch(() => undefined);
   await waitFor(() => expect(m.draw).toHaveBeenCalled());
   expect(m.draw.mock.calls[0][0]).toBe('amazon'); // never the d-amazon of the other set
-});
-
-test('in the rehearsal Coordinación works with the set that has the rehearsal participants, whichever flag it carries', async () => {
-  m.mode.current = 'preparacion';
-  m.view.mockImplementation(async () => view([...OFFICIAL, ...demoCategories().map((c) => ({ ...c, pool_count: 0 }))]));
-  openConsole();
-  await readyToDraw();
-  fireEvent.click(await readyToDraw());
-  await waitFor(() => expect(m.draw).toHaveBeenCalled());
-  expect(m.draw.mock.calls[0][0]).toBe('amazon');
 });
 
 test('the raffle role stays on the set the server allows for the mode and cannot prepare or invalidate', async () => {

@@ -21,7 +21,7 @@ export const isDrawable = (prize: Pick<RafflePrize, 'is_active' | 'available'>) 
 /** Units still to hand out across the active prizes of a category. */
 export const unitsLeft = (prizes: RafflePrize[]) => prizes.filter((prize) => prize.is_active).reduce((sum, prize) => sum + Math.max(0, prize.available), 0);
 
-export type Blocker = { code: 'no-category' | 'inactive-category' | 'no-prizes' | 'no-prize' | 'inactive-prize' | 'unverified' | 'server-empty' | 'exhausted' | 'empty-pool'; message: string };
+export type Blocker = { code: 'no-category' | 'inactive-category' | 'no-prizes' | 'no-prize' | 'inactive-prize' | 'unverified' | 'server-empty' | 'stale' | 'exhausted' | 'empty-pool'; message: string };
 
 /** Things the screen knows that the aggregate numbers do not. */
 export type DrawFlags = {
@@ -29,6 +29,8 @@ export type DrawFlags = {
   unverified?: boolean;
   /** The server answered POOL_EMPTY for this prize with the figures currently on screen. */
   serverEmpty?: boolean;
+  /** The last refresh of stock and pools failed: what is on screen may be out of date, so no NEW draw starts on it. */
+  stale?: boolean;
 };
 
 /**
@@ -43,6 +45,7 @@ export const SERVER_EMPTY_MESSAGE = 'El servidor no encontró participantes disp
 /** Why the draw cannot start, or null. Order matters: the first problem is the one the operator must fix. */
 export function drawBlocker(category: RaffleCategory | undefined, prizes: RafflePrize[], prize: RafflePrize | undefined, poolCount: number, flags: DrawFlags = {}): Blocker | null {
   if (!category) return { code: 'no-category', message: 'Elige una categoría para empezar.' };
+  if (flags.stale) return { code: 'stale', message: 'No se pudo actualizar el inventario. Reintenta la actualización antes de sortear: los números de pantalla pueden estar desactualizados.' };
   if (!category.is_active) return { code: 'inactive-category', message: 'Esta categoría está inactiva y no puede sortearse.' };
   if (prizes.length === 0) return { code: 'no-prizes', message: 'Esta categoría todavía no tiene premios.' };
   if (!prize) return { code: 'no-prize', message: 'Elige el premio que vas a sortear.' };
@@ -146,21 +149,16 @@ export function orbitTokens(pool: number): number[] {
 }
 
 /**
- * Which set of server records the raffle works on. The server keeps two (`is_demo` false/true) and the screen never asks
- * the operator to understand that: the edition's mode is what they see («Ensayo del evento» / «Sorteo oficial»).
- * - Raffle staff: the server only lets them operate the set of the current mode (rehearsal → demo, official → real).
- * - Coordinación, official operation: the real set.
- * - Coordinación, rehearsal: the set where the rehearsal data is: whichever has candidates (only one of them, normally);
- *   otherwise the one that has categories, preferring the server's rehearsal set. Decided once per visit, so it does not
- *   flip while the pools empty out during a draw.
+ * Which set of server records the raffle works on. The server keeps two (`is_demo` false/true); the screen never asks
+ * the operator to understand that in the main views: the edition's mode is what they see.
+ * - Official operation: always the official (real) records, whatever their counts.
+ * - Rehearsal, raffle staff: the test records, the only ones the server lets them operate.
+ * - Rehearsal, Coordinación: the set THEY chose in the guided step (the provisional participants loaded so far may be
+ *   flagged as real). Until they choose there is no set (`null`) and no draw can start. Nothing here looks at how many
+ *   participants a set has, and it never changes by itself: not between rounds and not when a set runs out of candidates.
  */
-export function pickDataSet(input: { rehearsal: boolean; canConfigure: boolean; categories: Pick<RaffleCategory, 'is_demo' | 'pool_count' | 'name'>[] }): RaffleScope {
-  const modeSet: RaffleScope = input.rehearsal ? 'demo' : 'real';
-  if (!input.canConfigure || !input.rehearsal) return modeSet;
-  const inSet = (set: RaffleScope) => input.categories.filter((category) => scopeOf(category) === set);
-  const pool = (set: RaffleScope) => inSet(set).reduce((sum, category) => sum + (category.pool_count ?? 0), 0);
-  if (pool('real') > 0 && pool('demo') === 0) return 'real';
-  if (pool('demo') > 0 && pool('real') === 0) return 'demo';
-  if (pool('demo') > 0 && pool('real') > 0) return 'demo';
-  return inSet('demo').length === 0 && inSet('real').length > 0 ? 'real' : 'demo';
+export function resolveDataSet(input: { rehearsal: boolean; canConfigure: boolean; choice: RaffleScope | null }): RaffleScope | null {
+  if (!input.rehearsal) return 'real';
+  if (!input.canConfigure) return 'demo';
+  return input.choice;
 }

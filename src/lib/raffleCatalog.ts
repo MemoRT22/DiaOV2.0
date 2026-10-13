@@ -123,8 +123,54 @@ export type PrepareResult<P extends PrizeRef = PrizeRef> = {
   adjusted: number;
   /** Set when a call failed: what was done before it stays done, and running it again continues from there. */
   error: unknown | null;
+  /** Another window of this browser is preparing the catalog right now: nothing was written here. */
+  busy: boolean;
   plan: CatalogPlan<P>;
 };
+
+/**
+ * Mutual exclusion between windows of the SAME browser (same origin). It is the only exclusion the frontend can offer:
+ * the existing RPCs have no unique rule on (category, name) nor an upsert, so two computers preparing at the same time
+ * cannot be made impossible from here; see docs/sorteo-simplificado.md.
+ */
+export type CatalogLocks = { run<T>(work: () => Promise<T>): Promise<{ ok: true; value: T } | { ok: false }> };
+
+export const CATALOG_LOCK_NAME = 'diaov-raffle-catalog-prepare';
+
+/** The browser's own lock manager (Web Locks): a real lock shared by every tab of the origin, released if the tab closes. */
+export function webLocks(manager: Pick<LockManager, 'request'>): CatalogLocks {
+  return {
+    run: (work) => manager.request(CATALOG_LOCK_NAME, { ifAvailable: true }, async (lock) => (lock ? { ok: true as const, value: await work() } : { ok: false as const })),
+  };
+}
+
+/**
+ * Fallback for browsers without Web Locks: a lease in localStorage (token + expiry), confirmed after a short wait. It
+ * narrows the window a lot but, unlike Web Locks, it is not atomic; it expires by itself if a tab dies.
+ */
+export function leaseLocks(storage: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>, options: { ttlMs?: number; settleMs?: number } = {}): CatalogLocks {
+  const key = `${CATALOG_LOCK_NAME}:lease`;
+  const ttl = options.ttlMs ?? 60_000;
+  const settle = options.settleMs ?? 60;
+  return {
+    async run(work) {
+      const mine = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const held = () => { try { const lease = JSON.parse(storage.getItem(key) ?? 'null') as { token: string; until: number } | null; return lease && lease.until > Date.now() ? lease : null; } catch { return null; } };
+      if (held()) return { ok: false };
+      try { storage.setItem(key, JSON.stringify({ token: mine, until: Date.now() + ttl })); }
+      catch { return { ok: true, value: await work() }; } // storage blocked: no lease possible, only the re-reads protect
+      await new Promise((resolve) => setTimeout(resolve, settle));
+      if (held()?.token !== mine) return { ok: false };
+      try { return { ok: true, value: await work() }; } finally { if (held()?.token === mine) storage.removeItem(key); }
+    },
+  };
+}
+
+/** Web Locks when the browser has them, the lease otherwise. */
+export function browserCatalogLocks(): CatalogLocks {
+  if (typeof navigator !== "undefined" && "locks" in navigator && navigator.locks) return webLocks(navigator.locks);
+  try { return leaseLocks(window.localStorage); } catch { return { run: async (work) => ({ ok: true, value: await work() }) }; }
+}
 
 async function readPrizes<P extends PrizeRef>(categories: CategoryRef[], deps: CatalogDeps<P>) {
   const found: Record<string, P[]> = {};
@@ -134,30 +180,39 @@ async function readPrizes<P extends PrizeRef>(categories: CategoryRef[], deps: C
 
 /**
  * Registers what is missing and puts right what the catalog says, nothing else. Safe to repeat and to resume:
- * - it always reads the server first, so prizes that already exist (from a previous run, another tab or by hand) are
- *   recognised by category + name and never created twice;
+ * - one window at a time per browser (see `CatalogLocks`); the second one writes nothing and says so;
+ * - it always reads the server first, and reads the category again right before creating each prize, so prizes that
+ *   already exist (a previous run, another window, by hand) are recognised by category + name and never created twice;
  * - one prize at a time, in catalog order; a failure stops it and reports what was done;
  * - it never deletes, never touches winners or pending selections, and leaves alone a prize that already has more
  *   committed units than the official quantity.
  */
-export async function prepareOfficialCatalog<P extends PrizeRef = PrizeRef>(categories: CategoryRef[], deps: CatalogDeps<P>): Promise<PrepareResult<P>> {
+export async function prepareOfficialCatalog<P extends PrizeRef = PrizeRef>(categories: CategoryRef[], deps: CatalogDeps<P>, locks: CatalogLocks = browserCatalogLocks()): Promise<PrepareResult<P>> {
   const official = categories.filter((category) => !!officialCategory(category.name));
-  let plan = planCatalog(official, await readPrizes(official, deps));
-  let created = 0;
-  let adjusted = 0;
-  let error: unknown = null;
-  if (plan.status !== 'blocked') {
-    for (const entry of plan.entries) {
-      if (entry.state !== 'missing' && entry.state !== 'adjust') continue;
-      try {
-        await deps.savePrize({
-          id: entry.prize?.id, category_id: entry.categoryId as string, name: entry.item.name, description: '',
-          quantity: entry.item.quantity, is_active: true, sort_order: entry.order,
-        });
-        if (entry.state === 'missing') created += 1; else adjusted += 1;
-      } catch (cause) { error = cause; break; }
+  const outcome = await locks.run(async () => {
+    let plan = planCatalog(official, await readPrizes(official, deps));
+    let created = 0;
+    let adjusted = 0;
+    let error: unknown = null;
+    if (plan.status !== 'blocked') {
+      for (const entry of plan.entries) {
+        if (entry.state !== 'missing' && entry.state !== 'adjust') continue;
+        try {
+          if (entry.state === 'missing') {
+            const latest = await deps.fetchPrizes(entry.categoryId as string);
+            if (latest.some((prize) => normalizeName(prize.name) === normalizeName(entry.item.name))) continue; // someone just did it
+          }
+          await deps.savePrize({
+            id: entry.prize?.id, category_id: entry.categoryId as string, name: entry.item.name, description: '',
+            quantity: entry.item.quantity, is_active: true, sort_order: entry.order,
+          });
+          if (entry.state === 'missing') created += 1; else adjusted += 1;
+        } catch (cause) { error = cause; break; }
+      }
+      plan = planCatalog(official, await readPrizes(official, deps));
     }
-    plan = planCatalog(official, await readPrizes(official, deps));
-  }
-  return { created, adjusted, error, plan };
+    return { created, adjusted, error, busy: false, plan } satisfies PrepareResult<P>;
+  });
+  if (outcome.ok) return outcome.value;
+  return { created: 0, adjusted: 0, error: null, busy: true, plan: planCatalog(official, await readPrizes(official, deps)) };
 }
