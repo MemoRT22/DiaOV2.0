@@ -25,6 +25,8 @@ test.each(['submitted', 'in_review', 'changes_requested', 'approved'] as const)(
   expect(screen.getByRole('button', { name: 'Aprobar' })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Descartar' })).toBeInTheDocument();
   expect(screen.queryByText(/Revisión administrativa|Publicar en Día OV|Solicitar cambios|Feedback/)).not.toBeInTheDocument();
+  expect(screen.getByText('Se asigna automáticamente al publicar')).toBeInTheDocument();
+  expect(screen.queryByText('10:00–12:00')).not.toBeInTheDocument();
 });
 
 test('one approval request ends published and repeated click makes no second request', async () => {
@@ -89,7 +91,7 @@ test('the operational block speaks product language and translates the session s
   vi.mocked(workshopAdminApi.get).mockResolvedValue(published('activa'));
   show();
   await screen.findByRole('heading', { name: 'Operación del taller' });
-  expect(screen.getByText('Horarios y cupos del taller.')).toBeInTheDocument();
+  expect(screen.getByText('Horarios efectivos y cupos del taller.')).toBeInTheDocument();
   expect(screen.queryByText(/actividad vinculada/i)).not.toBeInTheDocument();
   expect(screen.getByText(/Disponible/)).toBeInTheDocument();
   expect(screen.queryByText(/\bactiva\b/)).not.toBeInTheDocument();

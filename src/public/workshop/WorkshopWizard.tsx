@@ -342,7 +342,7 @@ export default function WorkshopWizard({
             <RadioCards
               field="session_duration_minutes"
               legend="Duración del taller"
-              hint="Todos los talleres se realizan entre las 10:00 a. m. y las 12:00 p. m."
+              hint="El servidor asignará los horarios oficiales según la duración, con traslados entre sesiones."
               required
               value={form.session_duration_minutes}
               onChange={(v) => set('session_duration_minutes', v)}

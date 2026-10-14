@@ -46,9 +46,6 @@ export const SESSION_DURATIONS = [
 export const durationsFor = (type: unknown) =>
   type === 'vida_universitaria' ? SESSION_DURATIONS : SESSION_DURATIONS.filter((d) => d.value !== 15);
 
-/** Todos los talleres operan en esta ventana. La fija el servidor; el formulario no la pregunta ni la envía. */
-export const FIXED_SCHEDULE = { start: '10:00', end: '12:00', breakMinutes: 0 } as const;
-
 /** Única lista blanca de propiedades aceptadas en el POST. */
 export const ALLOWED_FIELDS = [
   'facilitator_name',
