@@ -1,5 +1,7 @@
 import type { Session } from '@supabase/supabase-js';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { AccessError, classifyAuthError } from './accessErrors';
+import { retryTransient, RetryAborted } from './retry';
 import { supabase } from './supabase';
 
 export type ParticipantProfile = {
@@ -17,14 +19,17 @@ export function hasRole(staff: StaffMember | null, ...roles: StaffRole[]) {
   return !!staff && roles.some((r) => staff.roles.includes(r));
 }
 
+/** `signal`: si la persona abandona la pantalla, los reintentos en segundo plano se cancelan. */
+export type SignInOptions = { signal?: AbortSignal };
+
 type AuthContextValue = {
   session: Session | null;
   ready: boolean;
   profile: ParticipantProfile | null;
   staff: StaffMember | null;
   refreshIdentity: () => Promise<void>;
-  signInParticipant: (email: string, password: string) => Promise<void>;
-  signInStaff: (email: string, password: string) => Promise<void>;
+  signInParticipant: (email: string, password: string, options?: SignInOptions) => Promise<void>;
+  signInStaff: (email: string, password: string, options?: SignInOptions) => Promise<void>;
   signOut: () => Promise<void>;
 };
 
@@ -92,20 +97,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const refreshIdentity = useCallback(() => loadIdentity(session), [loadIdentity, session]);
 
-  const signInParticipant = useCallback(async (email: string, password: string) => {
-    const { data, error } = await supabase.auth.signInWithPassword({ email: email.trim().toLowerCase(), password });
-    if (error || !data.user) throw new Error('INVALID_CREDENTIALS');
-    // Esta pantalla es solo para participantes: una cuenta de Staff no entra por aquí.
-    if (data.user.app_metadata?.kind !== 'participant') {
-      await supabase.auth.signOut();
-      throw new Error('INVALID_CREDENTIALS');
+  /**
+   * Iniciar sesión no cambia datos, así que ante un límite (429), una caída pasajera, falta de red o un tiempo agotado se reintenta
+   * sola un par de veces (espera progresiva con variación aleatoria). Solo una respuesta definitiva de «credenciales inválidas» se
+   * informa como contraseña incorrecta: un 429 nunca se hace pasar por eso. Un fallo no cierra una sesión que ya existiera.
+   */
+  const passwordSignIn = useCallback(async (email: string, password: string, signal?: AbortSignal) => {
+    try {
+      return await retryTransient(async () => {
+        const { data, error } = await supabase.auth.signInWithPassword({ email: email.trim().toLowerCase(), password });
+        if (error) throw classifyAuthError(error as { status?: number; code?: string; name?: string; message?: string }) ?? error;
+        return data;
+      }, { signal });
+    } catch (cause) {
+      if (cause instanceof RetryAborted) throw new Error('ABORTED');
+      return { user: null, failure: cause } as const;
     }
   }, []);
 
-  const signInStaff = useCallback(async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({ email: email.trim().toLowerCase(), password });
-    if (error) throw new Error('INVALID_STAFF_CREDENTIALS');
-  }, []);
+  const signInParticipant = useCallback(async (email: string, password: string, options: SignInOptions = {}) => {
+    const outcome = await passwordSignIn(email, password, options.signal);
+    if ('failure' in outcome) {
+      if (outcome.failure instanceof AccessError) throw outcome.failure;
+      throw new Error('INVALID_CREDENTIALS');
+    }
+    if (!outcome.user) throw new Error('INVALID_CREDENTIALS');
+    // Esta pantalla es solo para participantes: una cuenta de Staff no entra por aquí.
+    if (outcome.user.app_metadata?.kind !== 'participant') {
+      await supabase.auth.signOut();
+      throw new Error('INVALID_CREDENTIALS');
+    }
+  }, [passwordSignIn]);
+
+  const signInStaff = useCallback(async (email: string, password: string, options: SignInOptions = {}) => {
+    const outcome = await passwordSignIn(email, password, options.signal);
+    if ('failure' in outcome) {
+      if (outcome.failure instanceof AccessError) throw outcome.failure;
+      throw new Error('INVALID_STAFF_CREDENTIALS');
+    }
+  }, [passwordSignIn]);
 
   const signOut = useCallback(async () => {
     await supabase.auth.signOut();

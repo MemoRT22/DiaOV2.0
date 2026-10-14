@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useRef, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { Alert, Button, Field } from '../components/ui';
 import { useAuth } from '../lib/auth';
@@ -11,9 +11,12 @@ export default function AdminLogin() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const inFlight = useRef(false); // un solo envío a la vez, aunque lleguen dos Enter seguidos
 
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    if (inFlight.current) return;
+    inFlight.current = true;
     setError('');
     setSubmitting(true);
     try {
@@ -21,6 +24,7 @@ export default function AdminLogin() {
     } catch (cause) {
       setError(friendlyError(cause));
     } finally {
+      inFlight.current = false;
       setSubmitting(false);
     }
   };

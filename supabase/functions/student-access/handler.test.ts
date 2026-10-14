@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { handleRequest, type Deps, type ParticipantRow } from './handler.ts';
+import { handleRequest, TemporaryError, upstreamTemporary, type Deps, type ParticipantRow } from './handler.ts';
 
 const url = 'https://example.test/functions/v1/student-access';
 const post = (body: unknown) => new Request(url, {
@@ -17,6 +17,11 @@ function fixture(opts: {
   existing?: { id: string; email: string | null; kind: string | null } | null;
   create?: { id?: string; code?: 'EMAIL_TAKEN' | 'AUTH_ERROR' };
   update?: { ok: boolean; code?: 'EMAIL_TAKEN' | 'AUTH_ERROR' };
+  /** Cuenta que Auth encuentra por correo (recuperación de un registro interrumpido) y quién la usa. */
+  byEmail?: { id: string; email: string | null; kind: string | null } | null;
+  owner?: { id: string } | null;
+  createThrows?: unknown;
+  getUserThrows?: unknown;
   rpc?: (name: string, args: Record<string, unknown>) => { data: unknown; error: { message: string } | null };
 } = {}): Fixture {
   const calls: string[] = [];
@@ -32,8 +37,10 @@ function fixture(opts: {
     participantByEmail: async () => opts.participant === undefined ? { id: PID, auth_user_id: null, password_configured_at: null } : opts.participant,
     careers: async () => [{ id: 'c1', name: 'Derecho', division: 'Ciencias Jurídicas' }],
     highSchools: async () => [{ id: 'h1', name: 'Otra escuela' }],
-    getUser: async () => opts.existing ?? null,
-    createUser: async (email) => { calls.push(`createUser:${email}`); return opts.create ?? { id: UID }; },
+    getUser: async () => { if (opts.getUserThrows) throw opts.getUserThrows; return opts.existing ?? null; },
+    findUserByEmail: async (email) => { calls.push(`findUserByEmail:${email}`); return opts.byEmail ?? null; },
+    participantByAuthUser: async (id) => { calls.push(`participantByAuthUser:${id}`); return opts.owner ?? null; },
+    createUser: async (email) => { calls.push(`createUser:${email}`); if (opts.createThrows) throw opts.createThrows; return opts.create ?? { id: UID }; },
     updateUser: async (id, email) => { calls.push(`updateUser:${id}:${email}`); return opts.update ?? { ok: true }; },
     deleteUser: async (id) => { calls.push(`deleteUser:${id}`); },
     log: (event, code) => { logs.push(`${event}:${code ?? ''}`); },
@@ -239,4 +246,187 @@ test('birth date is ignored by the new actions', async () => {
   const f = fixture({ state: 'password_login' });
   const response = await handleRequest(post({ action: 'identify', email: 'ana@example.com', birth_date: '2008-01-01' }), f.deps);
   assert.deepEqual(await response.json(), { state: 'password_login' });
+});
+
+
+// =====================================================================================================================
+// Resiliencia ante límites (429) y caídas temporales
+// =====================================================================================================================
+
+const retryAfterOf = (response: Response) => Number(response.headers.get('Retry-After'));
+
+test('a temporary limit is answered as 429/503 with Retry-After, never as a data or credential error', async () => {
+  for (const [status, error] of [[429, 'RATE_LIMITED'], [503, 'TEMPORARILY_UNAVAILABLE']] as const) {
+    const f = fixture({ rpc: () => { throw new TemporaryError(status, 7); } });
+    const response = await handleRequest(post({ action: 'identify', email: 'ana@example.com' }), f.deps);
+    assert.equal(response.status, status);
+    assert.deepEqual(await response.json(), { error, retry_after: 7 });
+    assert.equal(retryAfterOf(response), 7);
+    assert.equal(response.headers.get('Access-Control-Expose-Headers'), 'Retry-After'); // el navegador puede leerlo
+  }
+});
+
+test('Retry-After carries a random component so hundreds of phones do not come back together', async () => {
+  const waits = new Set<number>();
+  for (let n = 0; n < 40; n += 1) waits.add(new TemporaryError(429).retryAfter);
+  assert.ok(waits.size > 3);
+  for (const wait of waits) assert.ok(wait >= 10 && wait < 20);
+  for (let n = 0; n < 40; n += 1) { const wait = new TemporaryError(503).retryAfter; assert.ok(wait >= 5 && wait < 15); }
+});
+
+test('upstream failures are classified: 429, 5xx, network and timeouts are temporary; validation and credentials are not', () => {
+  assert.equal(upstreamTemporary({ status: 429 })?.status, 429);
+  assert.equal(upstreamTemporary({ code: 'over_request_rate_limit' })?.status, 429);
+  for (const status of [0, 408, 500, 502, 503, 504, 546]) assert.equal(upstreamTemporary({ status })?.status, 503);
+  assert.equal(upstreamTemporary({ name: 'AuthRetryableFetchError' })?.status, 503);
+  assert.equal(upstreamTemporary({ message: 'fetch failed' })?.status, 503);
+  assert.equal(upstreamTemporary({ message: 'request timed out' })?.status, 503);
+  for (const info of [{ status: 400 }, { status: 401 }, { status: 404 }, { status: 409 }, { status: 422, code: 'weak_password' }, { message: 'P0001: INVALID_CAREER' }, {}]) {
+    assert.equal(upstreamTemporary(info), null);
+  }
+});
+
+test('a database rate limit or outage on identify is temporary, not SERVER_ERROR', async () => {
+  for (const status of [429, 503, 500]) {
+    const f = fixture({ rpc: () => ({ data: null, error: { message: 'upstream', status } as { message: string } }) });
+    const response = await handleRequest(post({ action: 'identify', email: 'ana@example.com' }), f.deps);
+    assert.equal(response.status, status === 429 ? 429 : 503);
+    assert.ok(Number(response.headers.get('Retry-After')) > 0);
+  }
+});
+
+test('setup_password: a 429 creating the Auth account changes nothing and is retryable', async () => {
+  const f = fixture({ createThrows: new TemporaryError(429, 9) });
+  const response = await handleRequest(post({ action: 'setup_password', email: 'ana@example.com', password: SECRET }), f.deps);
+  assert.equal(response.status, 429);
+  assert.equal(retryAfterOf(response), 9);
+  assert.deepEqual(f.calls, ['createUser:ana@example.com']); // no link, no delete, no discard
+  assert.ok(!(await response.text()).includes(SECRET));
+  assert.ok(!f.logs.join('|').includes(SECRET));
+});
+
+test('an Auth lookup that fails temporarily is never mistaken for «the account does not exist»', async () => {
+  const f = fixture({ participant: { id: PID, auth_user_id: UID, password_configured_at: null }, getUserThrows: new TemporaryError(503, 5) });
+  const response = await handleRequest(post({ action: 'setup_password', email: 'ana@example.com', password: SECRET }), f.deps);
+  assert.equal(response.status, 503);
+  assert.deepEqual(f.calls, []); // no createUser: no duplicate identity
+});
+
+test('setup_password: the link is lost to a 429 AFTER the account was created → nothing is deleted, and the retry adopts that same account', async () => {
+  let linkAttempts = 0;
+  const f = fixture({
+    rpc: (name) => {
+      if (name === 'participant_link_auth_internal') { linkAttempts += 1; if (linkAttempts === 1) throw new TemporaryError(429, 6); }
+      return { data: null, error: null };
+    },
+    create: { id: UID },
+  });
+  const first = await handleRequest(post({ action: 'setup_password', email: 'ana@example.com', password: SECRET }), f.deps);
+  assert.equal(first.status, 429);
+  assert.ok(!f.calls.some((call) => call.startsWith('deleteUser'))); // el vínculo pudo haberse guardado: no se borra la cuenta
+
+  // Reintento: Auth ya tiene la cuenta (se creó en el intento anterior).
+  const retry = fixture({
+    create: { code: 'EMAIL_TAKEN' },
+    byEmail: { id: UID, email: 'ana@example.com', kind: 'participant' },
+    owner: null,
+  });
+  const second = await handleRequest(post({ action: 'setup_password', email: 'ana@example.com', password: SECRET }), retry.deps);
+  assert.equal(second.status, 200);
+  assert.deepEqual(retry.calls, ['createUser:ana@example.com', 'findUserByEmail:ana@example.com', `participantByAuthUser:${UID}`, `updateUser:${UID}:ana@example.com`, 'rpc:participant_link_auth_internal']);
+});
+
+test('recovery only adopts an orphan participant account: never Staff, never another participant, never a different email', async () => {
+  const cases: [string, Parameters<typeof fixture>[0]][] = [
+    ['staff account with that email', { create: { code: 'EMAIL_TAKEN' }, byEmail: { id: UID, email: 'ana@example.com', kind: null } }],
+    ['kind unknown', { create: { code: 'EMAIL_TAKEN' }, byEmail: { id: UID, email: 'ana@example.com', kind: 'staff' } }],
+    ['used by another participant', { create: { code: 'EMAIL_TAKEN' }, byEmail: { id: UID, email: 'ana@example.com', kind: 'participant' }, owner: { id: '99999999-9999-4999-8999-999999999999' } }],
+    ['email does not match', { create: { code: 'EMAIL_TAKEN' }, byEmail: { id: UID, email: 'otra@example.com', kind: 'participant' } }],
+    ['no account found', { create: { code: 'EMAIL_TAKEN' }, byEmail: null }],
+  ];
+  for (const [name, opts] of cases) {
+    const f = fixture(opts);
+    const response = await handleRequest(post({ action: 'setup_password', email: 'ana@example.com', password: SECRET }), f.deps);
+    assert.equal(response.status, 409, name);
+    assert.deepEqual(await response.json(), { error: 'EMAIL_EXISTS' }, name);
+    assert.ok(!f.calls.some((call) => call.startsWith('updateUser') || call.startsWith('rpc:participant_link')), `${name}: no se tocó la cuenta`);
+  }
+  // una cuenta de participante que ya es de ESTE participante sí se reutiliza
+  const own = fixture({ create: { code: 'EMAIL_TAKEN' }, byEmail: { id: UID, email: 'ana@example.com', kind: 'participant' }, owner: { id: PID } });
+  assert.equal((await handleRequest(post({ action: 'setup_password', email: 'ana@example.com', password: SECRET }), own.deps)).status, 200);
+});
+
+test('a definitive link failure still rolls back the account created in that same request', async () => {
+  const f = fixture({ rpc: (name) => ({ data: null, error: name === 'participant_link_auth_internal' ? { message: 'NOT_FOUND' } : null }) });
+  assert.equal((await handleRequest(post({ action: 'setup_password', email: 'ana@example.com', password: SECRET }), f.deps)).status, 500);
+  assert.ok(f.calls.includes(`deleteUser:${UID}`));
+});
+
+test('register: a limit or outage creating the Auth account keeps the saved registration (no discard) and answers 429/503', async () => {
+  for (const status of [429, 503] as const) {
+    const f = fixture({ createThrows: new TemporaryError(status, 8) });
+    const response = await handleRequest(post(registerBody()), f.deps);
+    assert.equal(response.status, status);
+    assert.equal(retryAfterOf(response), 8);
+    assert.deepEqual(f.calls, ['rpc:register_self_service_internal', 'createUser:ana@example.com']);
+    assert.ok(!f.calls.includes('rpc:discard_self_service_registration_internal'));
+  }
+});
+
+test('register retry after a lost response: it resumes the participant that was already created, with no duplicate and no new registration', async () => {
+  const f = fixture({
+    rpc: (name) => (name === 'register_self_service_internal' ? { data: null, error: { message: 'P0001: EMAIL_EXISTS' } } : { data: null, error: null }),
+    participant: { id: PID, auth_user_id: null, password_configured_at: null, origin: 'self_service' },
+    create: { code: 'EMAIL_TAKEN' },
+    byEmail: { id: UID, email: 'ana@example.com', kind: 'participant' },
+    owner: null,
+  });
+  const response = await handleRequest(post(registerBody()), f.deps);
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { ok: true });
+  assert.ok(f.calls.includes(`updateUser:${UID}:ana@example.com`));
+  assert.ok(f.calls.includes('rpc:participant_link_auth_internal'));
+  assert.ok(!f.calls.includes('rpc:discard_self_service_registration_internal'));
+});
+
+test('register resume never applies to a pre-registration or to an account that already has a password', async () => {
+  const exists = (participant: ParticipantRow) => fixture({
+    rpc: (name) => (name === 'register_self_service_internal' ? { data: null, error: { message: 'EMAIL_EXISTS' } } : { data: null, error: null }),
+    participant,
+  });
+  for (const participant of [
+    { id: PID, auth_user_id: null, password_configured_at: null, origin: 'forms' },
+    { id: PID, auth_user_id: UID, password_configured_at: '2026-10-14T00:00:00Z', origin: 'self_service' },
+  ]) {
+    const f = exists(participant);
+    const response = await handleRequest(post(registerBody()), f.deps);
+    assert.equal(response.status, 409);
+    assert.deepEqual(await response.json(), { error: 'EMAIL_EXISTS' });
+    assert.ok(!f.calls.some((call) => call.startsWith('createUser') || call.startsWith('updateUser') || call.startsWith('deleteUser')));
+  }
+});
+
+test('a definitive failure while resuming never discards a registration this request did not create', async () => {
+  const f = fixture({
+    rpc: (name) => (name === 'register_self_service_internal' ? { data: null, error: { message: 'EMAIL_EXISTS' } } : { data: null, error: null }),
+    participant: { id: PID, auth_user_id: null, password_configured_at: null, origin: 'self_service' },
+    create: { code: 'EMAIL_TAKEN' },
+    byEmail: { id: UID, email: 'ana@example.com', kind: null }, // Staff: no se toca
+  });
+  assert.equal((await handleRequest(post(registerBody()), f.deps)).status, 409);
+  assert.ok(!f.calls.includes('rpc:discard_self_service_registration_internal'));
+  assert.ok(!f.calls.some((call) => call.startsWith('updateUser')));
+});
+
+test('database validation errors stay definitive (400) and are never reported as temporary', async () => {
+  const f = fixture({ rpc: () => ({ data: null, error: { message: 'P0001: INVALID_CAREER', status: 400 } as { message: string } }) });
+  const response = await handleRequest(post(registerBody()), f.deps);
+  assert.equal(response.status, 400);
+  assert.equal(response.headers.get('Retry-After'), null);
+});
+
+test('temporary failures are logged by code only', async () => {
+  const f = fixture({ createThrows: new TemporaryError(429, 4) });
+  await handleRequest(post({ action: 'setup_password', email: 'ana@example.com', password: SECRET }), f.deps);
+  assert.deepEqual(f.logs, ['temporary_failure:429']);
 });

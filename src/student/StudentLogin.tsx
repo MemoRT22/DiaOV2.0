@@ -5,13 +5,15 @@ import { Backdrop, BrandFooter, Tagline, ThemedTitle } from '../components/theme
 import { BootSpinner } from '../components/BootSpinner';
 import { useAuth } from '../lib/auth';
 import { formatEventDate } from '../lib/catalog';
+import { friendlyError } from '../lib/errors';
 import { studentAccess, type AccessState } from '../lib/studentAccess';
 import { useEdition } from '../edition/EditionProvider';
 import { usePublicTheme } from '../theme/PublicThemeProvider';
 import { EmailStep, LoginStep, RegisterStep, SetupStep } from './StudentAccessSteps';
 import { PlanetHorizon } from './ui/SpaceDecor';
 
-type Step = { kind: 'email' | AccessState; email: string };
+/** `notice`: un aviso informativo para el paso (p. ej. «este correo ya tiene contraseña»). */
+type Step = { kind: 'email' | AccessState; email: string; notice?: string };
 
 /**
  * Acceso de participantes: correo → el sistema decide → contraseña.
@@ -60,26 +62,25 @@ export default function StudentLogin() {
         <div className="card mt-6 bg-surface/80 p-5 sm:mt-8 sm:p-6 backdrop-blur animate-fade-up [animation-delay:120ms]">
           {step.kind === 'email' && <EmailStep title={text('loginTitle')} initial={step.email} onContinue={(email, kind) => setStep({ kind, email })} />}
           {step.kind === 'password_login' && (
-            <LoginStep email={step.email} onBack={back} onSignIn={(password) => signInParticipant(step.email, password)} />
+            <LoginStep email={step.email} notice={step.notice} onBack={back}
+              onSignIn={(password, signal) => signInParticipant(step.email, password, { signal })} />
           )}
           {step.kind === 'password_setup' && (
             <SetupStep
               email={step.email}
               onBack={back}
-              onSetup={async (password) => {
-                await studentAccess.setupPassword(step.email, password);
-                await signInParticipant(step.email, password);
-              }}
+              onCreate={(password, signal) => studentAccess.setupPassword(step.email, password, { signal })}
+              onSignIn={(password, signal) => signInParticipant(step.email, password, { signal })}
+              onExistingAccount={() => setStep({ kind: 'password_login', email: step.email, notice: friendlyError(new Error('ACCESS_ALREADY_CONFIGURED')) })}
             />
           )}
           {step.kind === 'self_registration' && (
             <RegisterStep
               email={step.email}
               onBack={back}
-              onRegister={async ({ password, ...fields }) => {
-                await studentAccess.register({ ...fields, password, email: step.email });
-                await signInParticipant(step.email, password);
-              }}
+              onCreate={({ password, ...fields }, signal) => studentAccess.register({ ...fields, password, email: step.email }, { signal })}
+              onSignIn={(password, signal) => signInParticipant(step.email, password, { signal })}
+              onExistingAccount={() => setStep({ kind: 'password_login', email: step.email, notice: friendlyError(new Error('EMAIL_EXISTS')) + ' Inicia sesión con tu contraseña.' })}
             />
           )}
         </div>

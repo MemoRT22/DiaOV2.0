@@ -1,5 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.45.4';
-import { handleRequest, type Deps } from './handler.ts';
+import { handleRequest, upstreamTemporary, type Deps } from './handler.ts';
 
 const url = Deno.env.get('SUPABASE_URL');
 const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
@@ -14,18 +14,31 @@ const need = () => {
 const emailTaken = (error: { code?: string; message: string }) =>
   error.code === 'email_exists' || /already (been )?registered|already exists/i.test(error.message);
 
+/** Un límite (429) o una caída de un servicio de apoyo se lanza como error temporal: el navegador lo reintenta sin perder nada. */
+const throwIfTemporary = (error: { status?: number; code?: string; name?: string; message?: string } | null | undefined) => {
+  const temporary = error ? upstreamTemporary(error) : null;
+  if (temporary) throw temporary;
+};
+
 const deps: Deps = {
   rpc: async (name, args) => {
-    const { data, error } = await need().rpc(name, args);
+    const { data, error, status } = await need().rpc(name, args);
+    // Un 4xx de la base (validación de negocio) es definitivo; 429/5xx/sin respuesta es temporal.
+    if (error) throwIfTemporary({ status, code: error.code, message: error.message });
     return { data, error: error ? { code: error.code, message: error.message } : null };
   },
   participantByEmail: async (email) => {
-    const { data: edition, error: editionError } = await need().from('editions').select('id').eq('is_active', true).maybeSingle();
-    if (editionError) throw editionError;
-    if (!edition) return null;
-    const { data, error } = await need().from('participants').select('id, auth_user_id, password_configured_at')
-      .eq('edition_id', edition.id).eq('email', email).maybeSingle();
-    if (error) throw error;
+    const edition = await need().from('editions').select('id').eq('is_active', true).maybeSingle();
+    if (edition.error) { throwIfTemporary({ status: edition.status, code: edition.error.code, message: edition.error.message }); throw edition.error; }
+    if (!edition.data) return null;
+    const found = await need().from('participants').select('id, auth_user_id, password_configured_at, origin')
+      .eq('edition_id', edition.data.id).eq('email', email).maybeSingle();
+    if (found.error) { throwIfTemporary({ status: found.status, code: found.error.code, message: found.error.message }); throw found.error; }
+    return found.data;
+  },
+  participantByAuthUser: async (authUserId) => {
+    const { data, error, status } = await need().from('participants').select('id').eq('auth_user_id', authUserId).limit(1).maybeSingle();
+    if (error) { throwIfTemporary({ status, code: error.code, message: error.message }); throw error; }
     return data;
   },
   careers: async () => {
@@ -44,14 +57,35 @@ const deps: Deps = {
   },
   getUser: async (id) => {
     const { data, error } = await need().auth.admin.getUserById(id);
-    if (error || !data.user) return null;
+    // «No existe» solo es un 404; un límite o una caída NO se confunde con eso (se crearía una identidad duplicada).
+    if (error) {
+      throwIfTemporary(error);
+      if (error.status === 404 || error.code === 'user_not_found') return null;
+      throw error;
+    }
+    if (!data.user) return null;
     return { id: data.user.id, email: data.user.email ?? null, kind: (data.user.app_metadata?.kind as string | undefined) ?? null };
+  },
+  // Solo en la recuperación de un registro interrumpido (el correo ya tiene cuenta). Acotado a 5 páginas de 1,000 cuentas.
+  findUserByEmail: async (email) => {
+    for (let page = 1; page <= 5; page += 1) {
+      const { data, error } = await need().auth.admin.listUsers({ page, perPage: 1000 });
+      if (error) { throwIfTemporary(error); throw error; }
+      const match = data.users.find((user) => (user.email ?? '').toLowerCase() === email);
+      if (match) return { id: match.id, email: match.email ?? null, kind: (match.app_metadata?.kind as string | undefined) ?? null };
+      if (data.users.length < 1000) return null;
+    }
+    return null;
   },
   createUser: async (email, password) => {
     const { data, error } = await need().auth.admin.createUser({
       email, password, email_confirm: true, app_metadata: { kind: 'participant' },
     });
-    if (error || !data.user) return { code: error && emailTaken(error) ? 'EMAIL_TAKEN' : 'AUTH_ERROR' };
+    if (error) {
+      throwIfTemporary(error); // 429 / 5xx / sin respuesta: la cuenta pudo o no crearse; el reintento la recupera, no se descarta nada
+      return { code: emailTaken(error) ? 'EMAIL_TAKEN' : 'AUTH_ERROR' };
+    }
+    if (!data.user) return { code: 'AUTH_ERROR' };
     return { id: data.user.id };
   },
   updateUser: async (id, email, password) => {
@@ -59,6 +93,7 @@ const deps: Deps = {
       email, ...(password ? { password } : {}), email_confirm: true, app_metadata: { kind: 'participant' },
     });
     if (!error) return { ok: true };
+    throwIfTemporary(error);
     return { ok: false, code: emailTaken(error) ? 'EMAIL_TAKEN' : 'AUTH_ERROR' };
   },
   deleteUser: async (id) => {

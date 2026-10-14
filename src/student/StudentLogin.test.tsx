@@ -60,11 +60,11 @@ test('an account that already exists continues with email + password through Sup
   vi.mocked(studentAccess.identify).mockResolvedValue('password_login');
   show();
   await continueWith('  Ana@Ejemplo.com ');
-  expect(studentAccess.identify).toHaveBeenCalledWith('ana@ejemplo.com');
+  expect(studentAccess.identify).toHaveBeenCalledWith('ana@ejemplo.com', { signal: expect.any(AbortSignal) });
   expect(await screen.findByRole('heading', { name: 'Ingresa tu contraseña' })).toBeInTheDocument();
   await userEvent.type(screen.getByLabelText('Contraseña'), 'mi-clave-segura');
   fireEvent.click(screen.getByRole('button', { name: 'Entrar' }));
-  await waitFor(() => expect(signInParticipant).toHaveBeenCalledWith('ana@ejemplo.com', 'mi-clave-segura'));
+  await waitFor(() => expect(signInParticipant).toHaveBeenCalledWith('ana@ejemplo.com', 'mi-clave-segura', { signal: expect.any(AbortSignal) }));
   expect(screen.getByText(/¿No recuerdas tu contraseña\? Pide apoyo al personal del evento\./)).toBeInTheDocument();
   expect(studentAccess.setupPassword).not.toHaveBeenCalled();
   expect(studentAccess.register).not.toHaveBeenCalled();
@@ -89,8 +89,8 @@ test('a pre-registered participant without a password creates one and enters', a
   await userEvent.type(screen.getByLabelText(/^Contraseña/), 'mi-clave-segura');
   await userEvent.type(screen.getByLabelText('Confirmar contraseña'), 'mi-clave-segura');
   fireEvent.click(screen.getByRole('button', { name: 'Crear contraseña y entrar' }));
-  await waitFor(() => expect(studentAccess.setupPassword).toHaveBeenCalledWith('ana@ejemplo.com', 'mi-clave-segura'));
-  await waitFor(() => expect(signInParticipant).toHaveBeenCalledWith('ana@ejemplo.com', 'mi-clave-segura'));
+  await waitFor(() => expect(studentAccess.setupPassword).toHaveBeenCalledWith('ana@ejemplo.com', 'mi-clave-segura', { signal: expect.any(AbortSignal) }));
+  await waitFor(() => expect(signInParticipant).toHaveBeenCalledWith('ana@ejemplo.com', 'mi-clave-segura', { signal: expect.any(AbortSignal) }));
 });
 
 test('password setup validates length and confirmation before calling the server', async () => {
@@ -165,8 +165,8 @@ test('registration requires accepting the privacy notice; then it creates the ac
   await waitFor(() => expect(studentAccess.register).toHaveBeenCalledWith({
     email: 'nueva@ejemplo.com', password: 'mi-clave-segura', first_name: 'Ana María', last_name: 'López Pérez', phone: '9981234567',
     high_school_id: 'h-1', high_school_grade: '3', entry_period: '2027-08', initial_career_id: 'c-1', consent_accepted: true,
-  }));
-  await waitFor(() => expect(signInParticipant).toHaveBeenCalledWith('nueva@ejemplo.com', 'mi-clave-segura'));
+  }, { signal: expect.any(AbortSignal) }));
+  await waitFor(() => expect(signInParticipant).toHaveBeenCalledWith('nueva@ejemplo.com', 'mi-clave-segura', { signal: expect.any(AbortSignal) }));
 });
 
 test('if the server still reports missing consent, the message mentions only the Privacy Notice', async () => {
