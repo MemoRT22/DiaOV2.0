@@ -30,6 +30,11 @@ export function enrollmentClosedWithSeats(sessions: BoardSession[]): boolean {
   return live.some((s) => s.remaining > 0) && !live.some((s) => s.remaining > 0 && isEnrollmentOpen(s));
 }
 
+/** Every schedule is over: no future or in-progress session is left (cancelled ones do not count as schedules). */
+export function workshopFinished(sessions: BoardSession[]): boolean {
+  return sessions.some((s) => s.ended) && !sessions.some((s) => !s.ended && s.status === 'activa');
+}
+
 export function workshopAvailability(board: Board, sessions: BoardSession[], replacing: MyReservation | null): string {
   if (sessions.some((s) => s.in_progress)) return 'En curso';
   const count = sessions.filter((s) => isSelectable(sessionState(board, s, replacing))).length;

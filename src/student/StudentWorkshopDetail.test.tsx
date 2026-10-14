@@ -411,3 +411,25 @@ test('seats count only sessions still open for enrollment while another one is b
   await screen.findByRole('heading', { name: 'Taller de prototipos' });
   expect(within(screen.getByText('Lugares').parentElement as HTMLElement).getByText('7 libres')).toBeInTheDocument();
 });
+
+test('when every schedule is over the fact says «Finalizada» (not «Llena»), even with unfilled seats', async () => {
+  mount(detailPath, board([
+    slot('one', { started: true, ended: true, remaining: 10, enrollment_open: false }),
+    slot('two', { starts_at: '2026-10-15T16:00:00Z', ends_at: '2026-10-15T16:45:00Z', started: true, ended: true, remaining: 0, enrollment_open: false }),
+  ]));
+  await screen.findByRole('heading', { name: 'Taller de prototipos' });
+  const fact = within(screen.getByText('Lugares').parentElement as HTMLElement);
+  expect(fact.getByText('Finalizada')).toBeInTheDocument();
+  expect(fact.queryByText(/Llena|Inscripción cerrada/)).not.toBeInTheDocument();
+});
+
+test('an ended schedule next to a live one does not mark the mission as finished', async () => {
+  mount(detailPath, board([
+    slot('one', { started: true, ended: true, remaining: 10, enrollment_open: false }),
+    slot('live', { starts_at: '2026-10-15T16:00:00Z', ends_at: '2026-10-15T16:45:00Z', started: true, in_progress: true, remaining: 0, enrollment_open: true }),
+  ]));
+  await screen.findByRole('heading', { name: 'Taller de prototipos' });
+  const fact = within(screen.getByText('Lugares').parentElement as HTMLElement);
+  expect(fact.getByText('Llena')).toBeInTheDocument();
+  expect(fact.queryByText('Finalizada')).not.toBeInTheDocument();
+});
