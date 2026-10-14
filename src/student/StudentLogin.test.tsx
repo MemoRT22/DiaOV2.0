@@ -136,7 +136,7 @@ test('an unknown email goes to self-registration with exactly the Forms fields a
   const grade = screen.getByLabelText('Grado') as HTMLSelectElement;
   expect(Array.from(grade.options).map((o) => o.textContent)).toEqual(['Elige tu grado…', '1.º año', '2.º año', '3.º año', 'Egresado']);
   const period = screen.getByLabelText('Periodo de interés') as HTMLSelectElement;
-  expect(Array.from(period.options).map((o) => o.textContent)).toEqual(['Elige el periodo…', 'Enero 2027', 'Agosto 2027', 'Enero 2028', 'Agosto 2028']);
+  expect(Array.from(period.options).map((o) => o.textContent)).toEqual(['Elige el periodo…', 'Enero 2027', 'Agosto 2027', 'Enero 2028', 'Agosto 2028', 'Enero 2029', 'Agosto 2029']);
   const careers = screen.getByLabelText('Licenciatura') as HTMLSelectElement;
   expect(Array.from(careers.options).map((o) => o.textContent)).toEqual(['Elige la licenciatura de tu interés…', 'Psicología', 'Derecho']);
   const notice = screen.getByRole('region', { name: 'Aviso de Privacidad' });

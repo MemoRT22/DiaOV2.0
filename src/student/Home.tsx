@@ -1,4 +1,4 @@
-import { ArrowRight, ChevronRight, Compass, PartyPopper, ScanQrCode, Sparkles, Trophy, X } from 'lucide-react';
+import { ChevronRight, Compass, PartyPopper, ScanQrCode, Sparkles, Trophy, X } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { buttonClasses, PageSkeleton } from '../components/ui';
@@ -178,24 +178,19 @@ export default function Home() {
   );
 }
 
-/** What comes after the hero today, as a mini trajectory. Tapping it opens Mi ruta. */
+/** What comes after the hero today, as a mini trajectory. */
 function LaterToday({ stops }: { stops: Journey['upcoming'] }) {
   return (
     <section aria-label="Después en tu ruta" className="animate-fade-up">
-      <div className="mb-2 flex items-baseline justify-between">
-        <h2 className="text-xs font-extrabold uppercase tracking-[0.18em] text-ink-muted">Después en tu ruta</h2>
-        <Link to="/ruta" className="inline-flex min-h-11 items-center gap-1 text-sm font-semibold text-fg-brand">
-          Ver mi ruta
-          <ArrowRight className="h-4 w-4" aria-hidden />
-        </Link>
-      </div>
+      {/* No «Ver mi ruta» here: the hero right above already offers it (and so does the tab bar). */}
+      <h2 className="mb-2 text-xs font-extrabold uppercase tracking-[0.18em] text-ink-muted">Después en tu ruta</h2>
       <ol className="space-card divide-y divide-line overflow-hidden">
         {stops.map(({ reservation, session }) => (
           <li key={reservation.id} className="flex items-center gap-3 px-4 py-3">
             <span className="w-12 shrink-0 font-display text-base font-extrabold">{formatTime(session.starts_at)}</span>
             <span className="h-2.5 w-2.5 shrink-0 rounded-full border-2 border-primary-500" aria-hidden />
             <span className="min-w-0 flex-1">
-              <span className="block truncate text-sm font-semibold">{session.title}</span>
+              <span className="line-clamp-2 text-sm font-semibold leading-snug">{session.title}</span>
               {session.location && <span className="block truncate text-xs text-ink-muted">{formatPlace(session.location)}</span>}
             </span>
           </li>

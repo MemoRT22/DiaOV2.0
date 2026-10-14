@@ -117,8 +117,9 @@ export default function NextStopCard({ board, journey, now }: { board: Board; jo
             </>
           )}
         </dl>
-        {/* Secondary on purpose: it never competes with the main action below. */}
-        {session.location && (
+        {/* While the main action is «scan» (live / pending) the map stays a quiet link; when the student still has to GET there,
+            «Cómo llegar» IS the main action (below), so the link would only repeat it. */}
+        {session.location && (live || pending) && (
           <MapLink
             to={mapForSession(session.id)}
             className={`mt-2 inline-flex min-h-11 items-center gap-1.5 rounded-full px-1 text-sm font-semibold underline-offset-4 hover:underline ${
@@ -153,16 +154,28 @@ export default function NextStopCard({ board, journey, now }: { board: Board; jo
               </Link>
             </>
           ) : (
-            <>
-              <Link to="/ruta" className={buttonClasses('primary')}>
-                Ver mi ruta
-              </Link>
-              {!bookedAll && board.window === 'open' && (
-                <Link to="/misiones" className={buttonClasses('secondary')}>
-                  Agregar misión
+            <div className="grid gap-2 sm:col-span-2">
+              {session.location ? (
+                <>
+                  <MapLink to={mapForSession(session.id)} className={buttonClasses('primary')}>
+                    <MapPinned className="h-5 w-5" aria-hidden />
+                    Cómo llegar
+                  </MapLink>
+                  <Link to="/ruta" className={buttonClasses('secondary')}>
+                    Ver mi ruta
+                  </Link>
+                </>
+              ) : (
+                <Link to="/ruta" className={buttonClasses('primary')}>
+                  Ver mi ruta
                 </Link>
               )}
-            </>
+              {!bookedAll && board.window === 'open' && (
+                <Link to="/misiones" className="inline-flex min-h-11 items-center justify-center text-sm font-semibold text-fg-brand">
+                  Agregar otra misión
+                </Link>
+              )}
+            </div>
           )}
         </div>
       </div>

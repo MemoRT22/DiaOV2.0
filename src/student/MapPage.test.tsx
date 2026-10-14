@@ -78,16 +78,17 @@ const zoneButton = (name: RegExp | string) => {
   return el;
 };
 
-test('Inicio → «Ver ubicación» opens THAT session: building highlighted, room and floor in words, and «Volver» comes back', async () => {
+test('Inicio → «Cómo llegar» opens THAT session: building highlighted, room and floor in words, and «Volver» comes back', async () => {
   const hub = session('hub', 30 * 60_000, 'Negocios HUB de IA y Ciberseguridad, Planta baja', { title: 'Cybersecurity Challenge' });
   m.board = board([hub]);
   app('/bitacora');
   const hero = await screen.findByRole('region', { name: 'Tu siguiente misión' });
   expect(within(hero).getByText('Escuela Internacional de Negocios')).toBeInTheDocument();
-  const link = within(hero).getByRole('link', { name: /Ver ubicación/ });
+  // Before the mission starts, «how do I get there» IS the main action; «Ver mi ruta» is the quieter second one.
+  const link = within(hero).getByRole('link', { name: /Cómo llegar/ });
   expect(link).toHaveAttribute('href', '/mapa?sesion=hub');
-  // the main action keeps its place: the map link is not the primary button
   expect(within(hero).getByRole('link', { name: 'Ver mi ruta' })).toBeInTheDocument();
+  expect(within(hero).queryByRole('link', { name: /Ver ubicación/ })).not.toBeInTheDocument();
 
   fireEvent.click(link);
   const card = await screen.findByRole('region', { name: 'Tu misión es aquí' });
@@ -99,6 +100,16 @@ test('Inicio → «Ver ubicación» opens THAT session: building highlighted, ro
 
   fireEvent.click(screen.getByRole('button', { name: 'Volver' }));
   expect(await screen.findByRole('heading', { name: 'Hola, Ana' })).toBeInTheDocument();
+});
+
+test('Inicio while the mission is in progress: the main action is to scan, and the map stays a quiet link', async () => {
+  const live = session('live', -5 * 60_000, 'Negocios HUB de IA y Ciberseguridad, Planta baja');
+  m.board = board([live], [reservation(live, 'in_progress')]);
+  app('/bitacora');
+  const hero = await screen.findByRole('region', { name: 'Misión en curso' });
+  expect(within(hero).getByRole('link', { name: /Escanear asistencia/ })).toBeInTheDocument();
+  expect(within(hero).getByRole('link', { name: /Ver ubicación/ })).toHaveAttribute('href', '/mapa?sesion=live');
+  expect(within(hero).queryByRole('link', { name: /Cómo llegar/ })).not.toBeInTheDocument();
 });
 
 test('Mi ruta → «Ver mapa»: missions numbered in time order, two in the same building share ONE readable marker', async () => {

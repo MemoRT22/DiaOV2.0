@@ -82,7 +82,7 @@ export default function MyRoute() {
         <Stations active={activeCount} max={board.max_reservations} wide />
       </div>
 
-      <WindowNotice board={board} />
+      <WindowNotice board={board} hideOpen />
 
       {total === 0 ? (
         <EmptyState

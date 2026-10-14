@@ -1,4 +1,5 @@
 import { Suspense } from 'react';
+import { MapPinned } from 'lucide-react';
 import { Navigate, Link, Outlet, useLocation } from 'react-router-dom';
 import { Backdrop } from '../components/themed';
 import { BootSpinner } from '../components/BootSpinner';
@@ -11,14 +12,6 @@ import ExitSurveyInvite from './ExitSurveyInvite';
 import { ExitSurveyProvider } from './ExitSurveyProvider';
 import { RafflePrizeProvider } from './RafflePrizeProvider';
 import WinnerNotice from './WinnerNotice';
-
-const initials = (name: string | undefined) =>
-  (name ?? '')
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((w) => w[0]?.toUpperCase())
-    .join('') || '·';
 
 export default function StudentLayout() {
   const { ready, profile } = useAuth();
@@ -39,7 +32,9 @@ export default function StudentLayout() {
     <ExitSurveyProvider enabled={consentOk}>
       <div className="relative min-h-dvh">
         <Backdrop />
-        {/* Slim header: vertical space on a phone is for the event, not for chrome. Sign-out lives in Bitácora. */}
+        {/* Slim header: vertical space on a phone is for the event, not for chrome. Sign-out lives in Bitácora.
+            The right slot is the campus map: «¿dónde queda?» is the question a student asks most during the event, and the
+            map has no tab of its own (Bitácora already has one, so the old initials badge only duplicated it). */}
         <header className="sticky top-0 z-30 border-b border-line/60 bg-surface-sunken/85 pt-[env(safe-area-inset-top)] backdrop-blur-md">
           <div className="mx-auto flex h-12 max-w-2xl items-center justify-between px-4">
             <div className="flex min-w-0 items-center gap-2">
@@ -48,11 +43,17 @@ export default function StudentLayout() {
             </div>
             {consentOk && (
               <Link
-                to="/pasaporte"
-                aria-label={`Mi bitácora, ${profile.display_name}`}
-                className="flex h-10 w-10 items-center justify-center rounded-full bg-primary-500/20 text-xs font-extrabold text-fg-brand ring-1 ring-primary-500/50"
+                to="/mapa"
+                aria-label="Mapa del campus"
+                aria-current={location.pathname === '/mapa' ? 'page' : undefined}
+                className={`inline-flex h-11 items-center gap-1.5 rounded-full px-3.5 text-xs font-extrabold ring-1 transition-colors ${
+                  location.pathname === '/mapa'
+                    ? 'bg-primary-500 text-on-primary ring-primary-500'
+                    : 'bg-primary-500/15 text-fg-brand ring-primary-500/45 hover:bg-primary-500/25'
+                }`}
               >
-                {initials(profile.display_name)}
+                <MapPinned className="h-4 w-4" aria-hidden />
+                Mapa
               </Link>
             )}
           </div>
