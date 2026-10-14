@@ -42,7 +42,6 @@ DECLARE
   pid uuid[]:=ARRAY['b2234695-0a1c-458f-b56f-7ab1ccdb2a95','7f99a26f-57de-47a8-b6cf-309d4e93aea9','c0d8426c-50e0-4e59-b8fd-f023ec15af08']::uuid[];
   names text[]:=ARRAY['Biotecnología','Ingeniería en Tecnologías de la Información e Inteligencia Artificial','Negocios Internacionales'];
   offsets int[]:=ARRAY[259200,360,301,300,0,-600,-4200,-4800,-4801];
-  expected text[]:=ARRAY['CHECKIN_NOT_OPEN','CHECKIN_NOT_OPEN','CHECKIN_NOT_OPEN','ok','ok','ok','ok','ok','CHECKIN_CLOSED'];
   a jsonb; rec jsonb; result jsonb; again jsonb; admin_act jsonb; fallback jsonb; own_acts jsonb[]; before_count int; i int; j int;
   rid uuid; category_name text; other_demo jsonb; coord uuid:=gen_random_uuid(); snapshot_before text;
   visibility_states text[]:=ARRAY['none','vigente','cancelada_alumno','cambiada','cancelada_sesion','expirada'];
@@ -124,14 +123,12 @@ BEGIN
         CASE WHEN offsets[j]<-3600 THEN now() ELSE NULL END);
       before_count:=(SELECT count(*) FROM attendances WHERE participant_id=pid[1]);
       result:=pg_temp.as_student(uid[1],format('select check_in(%L)',CASE WHEN i=1 THEN a->>'qr_token' ELSE a->>'manual_code' END));
-      IF expected[j]='ok' THEN
-        PERFORM pg_temp.assert_true(result ? 'attendance_id' AND (result->>'credits_granted')::int=2,
-          'boundary offset seconds '||offsets[j]||' method '||i);
-      ELSE
-        PERFORM pg_temp.assert_true(result->>'error'=expected[j] AND
-          (SELECT count(*) FROM attendances WHERE participant_id=pid[1])=before_count,
-          'boundary rejection offset seconds '||offsets[j]||' method '||i);
-      END IF;
+      PERFORM pg_temp.assert_true(
+        result ? 'attendance_id'
+        AND (result->>'credits_granted')::int=2
+        AND (SELECT count(*) FROM attendances WHERE participant_id=pid[1])=before_count+1,
+        'checkin without schedule gate offset seconds '||offsets[j]||' method '||i
+      );
     END LOOP;
   END LOOP;
   a:=pg_temp.activity(ed,divs[1],NULL,0,60);
@@ -172,17 +169,17 @@ BEGIN
   INSERT INTO reservations(participant_id,session_id,activity_id) VALUES(pid[1],rid,(a->>'activity')::uuid);
   result:=pg_temp.as_student(uid[1],format('select check_in(%L)',a->>'qr_token'));
   PERFORM pg_temp.assert_true(result->>'session_id'=a->>'session','legitimate expired reservation preferred to future session');
-  -- The configuration drives the window; it is not hardcoded to 5/20.
-  UPDATE editions SET checkin_open_before_minutes=10,checkin_close_after_minutes=30 WHERE id=ed;
+  -- Window settings retained for compatibility do not gate operational attendance.
+  UPDATE editions SET checkin_open_before_minutes=0,checkin_close_after_minutes=0 WHERE id=ed;
   a:=pg_temp.activity(ed,divs[1],NULL,360,60);
   INSERT INTO reservations(participant_id,session_id,activity_id) VALUES(pid[1],(a->>'session')::uuid,(a->>'activity')::uuid);
   result:=pg_temp.as_student(uid[1],format('select check_in(%L)',a->>'manual_code'));
-  PERFORM pg_temp.assert_true(result ? 'attendance_id','configured 10 minute opening respected');
-  a:=pg_temp.activity(ed,divs[1],NULL,-5100,60);
+  PERFORM pg_temp.assert_true(result ? 'attendance_id','future checkin with zero opening allowance');
+  a:=pg_temp.activity(ed,divs[1],NULL,-7200,60);
   INSERT INTO reservations(participant_id,session_id,activity_id,status,ended_at)
   VALUES(pid[1],(a->>'session')::uuid,(a->>'activity')::uuid,'expirada',now());
   result:=pg_temp.as_student(uid[1],format('select check_in(%L)',a->>'qr_token'));
-  PERFORM pg_temp.assert_true(result ? 'attendance_id','configured 30 minute closure respected');
+  PERFORM pg_temp.assert_true(result ? 'attendance_id','past checkin with zero closing allowance');
   PERFORM pg_temp.assert_true(NOT has_function_privilege('anon','public.set_activity_audience(uuid,text)','EXECUTE')
     AND NOT has_function_privilege('anon','public.activity_audience(uuid)','EXECUTE'),'audience RPC permissions');
   INSERT INTO auth.users(id,instance_id,aud,role,email,raw_app_meta_data,raw_user_meta_data,created_at,updated_at)

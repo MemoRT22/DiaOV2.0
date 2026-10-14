@@ -97,19 +97,19 @@ BEGIN
     RAISE EXCEPTION 'STUDENT_FLEX_FAIL[doble asistencia]'; END IF;
   n := n + 2;
 
-  -- 2) Una reserva futura no autoriza el check-in antes de abrir la ventana.
+  -- 2) Se acepta check-in con reservacion futura cuando el facilitador presenta el QR.
   v := pg_temp.run(ub, format($q$select reserve_session(%L)$q$, f1->>'ses'));
   IF v LIKE 'ERR:%' THEN RAISE EXCEPTION 'STUDENT_FLEX_FAIL[reservar futura: %]', v; END IF;
   r_b_f1 := v::jsonb->>'reservation_id';
   v := pg_temp.run(ub, format($q$select check_in(%L)$q$, f1->>'qr'));
-  IF v <> 'ERR:CHECKIN_NOT_OPEN' THEN RAISE EXCEPTION 'STUDENT_FLEX_FAIL[check-in muy temprano: %]', v; END IF;
+  IF v LIKE 'ERR:%' OR (v::jsonb->>'already_registered') <> 'false' THEN RAISE EXCEPTION 'STUDENT_FLEX_FAIL[check-in futuro debe aceptarse: %]', v; END IF;
   n := n + 2;
 
-  -- 3) La ventana cierra 20 minutos después del final.
+  -- 3) Una reservacion valida permite registrar asistencia despues de la hora programada.
   INSERT INTO reservations (participant_id, session_id, activity_id)
   SELECT p.id, (e1->>'ses')::uuid, (e1->>'act')::uuid FROM participants p WHERE p.auth_user_id = ua::uuid RETURNING id::text INTO r_a_e1;
   v := pg_temp.run(ua, format($q$select check_in(%L)$q$, e1->>'qr'));
-  IF v <> 'ERR:CHECKIN_CLOSED' THEN RAISE EXCEPTION 'STUDENT_FLEX_FAIL[check-in tardío: %]', v; END IF;
+  IF v LIKE 'ERR:%' OR (v::jsonb->>'already_registered') <> 'false' THEN RAISE EXCEPTION 'STUDENT_FLEX_FAIL[check-in despues del horario debe aceptarse: %]', v; END IF;
   n := n + 1;
 
   -- 5) código inválido, 6) sin reservación, 7) sesión cancelada, 8) demo/real
