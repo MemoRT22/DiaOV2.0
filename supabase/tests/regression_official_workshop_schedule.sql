@@ -8,6 +8,7 @@ DECLARE
   v_edition uuid := (SELECT id FROM public.editions WHERE is_active);
   v_career uuid;
   v_payload jsonb;
+  v_payload_15 jsonb;
   v_sub_15 uuid;
   v_sub_30 uuid;
   v_sub_60 uuid;
@@ -18,6 +19,9 @@ DECLARE
   v_reserved_session uuid;
   v_ids_before uuid[];
   v_ids_after uuid[];
+  v_ids_15_initial uuid[];
+  v_ids_15_at_30 uuid[];
+  v_ids_15_back_at_15 uuid[];
   v_times_before tstzrange[];
   v_error text;
 BEGIN
@@ -85,9 +89,10 @@ BEGIN
     'room_space','Aula 1', 'requirements',null, 'notes',null,
     'career_ids',jsonb_build_array(v_career));
 
-  v_sub_15 := (public.create_workshop_submission_internal(v_payload || jsonb_build_object(
+  v_payload_15 := v_payload || jsonb_build_object(
     'activity_type','vida_universitaria','experience_category','otra','career_ids','[]'::jsonb,
-    'session_duration_minutes',15,'title','Calendario 15'))->>'submission_id')::uuid;
+    'session_duration_minutes',15,'title','Calendario 15');
+  v_sub_15 := (public.create_workshop_submission_internal(v_payload_15)->>'submission_id')::uuid;
   v_sub_30 := (public.create_workshop_submission_internal(v_payload || jsonb_build_object('title','Calendario 30'))->>'submission_id')::uuid;
   v_sub_60 := (public.create_workshop_submission_internal(v_payload || jsonb_build_object(
     'session_duration_minutes',60,'title','Calendario 60'))->>'submission_id')::uuid;
@@ -107,6 +112,62 @@ BEGIN
        EXCEPT SELECT starts_at, ends_at FROM public.activity_sessions WHERE activity_id = expected.activity_id)
     )
   ) THEN RAISE EXCEPTION 'PUBLISHED_SCHEDULE_MISMATCH'; END IF;
+
+  -- 15 -> 30: al reducir seis sesiones a cuatro se conservan los cuatro IDs
+  -- reutilizables; solamente desaparecen las dos sesiones excedentes sin relaciones.
+  SELECT array_agg(id ORDER BY starts_at) INTO v_ids_15_initial
+  FROM public.activity_sessions WHERE activity_id = v_act_15;
+  PERFORM public.workshop_admin_edit_internal(v_actor, v_sub_15,
+    v_payload_15 || jsonb_build_object('session_duration_minutes',30,'title','Calendario 15 a 30'));
+  SELECT array_agg(id ORDER BY starts_at) INTO v_ids_15_at_30
+  FROM public.activity_sessions WHERE activity_id = v_act_15;
+  IF cardinality(v_ids_15_at_30) <> 4
+     OR v_ids_15_at_30 <> v_ids_15_initial[1:4]
+     OR (SELECT published_activity_id FROM public.workshop_submissions WHERE id = v_sub_15) <> v_act_15
+     OR EXISTS (
+       (SELECT starts_at, ends_at FROM public.activity_sessions WHERE activity_id = v_act_15
+        EXCEPT SELECT starts_at, ends_at FROM public.official_workshop_session_slots(
+          (SELECT event_date FROM public.editions WHERE id = v_edition), 30))
+       UNION ALL
+       (SELECT starts_at, ends_at FROM public.official_workshop_session_slots(
+          (SELECT event_date FROM public.editions WHERE id = v_edition), 30)
+        EXCEPT SELECT starts_at, ends_at FROM public.activity_sessions WHERE activity_id = v_act_15)
+     )
+     OR EXISTS (
+       SELECT 1 FROM public.activity_sessions a
+       JOIN public.activity_sessions b ON a.id::text < b.id::text
+       WHERE a.activity_id = v_act_15 AND b.activity_id = v_act_15
+         AND tstzrange(a.starts_at, a.ends_at, '[)') && tstzrange(b.starts_at, b.ends_at, '[)')
+     ) THEN
+    RAISE EXCEPTION 'EDIT_15_TO_30_LOST_REUSABLE_IDS_OR_CREATED_CONFLICTS';
+  END IF;
+
+  -- 30 -> 15: las cuatro sesiones existentes conservan sus IDs y se agregan
+  -- únicamente las dos sesiones nuevas necesarias para completar el calendario.
+  PERFORM public.workshop_admin_edit_internal(v_actor, v_sub_15,
+    v_payload_15 || jsonb_build_object('title','Calendario 30 a 15'));
+  SELECT array_agg(id ORDER BY starts_at) INTO v_ids_15_back_at_15
+  FROM public.activity_sessions WHERE activity_id = v_act_15;
+  IF cardinality(v_ids_15_back_at_15) <> 6
+     OR NOT v_ids_15_at_30 <@ v_ids_15_back_at_15
+     OR (SELECT published_activity_id FROM public.workshop_submissions WHERE id = v_sub_15) <> v_act_15
+     OR EXISTS (
+       (SELECT starts_at, ends_at FROM public.activity_sessions WHERE activity_id = v_act_15
+        EXCEPT SELECT starts_at, ends_at FROM public.official_workshop_session_slots(
+          (SELECT event_date FROM public.editions WHERE id = v_edition), 15))
+       UNION ALL
+       (SELECT starts_at, ends_at FROM public.official_workshop_session_slots(
+          (SELECT event_date FROM public.editions WHERE id = v_edition), 15)
+        EXCEPT SELECT starts_at, ends_at FROM public.activity_sessions WHERE activity_id = v_act_15)
+     )
+     OR EXISTS (
+       SELECT 1 FROM public.activity_sessions a
+       JOIN public.activity_sessions b ON a.id::text < b.id::text
+       WHERE a.activity_id = v_act_15 AND b.activity_id = v_act_15
+         AND tstzrange(a.starts_at, a.ends_at, '[)') && tstzrange(b.starts_at, b.ends_at, '[)')
+     ) THEN
+    RAISE EXCEPTION 'EDIT_30_TO_15_LOST_EXISTING_IDS_OR_CREATED_CONFLICTS';
+  END IF;
 
   SELECT array_agg(id ORDER BY starts_at), array_agg(tstzrange(starts_at, ends_at, '[)') ORDER BY starts_at)
   INTO v_ids_before, v_times_before FROM public.activity_sessions WHERE activity_id = v_act_30;
