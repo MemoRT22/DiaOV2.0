@@ -50,5 +50,33 @@ test('Staff: two quick submits send one request', async () => {
 test('Staff: a successful sign-in is unchanged', async () => {
   signInStaff.mockResolvedValue(undefined);
   await submit();
-  await waitFor(() => expect(signInStaff).toHaveBeenCalledWith('staff@anahuac.mx', 'clave-staff-1'));
+  await waitFor(() => expect(signInStaff).toHaveBeenCalledWith('staff@anahuac.mx', 'clave-staff-1', { signal: expect.any(AbortSignal) }));
+});
+
+test('Staff: leaving the screen aborts the sign-in (retries stop and an in-flight result is discarded), and shows nothing afterwards', async () => {
+  let signal: AbortSignal | undefined;
+  let release: () => void = () => undefined;
+  signInStaff.mockImplementation((_email: string, _password: string, options?: { signal?: AbortSignal }) => new Promise<void>((_resolve, reject) => {
+    signal = options?.signal;
+    release = () => reject(new Error('ABORTED'));
+  }));
+  const view = render(<MemoryRouter><AdminLogin /></MemoryRouter>);
+  await userEvent.type(screen.getByLabelText('Correo'), 'staff@anahuac.mx');
+  await userEvent.type(screen.getByLabelText('Contraseña'), 'clave-staff-1');
+  fireEvent.click(screen.getByRole('button', { name: 'Entrar' }));
+  await waitFor(() => expect(signal).toBeDefined());
+  expect(signal!.aborted).toBe(false);
+  view.unmount();
+  expect(signal!.aborted).toBe(true); // se canceló al desmontar
+  release();
+  await Promise.resolve();
+  expect(console.error).not.toHaveBeenCalled(); // sin avisos de estado en un componente desmontado
+});
+
+test('Staff: an aborted attempt never shows an error message', async () => {
+  signInStaff.mockRejectedValue(new Error('ABORTED'));
+  await submit();
+  await waitFor(() => expect(signInStaff).toHaveBeenCalled());
+  expect(screen.queryByRole('alert')).toBeNull();
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Entrar' })).toBeEnabled());
 });

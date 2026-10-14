@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { handleRequest, TemporaryError, upstreamTemporary, type Deps, type ParticipantRow } from './handler.ts';
+import { handleRequest, TemporaryError, unwrapQuery, upstreamTemporary, type Deps, type ParticipantRow } from './handler.ts';
 
 const url = 'https://example.test/functions/v1/student-access';
 const post = (body: unknown) => new Request(url, {
@@ -615,4 +615,49 @@ test('retries on the same email after a lost link converge on the same account a
   assert.equal(world.calls.filter((call) => call === 'createUser').length, 1);
   assert.ok(!world.calls.includes('updateUser'));
   assert.ok(!world.calls.includes('deleteUser'));
+});
+
+// ── Catálogo: los errores HTTP de las consultas de carreras y preparatorias se conservan y se clasifican ─────────────────────────
+
+const catalogWith = (careers: () => Promise<never>, highSchools?: () => Promise<never>) => {
+  const f = fixture();
+  f.deps.careers = careers as Deps['careers'];
+  if (highSchools) f.deps.highSchools = highSchools as Deps['highSchools'];
+  return f;
+};
+
+test('catalog: a 429/503 on either query is answered as 429/503 with Retry-After, never as SERVER_ERROR', async () => {
+  for (const status of [429, 503] as const) {
+    for (const which of ['careers', 'highSchools'] as const) {
+      const failing = async () => { throw new TemporaryError(status, 12); };
+      const f = which === 'careers' ? catalogWith(failing) : catalogWith(undefined as never, failing);
+      if (which === 'highSchools') f.deps.careers = async () => [];
+      const response = await handleRequest(post({ action: 'catalog' }), f.deps);
+      assert.equal(response.status, status, `${which} ${status}`);
+      assert.equal(retryAfterOf(response), 12);
+      assert.deepEqual(await response.json(), { error: status === 429 ? 'RATE_LIMITED' : 'TEMPORARILY_UNAVAILABLE', retry_after: 12 });
+    }
+  }
+});
+
+test('catalog: when one query fails temporarily and the other fails otherwise, the temporary error wins', async () => {
+  const f = catalogWith(async () => { throw new Error('boom'); }, async () => { throw new TemporaryError(429, 9); });
+  const response = await handleRequest(post({ action: 'catalog' }), f.deps);
+  assert.equal(response.status, 429);
+  const other = catalogWith(async () => { throw new Error('boom'); }, async () => { throw new Error('también'); });
+  assert.equal((await handleRequest(post({ action: 'catalog' }), other.deps)).status, 500); // un fallo que no es temporal sigue siéndolo
+});
+
+test('unwrapQuery keeps the HTTP status of a PostgREST result: 429, 5xx and a lost connection are temporary, a data error is not', () => {
+  const failure = (error: object, status?: number) => () => unwrapQuery({ data: null, error, status });
+  for (const [error, status, expected] of [
+    [{ message: 'rate limit' }, 429, 429], [{ message: 'upstream' }, 503, 503], [{ message: 'oops' }, 500, 503],
+    [{ message: 'FetchError: fetch failed' }, 0, 503], [{ code: 'over_request_rate_limit', message: 'x' }, undefined, 429],
+  ] as const) {
+    assert.throws(failure(error, status), (cause) => cause instanceof TemporaryError && cause.status === expected, JSON.stringify(error));
+  }
+  const dataError = { code: '42501', message: 'permission denied' };
+  assert.throws(failure(dataError, 403), (cause) => cause === dataError);
+  assert.deepEqual(unwrapQuery({ data: [{ id: 'h1' }], error: null, status: 200 }), [{ id: 'h1' }]);
+  assert.deepEqual(unwrapQuery({ data: null, error: null, status: 200 }), []);
 });

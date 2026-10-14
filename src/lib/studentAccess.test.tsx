@@ -349,3 +349,67 @@ test('leaving the screen cancels the sign-in retries', async () => {
   expect(signIn.mock.calls.length).toBeLessThanOrEqual(2);
   vi.useRealTimers();
 });
+
+test('Staff: leaving the screen cancels the retries — no further sign-in attempt is ever made', async () => {
+  const { result } = renderHook(() => useAuth(), { wrapper });
+  vi.useFakeTimers();
+  const controller = new AbortController();
+  signIn.mockResolvedValue(authFailure({ status: 429, name: 'AuthApiError' }));
+  const attempt = result.current.signInStaff('staff@anahuac.mx', 'clave-staff-1', { signal: controller.signal }).catch((cause) => cause);
+  await vi.advanceTimersByTimeAsync(10);
+  expect(signIn).toHaveBeenCalledTimes(1);
+  controller.abort(); // la persona abandonó la pantalla mientras esperaba el reintento
+  await vi.advanceTimersByTimeAsync(120_000);
+  expect((await attempt).message).toBe('ABORTED');
+  expect(signIn).toHaveBeenCalledTimes(1); // el reintento programado nunca se ejecutó
+  vi.useRealTimers();
+});
+
+test('an abandoned sign-in that was already in flight does not leave a session behind (Staff and students)', async () => {
+  for (const kind of ['staff', 'participant'] as const) {
+    vi.mocked(supabase.auth.signOut).mockClear();
+    const { result } = renderHook(() => useAuth(), { wrapper });
+    const controller = new AbortController();
+    let finish: (value: unknown) => void = () => undefined;
+    signIn.mockImplementationOnce(() => new Promise<never>((resolve) => { finish = resolve as (value: unknown) => void; }));
+    const run = kind === 'staff' ? result.current.signInStaff : result.current.signInParticipant;
+    const attempt = run('a@b.co', 'clave-correcta-1', { signal: controller.signal }).catch((cause: Error) => cause);
+    controller.abort(); // se abandona con la petición ya enviada: no se puede cancelar, pero su resultado no se conserva
+    finish({ data: { user: { app_metadata: { kind: kind === 'staff' ? 'staff' : 'participant' } }, session: {} }, error: null });
+    expect((await attempt as Error).message).toBe('ABORTED');
+    expect(supabase.auth.signOut).toHaveBeenCalledWith({ scope: 'local' });
+  }
+});
+
+test('a sign-in that is NOT abandoned is unchanged: it keeps its session and never signs out', async () => {
+  const { result } = renderHook(() => useAuth(), { wrapper });
+  vi.mocked(supabase.auth.signOut).mockClear();
+  signIn.mockResolvedValueOnce({ data: { user: { app_metadata: { kind: 'staff' } }, session: {} }, error: null } as never);
+  await expect(result.current.signInStaff('staff@anahuac.mx', 'clave-staff-1', { signal: new AbortController().signal })).resolves.toBeUndefined();
+  expect(supabase.auth.signOut).not.toHaveBeenCalled();
+});
+
+test('catalog: a 429/503 keeps its status and Retry-After, retries are bounded, and a 4xx data error is not retried', async () => {
+  vi.useFakeTimers();
+  fetchMock.mockResolvedValue(http(429, { error: 'RATE_LIMITED', retry_after: 6 }, { 'Retry-After': '6' }));
+  const limitedCatalog = studentAccess.catalog().catch((cause) => cause);
+  await vi.advanceTimersByTimeAsync(60_000);
+  const error = await limitedCatalog;
+  expect(error).toBeInstanceOf(AccessError);
+  expect(error).toMatchObject({ message: 'RATE_LIMITED', retryAfterSeconds: 6 });
+  expect(fetchMock).toHaveBeenCalledTimes(3); // 1 + 2 reintentos, ni uno más
+
+  fetchMock.mockClear();
+  fetchMock.mockResolvedValue(http(503, { error: 'TEMPORARILY_UNAVAILABLE', retry_after: 5 }, { 'Retry-After': '5' }));
+  const down = studentAccess.catalog().catch((cause) => cause);
+  await vi.advanceTimersByTimeAsync(60_000);
+  expect(await down).toMatchObject({ message: 'TEMPORARILY_UNAVAILABLE', retryAfterSeconds: 5 });
+  expect(fetchMock).toHaveBeenCalledTimes(3);
+
+  fetchMock.mockClear();
+  fetchMock.mockResolvedValue(http(500, { error: 'SERVER_ERROR' }));
+  const internal = studentAccess.catalog().catch((cause) => cause);
+  await vi.advanceTimersByTimeAsync(60_000);
+  expect(await internal).toMatchObject({ message: 'TEMPORARILY_UNAVAILABLE' }); // ya no es un SERVER_ERROR genérico
+  vi.useRealTimers();
+});

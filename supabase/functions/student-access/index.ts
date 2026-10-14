@@ -1,5 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.45.4';
-import { handleRequest, upstreamTemporary, type Deps } from './handler.ts';
+import { handleRequest, unwrapQuery, upstreamTemporary, type Deps } from './handler.ts';
 
 const url = Deno.env.get('SUPABASE_URL');
 const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
@@ -43,19 +43,15 @@ const deps: Deps = {
     return data;
   },
   careers: async () => {
-    const { data, error } = await need().from('careers').select('id, name, divisions(name)')
-      .eq('is_active', true).eq('is_demo', false).order('name');
-    if (error) throw error;
-    return (data ?? []).map((row: { id: string; name: string; divisions: { name: string } | { name: string }[] | null }) => ({
+    // El estado HTTP de la consulta se conserva: un 429/503 llega al navegador como tal, no como un SERVER_ERROR genérico.
+    const rows = unwrapQuery(await need().from('careers').select('id, name, divisions(name)')
+      .eq('is_active', true).eq('is_demo', false).order('name')) as { id: string; name: string; divisions: { name: string } | { name: string }[] | null }[];
+    return rows.map((row) => ({
       id: row.id, name: row.name,
       division: (Array.isArray(row.divisions) ? row.divisions[0]?.name : row.divisions?.name) ?? null,
     }));
   },
-  highSchools: async () => {
-    const { data, error } = await need().from('high_schools').select('id, name').eq('is_active', true).order('name');
-    if (error) throw error;
-    return data ?? [];
-  },
+  highSchools: async () => unwrapQuery(await need().from('high_schools').select('id, name').eq('is_active', true).order('name')) as { id: string; name: string }[],
   getUser: async (id) => {
     const { data, error } = await need().auth.admin.getUserById(id);
     // «No existe» solo es un 404; un límite o una caída NO se confunde con eso (se crearía una identidad duplicada).

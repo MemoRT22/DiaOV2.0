@@ -103,16 +103,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    * informa como contraseña incorrecta: un 429 nunca se hace pasar por eso. Un fallo no cierra una sesión que ya existiera.
    */
   const passwordSignIn = useCallback(async (email: string, password: string, signal?: AbortSignal) => {
+    let data: Awaited<ReturnType<typeof supabase.auth.signInWithPassword>>['data'];
     try {
-      return await retryTransient(async () => {
-        const { data, error } = await supabase.auth.signInWithPassword({ email: email.trim().toLowerCase(), password });
+      data = await retryTransient(async () => {
+        const { data: result, error } = await supabase.auth.signInWithPassword({ email: email.trim().toLowerCase(), password });
         if (error) throw classifyAuthError(error as { status?: number; code?: string; name?: string; message?: string }) ?? error;
-        return data;
+        return result;
       }, { signal });
     } catch (cause) {
       if (cause instanceof RetryAborted) throw new Error('ABORTED');
       return { user: null, failure: cause } as const;
     }
+    // La petición ya en vuelo no se puede cancelar: si la persona abandonó la pantalla mientras tanto, la sesión que acaba de crearse
+    // se cierra (solo esta, `local`) para que una operación abandonada no termine dejando una sesión establecida.
+    if (signal?.aborted) {
+      await supabase.auth.signOut({ scope: 'local' }).catch(() => undefined);
+      throw new Error('ABORTED');
+    }
+    return data;
   }, []);
 
   const signInParticipant = useCallback(async (email: string, password: string, options: SignInOptions = {}) => {

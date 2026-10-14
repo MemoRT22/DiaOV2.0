@@ -13,10 +13,13 @@ Alcance: **solo autenticación y recuperación de acceso** (identificar correo, 
 
 La pantalla muestra «**Estamos recibiendo muchas solicitudes** — Hay varios alumnos entrando a la plataforma al mismo tiempo. Tu información se conserva. Intenta nuevamente en unos momentos.» con «Volver a intentar». Si el servidor dio `Retry-After` se respeta **tal cual** (segundos o fecha HTTP; un 300 es 5 minutos, no 2) con una cuenta atrás calculada contra el reloj; el único tope es de cordura, **1 hora**, para que un valor corrupto no deje el botón bloqueado indefinidamente. Los reintentos *automáticos* no esperan ese plazo en segundo plano (ver abajo); si no dio nada, una espera corta con variación aleatoria (8–15 s; 5–10 s para 503; 0 s para falta de red). El botón nunca queda bloqueado más allá de ese tiempo. Se conservan los campos, el correo identificado, el consentimiento y el paso.
 
+## Catálogo (`student-access`)
+Las consultas de carreras y preparatorias conservan el estado HTTP de PostgREST (`unwrapQuery`): 429, 5xx o sin respuesta salen como `429`/`503` con `Retry-After`, no como `SERVER_ERROR` genérico; si una consulta falla de forma temporal y la otra de otra forma, manda lo temporal. En el navegador el catálogo conserva sus 2 reintentos acotados.
+
 ## Reintentos
 - **Automáticos y acotados** (2 reintentos, espera exponencial ×2 con ±30 % de azar, nunca menos que `Retry-After`; si el servidor pide más de 20 s no se espera en segundo plano y se avisa a la persona): `identify`, `catalog` e **inicio de sesión** (no cambia datos).
 - **Nunca automáticos:** `setup_password` y `register` (el resultado puede ser incierto). Los reintenta la persona con «Volver a intentar».
-- Todo se cancela si la persona abandona el formulario (`AbortSignal`); un solo envío a la vez por formulario (clics repetidos se ignoran).
+- Todo se cancela si la persona abandona el formulario (`AbortSignal`), **incluida la entrada de Staff** (`AdminLogin`). Una petición de inicio de sesión ya en vuelo no se puede cancelar: si al terminar la persona ya abandonó la pantalla, esa sesión se cierra (solo esa, `local`) y la operación termina como `ABORTED`, sin mensajes; así una operación abandonada no deja una sesión establecida; un solo envío a la vez por formulario (clics repetidos se ignoran).
 
 ## Recuperación de registros a medias
 1. **Cuenta creada, login limitado:** el paso «Crear contraseña»/«Registrarme» guarda que la cuenta ya existe, bloquea los campos y «Volver a intentar» repite **solo la entrada**.

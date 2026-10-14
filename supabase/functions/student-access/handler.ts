@@ -54,6 +54,17 @@ export function upstreamTemporary(info: { status?: number | null; code?: string 
   return null;
 }
 
+/**
+ * Resultado de una consulta de PostgREST (`{ data, error, status }`): un 429/5xx/sin respuesta se lanza como `TemporaryError`
+ * (el navegador lo reintenta con su cuenta atrás); cualquier otro error se propaga tal cual; sin error devuelve los datos.
+ */
+export function unwrapQuery<T>(result: { data: T | null; error: { status?: number; code?: string; name?: string; message?: string } | null; status?: number }): T {
+  if (result.error) {
+    throw upstreamTemporary({ ...result.error, status: result.error.status ?? result.status }) ?? result.error;
+  }
+  return (result.data ?? []) as T;
+}
+
 const asTemporary = (error: unknown): TemporaryError | null => {
   if (error instanceof TemporaryError) return error;
   if (error && typeof error === 'object') return upstreamTemporary(error as { status?: number; code?: string; name?: string; message?: string });
@@ -279,8 +290,11 @@ async function register(deps: Deps, body: Record<string, unknown>) {
 }
 
 async function catalog(deps: Deps) {
-  const [careers, high_schools] = await Promise.all([deps.careers(), deps.highSchools()]);
-  return json({ careers, high_schools });
+  const [careers, high_schools] = await Promise.allSettled([deps.careers(), deps.highSchools()]);
+  if (careers.status === 'fulfilled' && high_schools.status === 'fulfilled') return json({ careers: careers.value, high_schools: high_schools.value });
+  // Si una consulta falló por un límite o una caída y la otra por otra cosa, manda lo temporal: es lo que el navegador sabe reintentar.
+  const failures = [careers, high_schools].flatMap((result) => (result.status === 'rejected' ? [result.reason] : []));
+  throw failures.find((failure) => asTemporary(failure)) ?? failures[0];
 }
 
 export async function handleRequest(req: Request, deps: Deps): Promise<Response> {
