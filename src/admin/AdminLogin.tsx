@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { Alert, Button, Field } from '../components/ui';
 import { useAuth } from '../lib/auth';
@@ -11,17 +11,28 @@ export default function AdminLogin() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const inFlight = useRef(false); // un solo envío a la vez, aunque lleguen dos Enter seguidos
+  const controller = useRef<AbortController | null>(null);
+
+  // Si el personal abandona la pantalla, se cancelan los reintentos automáticos y una entrada en vuelo no deja sesión establecida.
+  useEffect(() => () => controller.current?.abort(), []);
 
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    if (inFlight.current) return;
+    inFlight.current = true;
     setError('');
     setSubmitting(true);
+    const mine = new AbortController();
+    controller.current = mine;
     try {
-      await signInStaff(email, password);
+      await signInStaff(email, password, { signal: mine.signal });
     } catch (cause) {
+      if (mine.signal.aborted || (cause instanceof Error && cause.message === 'ABORTED')) return;
       setError(friendlyError(cause));
     } finally {
-      setSubmitting(false);
+      inFlight.current = false;
+      if (!mine.signal.aborted) setSubmitting(false);
     }
   };
 
