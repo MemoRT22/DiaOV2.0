@@ -87,7 +87,7 @@ const drawAndConfirm = async () => {
 test('opens on the live draw, with three clear places and the prizes ready to draw', async () => {
   openConsole();
   await readyToDraw();
-  expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['Sorteo en vivo', 'Premios', 'Ganadores']);
+  expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['Sorteo en vivo', 'Premios', 'Ganadores', 'Encuesta de salida']);
   expect(screen.getByRole('tab', { name: 'Sorteo en vivo' })).toHaveAttribute('aria-selected', 'true');
   expect(stats().getByText(/premios por sortear de 16/).previousElementSibling).toHaveTextContent('16');
   expect(stats().getByText('participantes elegibles').previousElementSibling).toHaveTextContent('22');

@@ -303,6 +303,7 @@ BEGIN
   INSERT INTO participant_email_history(participant_id,edition_id,email,changed_by,reason) VALUES (pa,ed,'crud.a.viejo@test.invalid',coord,'prueba');
   cat := pg_temp.as_user(coord, $q$select save_raffle_category('{"name": "CRUD Categoría", "sort_order": 99, "rules": [{"total": 1}]}')$q$)::uuid;
   prize := pg_temp.as_user(coord, format($q$select save_raffle_prize('{"category_id": "%s", "name": "CRUD Premio", "quantity": 1, "is_active": true, "sort_order": 1}')$q$, cat))::uuid;
+  INSERT INTO exit_survey_responses(edition_id,participant_id,survey_version,is_demo,q1_prior_clarity,q2_workshop_rating,q3_post_clarity,q4_areas,q5_recommend) VALUES (ed,pa,exit_survey_version(),false,'sin_idea',4,'seguir_explorando',ARRAY['salud'],8); -- un resultado del sorteo solo existe para quien contestó la encuesta de salida
   INSERT INTO raffle_winners(edition_id,category_id,prize_id,participant_id,status,is_demo,confirmed_at) VALUES (ed,cat,prize,pa,'confirmado',false,now());
 
   IF pg_temp.as_user(staff, format('select participant_delete_preview(%L)', pa)) <> 'ERR:NOT_AUTHORIZED'

@@ -1,4 +1,6 @@
-import { Check, Ticket, Trophy } from 'lucide-react';
+import { Check, ClipboardList, Ticket, Trophy } from 'lucide-react';
+import { Link, useInRouterContext } from 'react-router-dom';
+import { buttonClasses } from '../components/ui';
 import { describeRules, nextTierHint, type MyRaffleStatus } from '../lib/raffleRules';
 import type { MyRafflePrize } from '../lib/raffleWinner';
 import PrizeCard from './PrizeCard';
@@ -8,7 +10,20 @@ import PrizeCard from './PrizeCard';
  * the category reached (always the highest one), the closest step up and how each category is unlocked.
  * Everything shown comes from the server; this card never decides the category.
  */
-export default function RaffleStatusCard({ raffle, prizes = [], verified = true, onRetry }: { raffle: MyRaffleStatus | null; prizes?: MyRafflePrize[]; verified?: boolean; onRetry?: () => void }) {
+/** Con el sorteo en pantalla pero la encuesta pendiente: lo que le falta, con acceso directo a contestarla. */
+function SurveyPending({ open }: { open: boolean }) {
+  const inRouter = useInRouterContext();
+  return (
+    <div className="rounded-theme border border-warning-500/50 bg-warning-500/10 p-4 text-center" data-testid="survey-pending">
+      <ClipboardList className="mx-auto h-6 w-6 text-fg-warning" aria-hidden />
+      <p className="mt-2 text-sm font-semibold">Ya tienes los sellos necesarios. Solo falta completar tu encuesta para participar.</p>
+      {open && inRouter && <Link to="/encuesta" className={buttonClasses('primary', 'mt-3 w-full sm:w-auto')}>Responder encuesta</Link>}
+      {!open && <p className="mt-1 text-xs text-ink-muted">La encuesta se abre el día del evento; la verás aquí y en tu Bitácora.</p>}
+    </div>
+  );
+}
+
+export default function RaffleStatusCard({ raffle, prizes = [], verified = true, onRetry, surveyOpen = true }: { raffle: MyRaffleStatus | null; prizes?: MyRafflePrize[]; verified?: boolean; onRetry?: () => void; surveyOpen?: boolean }) {
   const hint = raffle && !raffle.has_won ? nextTierHint(raffle) : null;
   return (
     <section id="premio" className="space-card scroll-mt-20 p-5" aria-label="Sorteo">
@@ -33,6 +48,7 @@ export default function RaffleStatusCard({ raffle, prizes = [], verified = true,
             <div className="rounded-theme border border-accent-500/40 bg-accent-500/10 p-4 text-center">
               <p className="text-sm font-semibold text-ink-muted">Tu categoría del sorteo</p>
               <p className="mt-1 text-xl font-extrabold text-fg-accent">{raffle.raffle_category_name}</p>
+              {raffle.raffle_eligible === true && <p className="mt-1 text-xs font-semibold text-fg-success">Ya participas en el sorteo.</p>}
             </div>
           ) : (
             <p className="text-sm font-semibold">Aún no entras al sorteo.</p>
@@ -47,6 +63,7 @@ export default function RaffleStatusCard({ raffle, prizes = [], verified = true,
               <dd className="font-display text-2xl font-extrabold text-fg-info">{raffle.university_life_stamps}</dd>
             </div>
           </dl>
+          {raffle.raffle_category_name && raffle.survey_completed === false && <SurveyPending open={surveyOpen} />}
           {hint ? (
             <p className="text-center text-sm text-ink-muted">{hint.text}</p>
           ) : (

@@ -7,6 +7,8 @@ import { useAuth } from '../lib/auth';
 import { useEdition } from '../edition/EditionProvider';
 import { usePublicTheme } from '../theme/PublicThemeProvider';
 import BottomNav from './BottomNav';
+import ExitSurveyInvite from './ExitSurveyInvite';
+import { ExitSurveyProvider } from './ExitSurveyProvider';
 import { RafflePrizeProvider } from './RafflePrizeProvider';
 import WinnerNotice from './WinnerNotice';
 
@@ -34,6 +36,7 @@ export default function StudentLayout() {
 
   return (
     <RafflePrizeProvider enabled={consentOk}>
+    <ExitSurveyProvider enabled={consentOk}>
       <div className="relative min-h-dvh">
         <Backdrop />
         {/* Slim header: vertical space on a phone is for the event, not for chrome. Sign-out lives in Bitácora. */}
@@ -65,7 +68,9 @@ export default function StudentLayout() {
 
         {consentOk && <BottomNav />}
         {consentOk && <WinnerNotice />}
+        {consentOk && <ExitSurveyInvite />}
       </div>
+    </ExitSurveyProvider>
     </RafflePrizeProvider>
   );
 }

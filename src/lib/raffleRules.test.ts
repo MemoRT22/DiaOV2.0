@@ -119,8 +119,16 @@ describe('normalizing the status payload', () => {
 
   it('still understands the previous payload (tickets, no categories)', () => {
     expect(normalizeRaffleStatus({ academic_tickets: 3, leadership_tickets: 1, raffle_category_name: null, has_won: false })).toEqual({
-      academic_stamps: 3, university_life_stamps: 1, total_stamps: 4, raffle_category: null, raffle_category_name: null, has_won: false, categories: [],
+      academic_stamps: 3, university_life_stamps: 1, total_stamps: 4, raffle_category: null, raffle_category_name: null, has_won: false, survey_completed: true, raffle_eligible: false, categories: [],
     });
     expect(normalizeRaffleStatus(null).total_stamps).toBe(0);
+  });
+
+  it('reads the exit-survey requirement: category by stamps stays visible while the survey is pending', () => {
+    const pending = normalizeRaffleStatus({ raffle_category: 'c', raffle_category_name: 'Galaxia', survey_completed: false, raffle_eligible: false });
+    expect(pending).toMatchObject({ raffle_category_name: 'Galaxia', survey_completed: false, raffle_eligible: false });
+    expect(normalizeRaffleStatus({ raffle_category: 'c', raffle_category_name: 'Galaxia', survey_completed: true, raffle_eligible: true })).toMatchObject({ survey_completed: true, raffle_eligible: true });
+    // un servidor anterior a la encuesta no inventa un requisito que no existe
+    expect(normalizeRaffleStatus({ raffle_category: 'c', raffle_category_name: 'Galaxia' })).toMatchObject({ survey_completed: true, raffle_eligible: true });
   });
 });

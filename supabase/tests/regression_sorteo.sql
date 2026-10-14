@@ -79,6 +79,11 @@ BEGIN
   UPDATE participant_profiles pp SET platform_consent_version = e.privacy_notice_version, platform_consent_at = now()
   FROM editions e WHERE e.id = active_edition_id() AND pp.participant_id = pid;
   INSERT INTO rs_ids VALUES ('u:' || p_key, u), ('p:' || p_key, pid);
+  -- Desde la encuesta de salida obligatoria, quien se sortea ya contestó. Lo que SÍ prueba que sin ella no se entra está en
+  -- regression_exit_survey.sql; aquí se conserva intacta la matriz de sellos.
+  INSERT INTO exit_survey_responses (edition_id, participant_id, survey_version, is_demo, q1_prior_clarity, q2_workshop_rating,
+    q3_post_clarity, q4_areas, q5_recommend)
+  VALUES (active_edition_id(), pid, exit_survey_version(), p_demo, 'sin_idea', 4, 'seguir_explorando', ARRAY['salud'], 8);
 END $f$;
 
 -- Taller con UNA sesión en curso de `p_minutes`. Los sellos de la sesión los fija la base según la duración.

@@ -54,7 +54,7 @@ export default function RafflePrizes({ ctx, changeSet, locked = false }: { ctx: 
               <div className="rf-cat-prizes">
                 {entries.map((entry) => <PrizeLine key={entry.item.key} entry={entry} winners={winners} loading={prizesLoading && !entry.prize} />)}
               </div>
-              {category && <p className="rf-cat-rule"><strong>Quién participa:</strong> {describeRules(categoryRules(category))}</p>}
+              {category && <p className="rf-cat-rule"><strong>Quién participa:</strong> {describeRules(categoryRules(category))}, y haber completado la encuesta de salida.</p>}
             </article>
           );
         })}

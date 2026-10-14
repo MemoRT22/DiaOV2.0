@@ -4,13 +4,15 @@ import { buttonClasses, PageSkeleton } from '../components/ui';
 import { useAuth } from '../lib/auth';
 import { fetchDivisions, fetchProgress } from '../lib/catalog';
 import { fetchMyRaffleStatus } from '../lib/raffleApi';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useRafflePrizes } from './RafflePrizeProvider';
 import { useLoad } from '../lib/useLoad';
 import { useParticipantSync } from '../lib/useParticipantSync';
 import { usePublicTheme } from '../theme/PublicThemeProvider';
 import { LOGBOOK, MISSION } from './copy';
+import ExitSurveyCard from './ExitSurveyCard';
+import { useExitSurvey } from './ExitSurveyProvider';
 import RaffleStatusCard from './RaffleStatusCard';
 import RankProgress from './RankProgress';
 import StampCollection from './StampCollection';
@@ -32,6 +34,14 @@ export default function PassportPage() {
     [],
   );
   useParticipantSync(reload);
+  // Al completar la encuesta (con la Bitácora ya abierta, p. ej. desde otra pestaña) el estado del sorteo cambia en el servidor: se vuelve a leer.
+  const survey = useExitSurvey();
+  const surveyDone = survey.status?.completed ?? null;
+  const wasDone = useRef(surveyDone);
+  useEffect(() => {
+    if (surveyDone && wasDone.current === false) reload();
+    wasDone.current = surveyDone;
+  }, [surveyDone, reload]);
   const { prizes, verified, refresh } = useRafflePrizes();
   const { hash } = useLocation();
   // Abrir la Bitácora es el lugar donde se consulta el premio: se pone al día (una lectura; la ya en curso se reutiliza).
@@ -113,7 +123,9 @@ export default function PassportPage() {
         </p>
       </section>
 
-      <RaffleStatusCard raffle={raffle} prizes={prizes} verified={verified} onRetry={() => void refresh()} />
+      <ExitSurveyCard />
+
+      <RaffleStatusCard raffle={raffle} prizes={prizes} verified={verified} onRetry={() => void refresh()} surveyOpen={survey.status?.isOpen ?? false} />
 
       {(showInterestsLink || progress.post_event_interests_completed) && (
         <section className="space-card p-5" aria-label="Carreras de interés">
