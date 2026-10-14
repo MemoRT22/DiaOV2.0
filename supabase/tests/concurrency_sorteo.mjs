@@ -88,6 +88,11 @@ async function main() {
       .select('id').single();
     pIds.push(p.id);
     await admin.from('participant_profiles').upsert({ participant_id: p.id, display_name: `CS ${email}` });
+    // La encuesta de salida es requisito del sorteo: estos participantes ya la contestaron (el caso sin encuesta está en regression_exit_survey.sql).
+    await admin.from('exit_survey_responses').upsert({
+      edition_id: ed.id, participant_id: p.id, survey_version: 'exit-2026-v1', is_demo: true, q1_prior_clarity: 'sin_idea',
+      q2_workshop_rating: 4, q3_post_clarity: 'seguir_explorando', q4_areas: ['salud'], q5_recommend: 8,
+    }, { onConflict: 'edition_id,participant_id' });
     for (let j = 0; j < 4; j++) {
       await admin.from('attendances').upsert({ participant_id: p.id, session_id: sessionIds[j], activity_id: actIds[j], credits_granted: 1, method: 'qr' });
     }
@@ -269,6 +274,7 @@ async function main() {
   await admin.from('raffle_winners').delete().in('prize_id', allPrizeIds);
   await admin.from('raffle_prizes').delete().in('id', allPrizeIds);
   await admin.from('attendances').delete().in('participant_id', pIds);
+  await admin.from('exit_survey_responses').delete().in('participant_id', pIds);
   await admin.from('participant_profiles').delete().in('participant_id', pIds);
   await admin.from('participants').delete().in('id', pIds);
   await admin.from('activity_sessions').delete().in('activity_id', actIds);

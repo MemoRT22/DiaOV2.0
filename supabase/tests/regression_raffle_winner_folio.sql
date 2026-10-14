@@ -57,6 +57,9 @@ BEGIN
   INSERT INTO raffle_prizes(edition_id,category_id,name,quantity,is_active,is_demo) VALUES (ed,cat,'Nintendo Switch OLED',3,true,true) RETURNING id INTO prize;
   INSERT INTO raffle_prizes(edition_id,category_id,name,quantity,is_active,is_demo) VALUES (ed,cat,'Audífonos',3,true,true) RETURNING id INTO prize2;
   INSERT INTO raffle_prizes(edition_id,category_id,name,quantity,is_active,is_demo) VALUES (ed,cat_real,'Premio real',3,true,false) RETURNING id INTO prize_real;
+  -- La encuesta de salida es requisito de cualquier resultado nuevo del sorteo (trigger): los cuatro la contestaron.
+  INSERT INTO exit_survey_responses(edition_id,participant_id,survey_version,is_demo,q1_prior_clarity,q2_workshop_rating,q3_post_clarity,q4_areas,q5_recommend)
+  SELECT ed,x.id,exit_survey_version(),x.d,'sin_idea',4,'seguir_explorando',ARRAY['salud'],8 FROM (VALUES (pa,true),(pb,true),(pc,true),(preal,false)) AS x(id,d);
   -- Mismo INSERT (sin folio) que hace draw_winner: el folio lo pone la base.
   INSERT INTO raffle_winners(edition_id,category_id,prize_id,participant_id,status,origin,is_demo) VALUES (ed,cat,prize,pa,'seleccionado','online',true) RETURNING id, folio INTO w1, folio1;
   INSERT INTO raffle_winners(edition_id,category_id,prize_id,participant_id,status,origin,is_demo) VALUES (ed,cat,prize,pb,'seleccionado','online',true) RETURNING id, folio INTO w2, folio2;

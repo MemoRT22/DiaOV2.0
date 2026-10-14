@@ -233,7 +233,7 @@ BEGIN
   -- Una categoría definida solo con las columnas anteriores sigue clasificando (1 académico + 2 Vida Universitaria).
   INSERT INTO public.raffle_categories (edition_id, name, is_demo, required_academic, required_leadership, is_active, sort_order) VALUES (v_edition, 'Test Cat', false, 1, 2, true, 99);
 
-  IF public.participant_raffle_category(v_pid) IS DISTINCT FROM (SELECT id FROM public.raffle_categories WHERE name = 'Test Cat') THEN RAISE EXCEPTION 'RAFFLE_CAT_FAILED'; END IF;
+  IF public.participant_stamp_category(v_pid) IS DISTINCT FROM (SELECT id FROM public.raffle_categories WHERE name = 'Test Cat') THEN RAISE EXCEPTION 'RAFFLE_CAT_FAILED'; END IF;
 
   -- Una categoría sin requisitos (0 + 0) dejaría entrar a cualquiera: la base la rechaza.
   BEGIN

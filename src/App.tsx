@@ -16,6 +16,7 @@ const PassportPage = lazy(() => import('./student/PassportPage'));
 const Missions = lazy(() => import('./student/Missions'));
 const StudentWorkshopDetail = lazy(() => import('./student/StudentWorkshopDetail'));
 const MyRoute = lazy(() => import('./student/MyRoute'));
+const ExitSurveyPage = lazy(() => import('./student/ExitSurveyPage'));
 const Interests = lazy(() => import('./student/Interests'));
 const MapPage = lazy(() => import('./student/MapPage'));
 const WorkshopRegistration = lazy(() => import('./public/WorkshopRegistration'));
@@ -89,6 +90,7 @@ export default function App() {
               <Route path="/bienvenida" element={<Welcome />} />
               <Route path="/bitacora" element={<Home />} />
               <Route path="/pasaporte" element={<PassportPage />} />
+              <Route path="/encuesta" element={<ExitSurveyPage />} />
               <Route path="/misiones" element={<Missions />} />
               <Route path="/misiones/:activityId" element={<StudentWorkshopDetail />} />
               <Route path="/ruta" element={<MyRoute />} />

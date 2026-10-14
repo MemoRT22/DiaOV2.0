@@ -104,14 +104,14 @@ BEGIN
     rec:=pg_temp.as_student(uid[i],'select my_recommended_activities()');
     PERFORM pg_temp.assert_true(EXISTS(SELECT 1 FROM jsonb_array_elements(rec->'recommendations') r
       WHERE r->>'activity_id'=own_acts[i]->>'activity' AND (r->>'already_attended')::boolean),'attended recommendation student '||i);
-    PERFORM pg_temp.assert_true(participant_raffle_category(pid[i]) IS NULL,'no category without university life student '||i);
+    PERFORM pg_temp.assert_true(participant_stamp_category(pid[i]) IS NULL,'no category without university life student '||i);
     -- University-life stamp: same QR path, no direct attendance inserts.
     a:=pg_temp.activity(ed,divs[i],NULL,300,30);
     UPDATE activities SET activity_type='vida_universitaria',experience_category='otra' WHERE id=(a->>'activity')::uuid;
     INSERT INTO reservations(participant_id,session_id,activity_id) VALUES(pid[i],(a->>'session')::uuid,(a->>'activity')::uuid);
     result:=pg_temp.as_student(uid[i],format('select check_in(%L)',a->>'manual_code'));
     PERFORM pg_temp.assert_true(result ? 'attendance_id','university life checkin student '||i);
-    SELECT name INTO category_name FROM raffle_categories WHERE id=participant_raffle_category(pid[i]);
+    SELECT name INTO category_name FROM raffle_categories WHERE id=participant_stamp_category(pid[i]);
     PERFORM pg_temp.assert_true(category_name=CASE WHEN i=3 THEN 'Sistema Solar' ELSE 'Galaxia' END,'raffle category student '||i);
   END LOOP;
   FOR j IN 1..array_length(offsets,1) LOOP

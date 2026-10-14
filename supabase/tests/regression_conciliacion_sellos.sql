@@ -106,8 +106,10 @@ BEGIN
   -- Sorteo antes de conciliar: p1 tiene 1 + 1 (Sistema Solar); p2 es ganador confirmado.
   SELECT id INTO cat_ss FROM raffle_categories WHERE edition_id = ed AND is_demo AND name = 'Sistema Solar';
   SELECT id INTO cat_ga FROM raffle_categories WHERE edition_id = ed AND is_demo AND name = 'Galaxia';
-  IF participant_raffle_category(p[1]) IS DISTINCT FROM cat_ss THEN RAISE EXCEPTION 'FIXTURE_CATEGORY_P1'; END IF;
+  IF participant_stamp_category(p[1]) IS DISTINCT FROM cat_ss THEN RAISE EXCEPTION 'FIXTURE_CATEGORY_P1'; END IF;
   INSERT INTO raffle_prizes(edition_id,category_id,name,quantity,is_active,sort_order,is_demo) VALUES (ed,cat_ss,'RC Premio',1,true,1,true) RETURNING id INTO prize;
+  INSERT INTO exit_survey_responses(edition_id,participant_id,survey_version,is_demo,q1_prior_clarity,q2_workshop_rating,q3_post_clarity,q4_areas,q5_recommend)
+    VALUES (ed,p[2],exit_survey_version(),true,'sin_idea',4,'seguir_explorando',ARRAY['salud'],8); -- requisito de todo resultado nuevo del sorteo
   INSERT INTO raffle_winners(edition_id,category_id,prize_id,participant_id,status,is_demo,confirmed_at) VALUES (ed,cat_ss,prize,p[2],'confirmado',true,now());
   SELECT string_agg(rw::text, '|') INTO winner_before FROM raffle_winners rw WHERE prize_id = prize;
 
@@ -163,9 +165,9 @@ BEGIN
      OR (SELECT count(*) FROM audit_log WHERE action = 'attendance.credits_reconcile_skipped' AND (detail->>'participant_id')::uuid = ANY(p)) <> 3
   THEN RAISE EXCEPTION 'AUDIT'; END IF;
   -- Sorteo: p1 sube sola a Galaxia (2 + 1); el ganador confirmado conserva su registro intacto y no vuelve al pool.
-  IF participant_raffle_category(p[1]) IS DISTINCT FROM cat_ga THEN RAISE EXCEPTION 'CATEGORY_NOT_RECALCULATED'; END IF;
+  IF participant_stamp_category(p[1]) IS DISTINCT FROM cat_ga THEN RAISE EXCEPTION 'CATEGORY_NOT_RECALCULATED'; END IF;
   IF (SELECT string_agg(rw::text, '|') FROM raffle_winners rw WHERE prize_id = prize) IS DISTINCT FROM winner_before
-     OR NOT participant_has_won(p[2]) OR participant_raffle_category(p[2]) IS NOT NULL
+     OR NOT participant_has_won(p[2]) OR participant_stamp_category(p[2]) IS NOT NULL
   THEN RAISE EXCEPTION 'WINNER_AFFECTED'; END IF;
 
   -- ===== Segunda ejecución: idempotente =====

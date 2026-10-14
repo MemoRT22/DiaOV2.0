@@ -2,8 +2,8 @@ import type { RaffleCategory, RafflePrize, RaffleWinner } from '../../lib/raffle
 import type { CatalogPlan } from '../../lib/raffleCatalog';
 import type { RaffleScope } from '../../lib/raffleShow';
 
-/** The three places of the module: the live draw, the official prizes (Coordinación) and the winners. */
-export type RaffleSection = 'vivo' | 'premios' | 'ganadores';
+/** The places of the module: the live draw, the official prizes and the exit survey (Coordinación) and the winners. */
+export type RaffleSection = 'vivo' | 'premios' | 'ganadores' | 'encuesta';
 
 /** What every section of the module needs; loaded once by the module so the sections never disagree. */
 export type RaffleContext = {

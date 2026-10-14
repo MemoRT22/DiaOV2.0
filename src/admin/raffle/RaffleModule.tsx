@@ -8,6 +8,7 @@ import { readSetChoice, writeSetChoice } from '../../lib/raffleSetChoice';
 import { resolveDataSet, scopeOf, type RaffleScope } from '../../lib/raffleShow';
 import { useLoad } from '../../lib/useLoad';
 import { PageHeader, SectionTabs } from '../design/Primitives';
+import ExitSurveyAdminPanel from './ExitSurveyAdmin';
 import RaffleHistory from './RaffleHistory';
 import RafflePrizes from './RafflePrizes';
 import RaffleRun from './RaffleRun';
@@ -19,6 +20,7 @@ const DESCRIPTIONS: Record<RaffleSection, string> = {
   vivo: 'Elige un premio, inicia el sorteo, revela al ganador y confírmalo.',
   premios: 'Los premios oficiales de Día OV 2026, con lo que ya se entregó y lo que falta por sortear.',
   ganadores: 'Quién ganó cada premio, si ya lo recibió y cuándo.',
+  encuesta: 'Hora de apertura de la encuesta de salida —requisito del sorteo— y sus resultados.',
 };
 
 /** Links from before the simplification keep working. */
@@ -57,6 +59,7 @@ export default function RaffleModule({ canConfigure }: { canConfigure: boolean }
     { value: 'vivo', label: 'Sorteo en vivo' },
     ...(canConfigure ? [{ value: 'premios' as const, label: 'Premios' }] : []),
     { value: 'ganadores', label: 'Ganadores' },
+    ...(canConfigure ? [{ value: 'encuesta' as const, label: 'Encuesta de salida' }] : []),
   ];
   const asked = params.get('seccion') ?? '';
   const requested = (LEGACY[asked] ?? asked) as RaffleSection;
@@ -151,6 +154,7 @@ export default function RaffleModule({ canConfigure }: { canConfigure: boolean }
           {section === 'vivo' && <RaffleRun key={context.dataSet} ctx={context} />}
           {section === 'premios' && canConfigure && <RafflePrizes ctx={context} changeSet={rehearsal ? () => setChoosing(true) : undefined} locked={roundActive || pendingResult} />}
           {section === 'ganadores' && <RaffleHistory ctx={context} />}
+          {section === 'encuesta' && canConfigure && <ExitSurveyAdminPanel />}
         </>
       )}
     </div>
