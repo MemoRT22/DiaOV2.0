@@ -8,9 +8,12 @@ describe('grado y periodo estables', () => {
     expect(GRADE_OPTIONS.map((o) => [o.value, o.label])).toEqual([['1', '1.º año'], ['2', '2.º año'], ['3', '3.º año'], ['graduado', 'Egresado']]);
     expect(PERIOD_OPTIONS.map((o) => [o.value, o.label])).toEqual([
       ['2027-01', 'Enero 2027'], ['2027-08', 'Agosto 2027'], ['2028-01', 'Enero 2028'], ['2028-08', 'Agosto 2028'],
+      ['2029-01', 'Enero 2029'], ['2029-08', 'Agosto 2029'],
     ]);
     expect(gradeLabel('graduado')).toBe('Egresado');
     expect(periodLabel('2028-08')).toBe('Agosto 2028');
+    expect(periodLabel('2029-01')).toBe('Enero 2029');
+    expect(periodLabel('2029-08')).toBe('Agosto 2029');
     expect(gradeLabel(null)).toBeNull();
     expect(periodLabel('2031-01')).toBeNull();
   });
@@ -29,11 +32,12 @@ describe('grado y periodo estables', () => {
   it.each([
     ['Enero 2027', '2027-01'], ['agosto 2027', '2027-08'], ['Enero 2028', '2028-01'], ['Agosto de 2028', '2028-08'],
     ['AGOSTO  2028', '2028-08'], ['2027-08', '2027-08'],
+    ['Enero 2029', '2029-01'], ['agosto de 2029', '2029-08'], ['2029-01', '2029-01'],
   ])('normaliza el periodo %s → %s', (raw, expected) => {
     expect(normalizePeriod(raw)).toBe(expected);
   });
 
-  it.each([['Enero 2026'], ['Mayo 2027'], ['2029-01'], ['2027-02'], [''], [null]])('no reconoce el periodo %s', (raw) => {
+  it.each([['Enero 2026'], ['Mayo 2027'], ['2030-01'], ['2027-02'], [''], [null]])('no reconoce el periodo %s', (raw) => {
     expect(normalizePeriod(raw as string)).toBeNull();
   });
 });
