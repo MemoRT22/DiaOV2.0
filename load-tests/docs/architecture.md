@@ -18,7 +18,7 @@ Esta suite se diseñó contra el código y las migraciones en `7f0781b` (merge d
 | Talleres / ruta | `my_reservation_board`, `my_workshop_detail`, `my_recommended_activities` |
 | Bitácora / sellos | `my_progress`, `my_raffle_status`, `my_raffle_prizes` |
 | Reservaciones | `reserve_session`, `change_reservation`, `cancel_reservation` |
-| Asistencia | `check_in(p_credential)`; credencial por actividad, reserva vigente/expirada e idempotencia por actividad |
+| Asistencia | `check_in(p_credential)`; credencial por actividad, reserva vigente/expirada e idempotencia por actividad. La implementación vigente no bloquea por horario. |
 | Encuesta | `my_exit_survey`, `exit_survey_mark_invited`, `submit_exit_survey(jsonb)` |
 | Tiempo real | WebSocket Phoenix, canal privado y JWT del participante |
 

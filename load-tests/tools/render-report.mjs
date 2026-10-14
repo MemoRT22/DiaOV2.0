@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-import { readFileSync, writeFileSync } from 'node:fs';
-import { basename, resolve } from 'node:path';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { basename, dirname, resolve } from 'node:path';
 
 const input = process.argv[2];
 const output = process.argv[3] || `results/report-${Date.now()}.md`;
@@ -18,5 +18,7 @@ const rows = Object.entries(metrics)
   .map(([name, item]) => `| ${name} | ${n(item.values?.['p(95)'], ' ms')} | ${n(item.values?.['p(99)'], ' ms')} | ${n(item.values?.rate === undefined ? item.values?.count : item.values.rate * 100, item.values?.rate === undefined ? '' : ' %')} |`)
   .join('\n');
 const markdown = `# Reporte de rendimiento Día OV 2026\n\n- Fuente: \`${basename(input)}\`\n- Generado: ${new Date().toISOString()}\n- Resultado de umbrales: ${failed.length ? 'FALLA' : 'OK'}\n\n## Resumen ejecutivo\n\n[Completar impacto observado, capacidad sostenible y decisión go/no-go.]\n\n## Métricas\n\n| Métrica | p95 | p99 | Tasa / total |\n|---|---:|---:|---:|\n${rows}\n\n## Umbrales incumplidos\n\n${failed.length ? failed.map((x) => `- ${x}`).join('\n') : '- Ninguno.'}\n\n## Cuellos de botella y correlación\n\n[Relacionar intervalos de k6 con Supabase Auth, Postgres, Edge Functions, Realtime y Netlify.]\n\n## Integridad\n\n[Adjuntar salida de tools/verify-integrity.sql. Todas las violaciones deben ser 0.]\n\n## Recomendaciones\n\n1. [Acción, responsable y fecha.]\n2. [Capacidad o configuración a ajustar.]\n3. [Prueba de confirmación.]\n`;
-writeFileSync(resolve(output), markdown);
-console.log(resolve(output));
+const outputPath = resolve(output);
+mkdirSync(dirname(outputPath), { recursive: true });
+writeFileSync(outputPath, markdown);
+console.log(outputPath);

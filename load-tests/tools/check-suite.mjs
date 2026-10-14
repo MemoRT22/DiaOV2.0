@@ -10,6 +10,7 @@ const required = [
   'scenarios/00-preflight.js', 'scenarios/01-static.js', 'scenarios/02-auth.js', 'scenarios/03-navigation.js',
   'scenarios/04-reservations.js', 'scenarios/05-checkin.js', 'scenarios/06-survey.js', 'scenarios/07-realtime.js',
   'scenarios/99-full-day.js', 'tools/generate-data.mjs', 'tools/verify-integrity.sql',
+  'tools/run-k6.mjs', 'tests/planning.test.mjs', 'tests/generator-preflight.test.mjs', 'tests/reporting.test.mjs',
 ];
 const failures = [];
 for (const relative of required) {
@@ -17,7 +18,7 @@ for (const relative of required) {
 }
 
 const jsFiles = [];
-for (const directory of ['config', 'lib', 'scenarios', 'tools']) {
+for (const directory of ['config', 'lib', 'scenarios', 'tools', 'tests']) {
   for (const name of readdirSync(join(root, directory))) if (/\.(?:js|mjs)$/.test(name)) jsFiles.push(join(root, directory, name));
 }
 for (const file of jsFiles) {
@@ -30,9 +31,10 @@ for (const guard of ['LOADTEST_ALLOW_WRITES', 'TARGET_ENV', 'PRODUCTION_SUPABASE
   if (!env.includes(guard)) failures.push(`falta guarda de seguridad ${guard}`);
 }
 const fullDay = readFileSync(join(root, 'scenarios/99-full-day.js'), 'utf8');
-for (const cohort of ['navigation', 'reservations', 'checkin', 'survey', 'realtime']) {
-  if (!fullDay.includes(`cohort('${cohort}')`)) failures.push(`99-full-day no asigna la cohorte ${cohort}`);
+for (const flow of ['navigation', 'reservations_contention', 'reservations_steady', 'checkin', 'survey', 'realtime']) {
+  if (!fullDay.includes(`fullDayFlow: '${flow}'`)) failures.push(`99-full-day no planifica el flujo ${flow}`);
 }
+if (!fullDay.includes('undefined, true')) failures.push('99-full-day no exige identidades globales exclusivas');
 
 if (failures.length) {
   console.error(`Suite inválida:\n- ${failures.join('\n- ')}`);

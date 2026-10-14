@@ -19,8 +19,8 @@ export const options = {
 
 export function setup() { return assertSafe({ supabase: true, writes: true }); }
 
-export function scan(slice) {
-  const session = studentSession(slice);
+export function scan(slice, globalUnique = false) {
+  const session = studentSession(slice, globalUnique);
   if (!session) return;
   if (!ENV.writes) { rpc(session, 'my_progress', {}); return think(3, 8); }
 

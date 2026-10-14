@@ -1,4 +1,5 @@
 import { ENV, staticVuCap } from '../lib/env.js';
+import { allocateFullDay, authPlan } from '../lib/planning.js';
 
 /*
  * Perfiles de carga. Cada perfil describe la CONCURRENCIA de personas (usuarios virtuales = personas con sesión abierta) y, para el
@@ -27,38 +28,32 @@ export const VUS_STAGES = {
   soak: [[min(5), 400], [min(60), 400], [min(2), 0]],
 };
 
-/** Etapas de LLEGADAS por segundo (inicio de sesión: personas que entran). */
-export const ARRIVAL_STAGES = {
-  smoke: [[sec(30), 1], [min(1), 2], [sec(30), 0]],
-  baseline: [[min(1), 5], [min(4), 5], [sec(30), 0]],
-  normal: [[min(3), 8], [min(7), 8], [min(1), 0]],
-  stress: [[min(2), 10], [min(2), 20], [min(2), 40], [min(2), 60], [min(3), 80], [min(1), 0]],
-  peak2000: [[min(2), 17], [min(2), 17], [sec(30), 0]],   // 2,000 inicios de sesión en ~2 min
-  spike: [[sec(10), 33], [sec(60), 33], [sec(10), 0]],    // 2,000 en un minuto
-  soak: [[min(5), 3], [min(30), 3], [min(1), 0]],
-};
-
+/** El volumen exacto de Auth y su ventana gradual viven en planning.js para poder probarlos fuera de k6. */
 export const PROFILES = Object.keys(VUS_STAGES);
 
 const scaleTarget = (target) => (target === 0 ? 0 : Math.max(1, Math.min(ENV.maxVus, Math.round(target * ENV.scale))));
 const profileName = () => { if (!VUS_STAGES[ENV.profile]) throw new Error(`[loadtest] PROFILE desconocido «${ENV.profile}». Opciones: ${PROFILES.join(', ')}`); return ENV.profile; };
 
 /** Concurrencia de personas con sesión abierta (cada VU = una persona que repite su recorrido). */
-export function journey({ exec, startTime = '0s', tags = {}, share = 1 }) {
+export function journey({ exec, startTime = '0s', tags = {}, share = 1, fullDayFlow }) {
+  const profile = profileName();
   return {
     executor: 'ramping-vus', exec, startTime, tags, gracefulRampDown: '30s', gracefulStop: '30s',
     startVUs: 0,
-    stages: VUS_STAGES[profileName()].map(([duration, target]) => ({ duration, target: Math.min(ENV.maxVus, Math.round(scaleTarget(target) * share)) })),
+    stages: VUS_STAGES[profile].map(([duration, target]) => {
+      const scaled = scaleTarget(target);
+      const allocated = fullDayFlow ? allocateFullDay(scaled, profile)[fullDayFlow] : Math.round(scaled * share);
+      return { duration, target: Math.min(ENV.maxVus, allocated) };
+    }),
   };
 }
 
-/** Llegadas por segundo (cada iteración = una persona distinta iniciando sesión). */
-export function arrivals({ exec, startTime = '0s', tags = {}, share = 1 }) {
-  const stages = ARRIVAL_STAGES[profileName()].map(([duration, target]) => ({ duration, target: target === 0 ? 0 : Math.max(1, Math.round(target * ENV.scale * share)) }));
-  const peak = Math.max(...stages.map((stage) => stage.target), 1);
+/** Volumen EXACTO de accesos. Cada VU ejecuta una sola iteración y espera su instante dentro de la ventana gradual. */
+export function authArrivals({ exec, startTime = '0s', tags = {} }) {
+  const plan = authPlan(profileName(), ENV.scale, ENV.maxVus);
   return {
-    executor: 'ramping-arrival-rate', exec, startTime, tags, startRate: 1, timeUnit: '1s', stages,
-    preAllocatedVUs: Math.min(ENV.maxVus, Math.max(10, peak * 2)), maxVUs: Math.min(ENV.maxVus, Math.max(20, peak * 6)), gracefulStop: '30s',
+    executor: 'per-vu-iterations', exec, startTime, tags, vus: plan.users, iterations: 1,
+    maxDuration: `${plan.windowSeconds + 300}s`, gracefulStop: '30s',
   };
 }
 

@@ -47,8 +47,8 @@ const normal = () => sessionsOf('normal');
 function readOnlyTick(session) { const board = rpc(session, 'my_reservation_board', {}); if (board.ok) auditBoard(board.body); think(2, 6); }
 
 /** Apertura de reservaciones: todos sobre unas pocas sesiones con poco cupo, con la vista algo desactualizada (como en la vida real). */
-export function contention(slice) {
-  const session = studentSession(slice);
+export function contention(slice, globalUnique = false) {
+  const session = studentSession(slice, globalUnique);
   if (!session) return;
   if (!ENV.writes) return readOnlyTick(session);
   const board = rpc(session, 'my_reservation_board', {});
@@ -73,8 +73,8 @@ export function contention(slice) {
 }
 
 /** Uso normal: reservar en el catálogo general, cambiar de horario y cancelar. */
-export function steady(slice) {
-  const session = studentSession(slice);
+export function steady(slice, globalUnique = false) {
+  const session = studentSession(slice, globalUnique);
   if (!session) return;
   if (!ENV.writes) return readOnlyTick(session);
   const board = rpc(session, 'my_reservation_board', {});

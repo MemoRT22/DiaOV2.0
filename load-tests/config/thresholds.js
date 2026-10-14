@@ -28,7 +28,8 @@ export const health = () => ({
   http_req_duration: [stop('p(99)<15000', '2m')], // un p99 de 15 s ya es una caída percibida
 });
 
-export const auth = () => ({
+export const auth = (expectedAccesses) => ({
+  ...(expectedAccesses ? { auth_accesses_planned: [`count==${expectedAccesses}`] } : {}),
   auth_success: ['rate>0.98', stop('rate>0.80', '1m')],
   auth_login_ms: [`p(95)<${f(1500)}`, `p(99)<${f(3000)}`],
   auth_bootstrap_ms: [`p(95)<${f(2500)}`],

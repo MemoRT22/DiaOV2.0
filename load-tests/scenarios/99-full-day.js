@@ -7,7 +7,7 @@
 import { journey } from '../config/profiles.js';
 import * as thresholds from '../config/thresholds.js';
 import { assertSafe } from '../lib/env.js';
-import { cohort, sessionsOf } from '../lib/data.js';
+import { sessionsOf, validateDataset } from '../lib/data.js';
 import { summarize } from '../lib/summary.js';
 import { browse } from './03-navigation.js';
 import { contention, steady } from './04-reservations.js';
@@ -19,23 +19,23 @@ const caps = () => Object.fromEntries(sessionsOf('hot').map((s) => [`reserve_suc
 
 export const options = {
   scenarios: {
-    navigation: journey({ exec: 'navigationFlow', share: 0.55, tags: { flow: 'navigation' } }),
-    reservations_contention: journey({ exec: 'contentionFlow', share: 0.1, tags: { flow: 'contention' } }),
-    reservations_steady: journey({ exec: 'steadyFlow', share: 0.15, tags: { flow: 'steady' } }),
-    checkin: journey({ exec: 'checkinFlow', share: 0.08, tags: { flow: 'checkin' } }),
-    survey: journey({ exec: 'surveyFlow', share: 0.06, tags: { flow: 'survey' } }),
-    realtime: journey({ exec: 'realtimeFlow', share: 0.06, tags: { flow: 'realtime' } }),
+    navigation: journey({ exec: 'navigationFlow', fullDayFlow: 'navigation', tags: { flow: 'navigation' } }),
+    reservations_contention: journey({ exec: 'contentionFlow', fullDayFlow: 'reservations_contention', tags: { flow: 'contention' } }),
+    reservations_steady: journey({ exec: 'steadyFlow', fullDayFlow: 'reservations_steady', tags: { flow: 'steady' } }),
+    checkin: journey({ exec: 'checkinFlow', fullDayFlow: 'checkin', tags: { flow: 'checkin' } }),
+    survey: journey({ exec: 'surveyFlow', fullDayFlow: 'survey', tags: { flow: 'survey' } }),
+    realtime: journey({ exec: 'realtimeFlow', fullDayFlow: 'realtime', tags: { flow: 'realtime' } }),
   },
   thresholds: thresholds.merge(thresholds.health(), thresholds.auth(), thresholds.integrity(), thresholds.reads(), thresholds.writes(), thresholds.realtime(), caps()),
 };
 
-export function setup() { return assertSafe({ supabase: true, writes: true }); }
+export function setup() { validateDataset(); return assertSafe({ supabase: true, writes: true }); }
 
-export function navigationFlow() { browse(cohort('navigation')); }
-export function contentionFlow() { contention(cohort('reservations')); }
-export function steadyFlow() { steady(cohort('reservations')); }
-export function checkinFlow() { scan(cohort('checkin')); }
-export function surveyFlow() { answer(cohort('survey')); }
-export function realtimeFlow() { listen(cohort('realtime')); }
+export function navigationFlow() { browse(undefined, true); }
+export function contentionFlow() { contention(undefined, true); }
+export function steadyFlow() { steady(undefined, true); }
+export function checkinFlow() { scan(undefined, true); }
+export function surveyFlow() { answer(undefined, true); }
+export function realtimeFlow() { listen(undefined, true); }
 
 export const handleSummary = summarize('99-full-day');

@@ -41,7 +41,7 @@ export PROFILE=smoke
 Ejecuta siempre el preflight de solo lectura:
 
 ```bash
-k6 run scenarios/00-preflight.js
+npm run k6 -- scenarios/00-preflight.js
 ```
 
 ## Seguridad de escritura
@@ -66,7 +66,7 @@ sitio oficial. La suite no interpreta esa variable como permiso legal: el operad
 |---|---|---|
 | `00-preflight.js` | Guardas, Auth, edición y contratos básicos | No |
 | `01-static.js` | HubSpot institucional, HTML Netlify y assets por separado | No |
-| `02-auth.js` | Personas distintas, llegada gradual, ráfagas, 429 y bootstrap | No |
+| `02-auth.js` | Volumen exacto de personas distintas, llegada gradual, ráfagas, 429 y bootstrap | No |
 | `03-navigation.js` | Talleres, Mi ruta, Bitácora, sellos, sorteo y encuesta | No |
 | `04-reservations.js` | Cupos, doble clic, conflictos, cambios y cancelaciones | Sí |
 | `05-checkin.js` | `check_in`, repetición idempotente e inválidos | Sí |
@@ -80,16 +80,18 @@ entrar y la suma de navegación, reservaciones, check-in, encuesta y Realtime es
 ## Perfiles
 
 `PROFILE=smoke|baseline|normal|stress|peak2000|spike|soak`. `SCALE=0.1` reduce todos los objetivos para una validación local y
-`MAX_VUS` impone un tope de capacidad del runner. Los perfiles incluyen rampas y pausas humanas; `stress` y `spike` relajan el SLO de
+`MAX_VUS` impone un tope de capacidad del runner. Auth ejecuta una iteración por identidad y valida por umbral el total exacto
+(`peak2000`: 2,000 en 120 s; `spike`: 2,000 en 60 s); los casos negativos están deshabilitados salvo que se defina
+`AUTH_NEGATIVE_RATIO`. Los perfiles incluyen rampas y pausas humanas; `stress` y `spike` relajan el SLO de
 latencia, pero nunca las guardas de integridad o el corte por falla grave.
 
 Ejemplos:
 
 ```bash
-PROFILE=baseline k6 run scenarios/03-navigation.js
-PROFILE=normal k6 run scenarios/02-auth.js
-PROFILE=stress RESERVATION_MODE=contention k6 run scenarios/04-reservations.js
-PROFILE=peak2000 k6 run scenarios/99-full-day.js
+PROFILE=baseline npm run k6 -- scenarios/03-navigation.js
+PROFILE=normal npm run k6 -- scenarios/02-auth.js
+PROFILE=stress RESERVATION_MODE=contention npm run k6 -- scenarios/04-reservations.js
+PROFILE=peak2000 npm run k6 -- scenarios/99-full-day.js
 ```
 
 Antes de repetir una corrida con escritura:
@@ -119,7 +121,9 @@ no se contabilizan como falla de infraestructura.
 
 ## Resultados
 
-Cada escenario escribe `results/<escenario>-<perfil>-<fecha>.json`. Genera un borrador de reporte:
+El wrapper `npm run k6` crea `results/` antes de arrancar; úsalo siempre para no perder el resumen. Cada escenario escribe
+`results/<escenario>-<perfil>-<fecha>.json`. En `99-full-day`, cada VU global se asigna directamente a una identidad sin aplicar módulo;
+el perfil `smoke` usa como mínimo una identidad en cada flujo crítico. Genera un borrador de reporte:
 
 ```bash
 npm run report -- results/99-full-day-peak2000-....json results/reporte.md

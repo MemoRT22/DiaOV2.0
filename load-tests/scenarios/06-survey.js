@@ -31,8 +31,8 @@ function payload() {
 
 let done = false; // esta persona ya contestó (en este VU)
 
-export function answer(slice) {
-  const session = studentSession(slice);
+export function answer(slice, globalUnique = false) {
+  const session = studentSession(slice, globalUnique);
   if (!session) return;
   const state = rpc(session, 'my_exit_survey', {});
   if (!state.ok) return think(2, 5);

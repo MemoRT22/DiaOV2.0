@@ -14,6 +14,7 @@ export const authOk = new Rate('auth_success');
 export const auth429 = new Counter('auth_429');
 export const authRetryExhausted = new Counter('auth_retry_exhausted');
 export const authBootstrap = new Trend('auth_bootstrap_ms', true); // login + lecturas de arranque de la app
+export const authAccesses = new Counter('auth_accesses_planned'); // exactamente una muestra por identidad planificada
 
 // ── Estático ───────────────────────────────────────────────────────────────────────────────────────────────────────────────
 export const staticTtfb = new Trend('static_ttfb_ms', true);

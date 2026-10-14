@@ -63,7 +63,8 @@ export function buildCohorts(n) {
   // Las proporciones coinciden exactamente con 99-full-day.js (55 % + 25 % + 8 % + 6 % + 6 % = 100 %).
   return {
     navigation: at(0, 0.55),
-    reservations: at(0.55, 0.80),
+    reservations_contention: at(0.55, 0.65),
+    reservations_steady: at(0.65, 0.80),
     checkin: at(0.80, 0.88),
     survey: at(0.88, 0.94),
     realtime: at(0.94, 1),
@@ -186,8 +187,9 @@ BEGIN
   END IF;
 
   -- Participantes DEMO (datos de ensayo) con Aviso de Privacidad aceptado.
-  INSERT INTO participants (id, edition_id, email, full_name, origin, is_demo, auth_user_id)
-  SELECT md5('${OPTIONS.prefix}-participant-' || t.idx)::uuid, ed, t.email, t.name, 'demo', true, md5('${OPTIONS.prefix}-user-' || t.idx)::uuid
+  INSERT INTO participants (id, edition_id, email, full_name, origin, is_demo, auth_user_id, password_configured_at)
+  SELECT md5('${OPTIONS.prefix}-participant-' || t.idx)::uuid, ed, t.email, t.name, 'demo', true,
+    md5('${OPTIONS.prefix}-user-' || t.idx)::uuid, now()
   FROM jsonb_to_recordset(src) AS t(idx int, email text, name text);
   INSERT INTO participant_profiles (participant_id, auth_user_id, display_name)
   SELECT p.id, p.auth_user_id, p.full_name FROM participants p WHERE p.email LIKE '${OPTIONS.prefix}.%@${OPTIONS.domain}'

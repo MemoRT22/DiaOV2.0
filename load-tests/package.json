@@ -7,6 +7,7 @@
   "scripts": {
     "generate": "node tools/generate-data.mjs",
     "report": "node tools/render-report.mjs",
-    "check": "node tools/check-suite.mjs"
+    "check": "node --test tests/*.test.mjs && node tools/check-suite.mjs",
+    "k6": "node tools/run-k6.mjs"
   }
 }

@@ -5,27 +5,38 @@
 // Nota: todas las peticiones salen de UNA IP (la de quien ejecuta); como el día del evento el campus comparte una IP pública, eso es
 // justo lo realista para el límite de 6,000 solicitudes / 5 min / IP del endpoint de tokens.
 import exec from 'k6/execution';
-import { check } from 'k6';
-import { arrivals } from '../config/profiles.js';
+import { check, sleep } from 'k6';
+import { authArrivals } from '../config/profiles.js';
 import * as thresholds from '../config/thresholds.js';
-import { userFor } from '../lib/data.js';
-import { assertSafe } from '../lib/env.js';
-import { authBootstrap } from '../lib/metrics.js';
+import { userCount, userFor, validateDataset } from '../lib/data.js';
+import { assertSafe, ENV } from '../lib/env.js';
+import { authAccesses, authBootstrap } from '../lib/metrics.js';
+import { arrivalDelayMs, authPlan } from '../lib/planning.js';
 import { summarize } from '../lib/summary.js';
 import { think } from '../lib/think.js';
 import { bootstrap, edge, login, rpc } from '../lib/supabase.js';
 
 export const options = {
-  scenarios: { auth_burst: arrivals({ exec: 'arrive' }) },
-  thresholds: thresholds.merge(thresholds.health(), thresholds.auth(), thresholds.reads()),
+  scenarios: { auth_burst: authArrivals({ exec: 'arrive' }) },
+  thresholds: thresholds.merge(thresholds.health(), thresholds.auth(authPlan(ENV.profile, ENV.scale, ENV.maxVus).users), thresholds.reads()),
 };
 
-export function setup() { assertSafe({ supabase: true }); }
+export function setup() {
+  assertSafe({ supabase: true });
+  validateDataset();
+  const expected = authPlan(ENV.profile, ENV.scale, ENV.maxVus).users;
+  if (userCount() < expected) throw new Error(`[loadtest] Auth necesita ${expected} identidades y el padrón tiene ${userCount()}.`);
+  return { expected };
+}
 
-const NEGATIVE_RATIO = Number(__ENV.AUTH_NEGATIVE_RATIO || 0.01);
+const NEGATIVE_RATIO = Number(__ENV.AUTH_NEGATIVE_RATIO || 0);
 
 export function arrive() {
-  const user = userFor(exec.scenario.iterationInTest);
+  const index = exec.scenario.iterationInTest;
+  const plan = authPlan(ENV.profile, ENV.scale, ENV.maxVus);
+  const user = userFor(index);
+  sleep(arrivalDelayMs(index, plan) / 1000);
+  authAccesses.add(1);
   const startedAt = Date.now();
   edge('student-access', { action: 'identify', email: user.email }, { op: 'edge_identify' });
 

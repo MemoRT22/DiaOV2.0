@@ -20,8 +20,8 @@ export function setup() { assertSafe({ supabase: true }); }
 /** Con qué frecuencia hace cada cosa un alumno durante el evento. */
 export const ACTIONS = { missions: 30, detail: 14, recommendations: 10, route: 12, logbook: 14, raffle: 8, prizes: 6, survey: 6 };
 
-export function browse(slice) {
-  const session = studentSession(slice);
+export function browse(slice, globalUnique = false) {
+  const session = studentSession(slice, globalUnique);
   if (!session) return;
   const action = weighted(ACTIONS);
   let activities = [];

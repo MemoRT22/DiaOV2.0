@@ -29,8 +29,8 @@ let role = null;                                                   // «actor» 
 
 const jitter = (min, max) => min + Math.random() * (max - min);
 
-export function listen(slice) {
-  const session = studentSession(slice);
+export function listen(slice, globalUnique = false) {
+  const session = studentSession(slice, globalUnique);
   if (!session) return;
   role = role || (chance(ACTOR_RATIO) ? 'actor' : 'oyente');
   if (!editionId) {
