@@ -50,7 +50,7 @@ const sessions = [
 
 const show = async () => {
   m.board = board(sessions);
-  render(<MemoryRouter><Missions /></MemoryRouter>);
+  render(<MemoryRouter initialEntries={['/misiones?f=all']}><Missions /></MemoryRouter>);
   await screen.findByRole('heading', { name: 'Una división' });
 };
 const titles = () => screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent);

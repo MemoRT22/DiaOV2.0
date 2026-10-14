@@ -10,12 +10,16 @@ import { buildJourney, firstName, heroAction, latestPending, type Journey } from
 import { useLoad } from '../lib/useLoad';
 import { useNow } from '../lib/useNow';
 import { useParticipantSync } from '../lib/useParticipantSync';
+import { belongsToDivision, type Board } from '../lib/reservations';
+import { isUniversityLife } from '../lib/universityLife';
+import type { ThemeConfig } from '../theme/types';
+import { divisionColor } from './ui/divisionVisuals';
 import { useReservationBoard } from '../lib/useReservationBoard';
 import { useEdition } from '../edition/EditionProvider';
 import { usePublicTheme } from '../theme/PublicThemeProvider';
 import { formatPlace } from './campus/resolveCampusLocation';
 import { missions } from './copy';
-import NextStopCard from './NextStopCard';
+import NextStopCard, { type ExploreArea } from './NextStopCard';
 import { progressNextMessage } from './progressText';
 import StampCollection from './StampCollection';
 import { GuideTip } from './ui/Guide';
@@ -29,7 +33,7 @@ const DISMISS_KEY = 'diaov.interestsPromptDismissed';
  * «¿cómo voy?» (rank and stamps) and, only when they apply, the interests question, the raffle and the closing.
  */
 export default function Home() {
-  const { text } = usePublicTheme();
+  const { text, theme } = usePublicTheme();
   const { profile } = useAuth();
   const { edition } = useEdition();
   const now = useNow();
@@ -74,7 +78,13 @@ export default function Home() {
       </header>
 
       {board && journey ? (
-        <NextStopCard board={board} journey={journey} now={now} />
+        <NextStopCard
+          board={board}
+          journey={journey}
+          now={now}
+          areas={homeAreas(board, divisions, theme)}
+          lifeColor={board.sessions.some((s) => isUniversityLife(s)) ? (theme.colors.accent || theme.colors.secondary) : undefined}
+        />
       ) : boardError ? (
         <ErrorState error={boardError} onRetry={() => void reloadBoard()} title="No pudimos cargar tu ruta" />
       ) : (
@@ -247,4 +257,12 @@ function JourneyProgress({ progress, divisions }: { progress: Progress; division
       )}
     </section>
   );
+}
+
+/** Academic areas that have at least one active mission, with their theme colour (for the empty state of the hero). */
+function homeAreas(board: Board, divisions: Division[], theme: ThemeConfig): ExploreArea[] {
+  const active = board.sessions.filter((s) => s.status === 'activa');
+  return divisions
+    .filter((d) => active.some((s) => belongsToDivision(s, d.id)))
+    .map((d) => ({ id: d.id, name: d.name, color: divisionColor(theme, d) }));
 }

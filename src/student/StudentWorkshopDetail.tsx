@@ -1,9 +1,9 @@
 import { ArrowDown, ArrowLeft, ArrowLeftRight, Backpack, CalendarClock, Clock3, Compass, MapPin, Sparkles, Users } from 'lucide-react';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Alert, PageSkeleton } from '../components/ui';
 import { fetchDivisions, formatTime } from '../lib/catalog';
-import { durationMinutes, hasTightTransfer, isSelectable, sessionState, type BoardSession } from '../lib/reservations';
+import { durationMinutes, hasTightTransfer, isSelectable, sessionState, type Board, type BoardSession } from '../lib/reservations';
 import { useLoad } from '../lib/useLoad';
 import { useReservationBoard } from '../lib/useReservationBoard';
 import { fetchWorkshopDetail } from '../lib/workshopDetailApi';
@@ -17,7 +17,7 @@ import { mapForSession, MapActionLink } from './campus/mapLinks';
 import PlaceLine from './campus/PlaceLine';
 import { formatPlace } from './campus/resolveCampusLocation';
 import SessionRow from './reservations/SessionRow';
-import { DivisionOrb, divisionColor, tintVars } from './ui/divisionVisuals';
+import { DivisionOrb, divisionColor, divisionIcon, tintVars } from './ui/divisionVisuals';
 import { ErrorState } from './ui/States';
 import { StatusPill } from './ui/StatusPill';
 
@@ -34,6 +34,9 @@ export default function StudentWorkshopDetail() {
   const backPath = `/misiones${params.toString() ? `?${params.toString()}` : ''}`;
   const { edition } = useEdition();
   const { board, error, loading, reload, reserve, change } = useReservationBoard(edition?.id);
+  // The success sheet reads the route AFTER the board was refreshed with the server's answer.
+  const latestBoard = useRef<Board | null>(null);
+  latestBoard.current = board;
   const detail = useLoad(() => /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(activityId) ? fetchWorkshopDetail(activityId) : Promise.resolve(null), [activityId]);
   // Only for the division colour; the page never waits for it.
   const divisions = useLoad(fetchDivisions, []);
@@ -81,7 +84,7 @@ export default function StudentWorkshopDetail() {
       setConfirm({
         title: 'Reservar lugar', body: s.in_progress ? 'Ya está en curso: puedes entrar ahora.' : '',
         confirmLabel: 'Reservar', summary, warning,
-        success: { title: '¡Listo! Misión agregada a tu ruta', body: `${s.title} · ${whenWithDuration}`, link: { to: '/ruta', label: 'Ver mi ruta' } },
+        success: { title: '¡Listo! Misión agregada a tu ruta', body: `${s.title} · ${whenWithDuration}`, link: { to: '/ruta', label: 'Ver mi ruta' }, progress: () => ({ active: latestBoard.current?.active_reservation_count ?? 0, max: latestBoard.current?.max_reservations ?? 4 }) },
         action: async () => { await reserve(s.id); },
       });
     }
@@ -93,11 +96,13 @@ export default function StudentWorkshopDetail() {
   const divisionIds = workshopDivisionIds(first);
   const divisionNames = metadata?.divisions?.length ? metadata.divisions.map((d) => d.name) : [];
   const onlyDivision = divisionIds.length === 1 ? divisions.data?.find((d) => d.id === divisionIds[0]) : null;
-  const color = divisionColor(theme, onlyDivision);
+  // Vida Universitaria keeps its own colour (the theme accent), as on the catalogue card.
+  const color = type === 'Vida Universitaria' ? (theme.colors.accent || theme.colors.secondary) : divisionColor(theme, onlyDivision);
   const headline = missionHeadline(board, sessions, replacing, status);
   const openCount = sessions.filter((s) => isSelectable(sessionState(board, s, replacing))).length;
   const pitch = metadata?.student_pitch || first.description;
   const seatsLeft = bookableSeats(sessions);
+  const AreaSymbol = divisionIcon(onlyDivision?.name ?? (divisionNames.length === 1 ? divisionNames[0] : type === 'Vida Universitaria' ? 'Vida Universitaria' : undefined));
   return (
     <div className="space-y-5">
       {back}
@@ -105,6 +110,8 @@ export default function StudentWorkshopDetail() {
         {/* 1–2 · name and what you will experience */}
         <header className="space-card relative animate-fade-up overflow-hidden p-5" style={tintVars(color)}>
           <span className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-[radial-gradient(circle,rgb(var(--tint)/0.35),transparent_70%)]" aria-hidden />
+          {/* the same large, faint symbol of the area as on the catalogue card: one identity from card to detail */}
+          <AreaSymbol className="pointer-events-none absolute -bottom-6 -right-6 h-36 w-36 text-[rgb(var(--tint))] opacity-[0.07]" strokeWidth={1.25} aria-hidden />
           <div className="relative flex items-start gap-3">
             <DivisionOrb name={onlyDivision?.name ?? (divisionNames.length === 1 ? divisionNames[0] : type === 'Vida Universitaria' ? 'Vida Universitaria' : undefined)} color={color} size="lg" />
             <div className="min-w-0 flex-1">

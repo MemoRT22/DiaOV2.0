@@ -56,7 +56,7 @@ const CATALOGUE = [
 function Where() {
   return <output aria-label="url">{useLocation().search}</output>;
 }
-const show = async (sessions = CATALOGUE, entry = '/misiones', over: Partial<Board> = {}) => {
+const show = async (sessions = CATALOGUE, entry = '/misiones?f=all', over: Partial<Board> = {}) => {
   m.board = board(sessions, over);
   render(<MemoryRouter initialEntries={[entry]}><Missions /><Where /></MemoryRouter>);
   await screen.findByRole('group', { name: 'Filtrar misiones' });
@@ -71,7 +71,7 @@ beforeEach(() => vi.clearAllMocks());
 test('Vida Universitaria is a first-class filter, placed before the divisions', async () => {
   await show();
   const names = filters().getAllByRole('button').map((b) => b.textContent);
-  expect(names).toEqual(['Todos', 'Vida Universitaria', 'Ciencias de la Salud', 'Negocios']);
+  expect(names).toEqual(['Áreas', 'Todos', 'Vida Universitaria', 'Ciencias de la Salud', 'Negocios']);
   expect(filters().getByRole('button', { name: 'Vida Universitaria' })).toHaveAttribute('aria-pressed', 'false');
   expect(screen.queryByRole('group', { name: 'Tipo de experiencia' })).not.toBeInTheDocument();
 });
@@ -156,7 +156,7 @@ test('with a single kind of experience there is nothing to sub-filter', async ()
 
 test('changing filters never reserves, cancels or reloads anything, and keeps my reservations', async () => {
   const mine = CATALOGUE.map((s) => (s.id === 'v2' ? { ...s, my_reservation_id: 'r-1' } : s));
-  await show(mine, '/misiones', { active_reservation_count: 1, reservations: [{ id: 'r-1', session_id: 'v2', activity_id: 'debate', status: 'vigente', created_at: iso(0), ended_at: null, resolved: false, derived_status: 'active', credits_granted: null }] });
+  await show(mine, '/misiones?f=all', { active_reservation_count: 1, reservations: [{ id: 'r-1', session_id: 'v2', activity_id: 'debate', status: 'vigente', created_at: iso(0), ended_at: null, resolved: false, derived_status: 'active', credits_granted: null }] });
   const snapshot = JSON.stringify(m.board);
   fireEvent.click(filters().getByRole('button', { name: 'Vida Universitaria' }));
   fireEvent.click(kinds().getByRole('button', { name: 'Liderazgo' }));

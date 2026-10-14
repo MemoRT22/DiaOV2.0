@@ -1,4 +1,4 @@
-import { ArrowRight, Clock, MapPin, MapPinned, ScanQrCode, Sparkles, Timer } from 'lucide-react';
+import { ArrowRight, Clock, Flag, MapPin, MapPinned, ScanQrCode, Sparkles, Timer } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { buttonClasses } from '../components/ui';
 import { formatTime } from '../lib/catalog';
@@ -7,6 +7,7 @@ import { heroAction, timingLabel, type Journey } from '../lib/studentJourney';
 import { mapForSession, MapLink } from './campus/mapLinks';
 import { placeDetailLine, resolveCampusLocation } from './campus/resolveCampusLocation';
 import { MISSION, SCAN_CTA } from './copy';
+import { divisionIcon, tintVars } from './ui/divisionVisuals';
 import { GuideAvatar } from './ui/Guide';
 import { OrbitArcs, PlanetHorizon } from './ui/SpaceDecor';
 
@@ -15,7 +16,23 @@ import { OrbitArcs, PlanetHorizon } from './ui/SpaceDecor';
  * in progress → unmistakable, brand-coloured, scan when you finish; next/imminent → how long is left, when and where;
  * attendance still to register → scan (never claims a stamp was earned); nothing booked → build your route.
  */
-export default function NextStopCard({ board, journey, now }: { board: Board; journey: Journey; now: number }) {
+export type ExploreArea = { id: string; name: string; color: string };
+
+export default function NextStopCard({
+  board,
+  journey,
+  now,
+  areas = [],
+  lifeColor,
+}: {
+  board: Board;
+  journey: Journey;
+  now: number;
+  /** Academic areas that have missions, for the «elige un área» orbs of the empty state. */
+  areas?: ExploreArea[];
+  /** Colour of Vida Universitaria; when given, it gets its own orb. */
+  lifeColor?: string;
+}) {
   const hero = heroAction(journey, now);
   const bookedAll = board.active_reservation_count >= board.max_reservations;
 
@@ -23,14 +40,17 @@ export default function NextStopCard({ board, journey, now }: { board: Board; jo
     const closed = board.window === 'closed';
     const notOpen = board.window === 'not_open';
     const returning = journey.done.length > 0;
+    const missionCount = new Set(board.sessions.filter((s) => s.status === 'activa').map((s) => s.activity_id)).size;
+    const canPick = !closed && !notOpen && missionCount > 0;
     return (
-      <section className="hero-next relative overflow-hidden rounded-theme border border-line p-5 pb-8 animate-fade-up" aria-label="Tu siguiente misión">
+      <section className="hero-next relative overflow-hidden rounded-theme border border-line p-5 pb-10 animate-fade-up" aria-label="Tu siguiente misión">
         <PlanetHorizon />
+        <OrbitArcs className="-right-14 -top-14 h-36 w-36 opacity-60" />
         <div className="relative flex items-start gap-4">
           <GuideAvatar size={64} />
           <div className="min-w-0 flex-1">
-            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-fg-brand">{returning ? 'Sigue explorando' : 'Primer paso'}</p>
-            <h2 className="mt-0.5 text-xl font-extrabold leading-tight">{returning ? 'Elige tu siguiente misión' : 'Arma tu ruta del día'}</h2>
+            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-fg-brand">{returning ? 'Sigue explorando' : 'Tu exploración empieza aquí'}</p>
+            <h2 className="mt-0.5 text-[1.4rem] font-extrabold leading-tight">{returning ? 'Elige tu siguiente misión' : 'Elige tu primera misión'}</h2>
             <p className="mt-1 text-sm text-ink-muted">
               {notOpen
                 ? 'Las reservaciones aún no abren. Mientras, explora las misiones.'
@@ -40,7 +60,17 @@ export default function NextStopCard({ board, journey, now }: { board: Board; jo
             </p>
           </div>
         </div>
-        <div className="relative mt-5 grid gap-2">
+
+        {/* what there is to discover, in one glance */}
+        {missionCount > 0 && (
+          <ul className="relative mt-4 flex flex-wrap gap-1.5 text-xs font-bold" aria-label="Qué hay por descubrir">
+            <li className="rounded-full border border-line bg-surface/70 px-3 py-1">{missionCount} misiones</li>
+            {areas.length > 0 && <li className="rounded-full border border-line bg-surface/70 px-3 py-1">{areas.length} áreas</li>}
+            <li className="rounded-full border border-line bg-surface/70 px-3 py-1">hasta {board.max_reservations} en tu ruta</li>
+          </ul>
+        )}
+
+        <div className="relative mt-4 grid gap-2">
           <Link to="/misiones" className={buttonClasses('primary', 'w-full')}>
             Explorar {MISSION.many.toLowerCase()}
             <ArrowRight className="h-4 w-4" aria-hidden />
@@ -52,6 +82,37 @@ export default function NextStopCard({ board, journey, now }: { board: Board; jo
             </Link>
           )}
         </div>
+
+        {canPick && areas.length > 0 && (
+          <div className="relative mt-4 border-t border-line/70 pt-4">
+            <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-ink-muted">O empieza por un área</p>
+            <ul className="mt-3 grid grid-cols-4 gap-x-2 gap-y-3">
+              {areas.map((a) => {
+                const Symbol = divisionIcon(a.name);
+                return (
+                  <li key={a.id}>
+                    <Link to={`/misiones?f=division&d=${encodeURIComponent(a.id)}`} aria-label={`Misiones de ${a.name}`} className="flex flex-col items-center gap-1.5 text-center">
+                      <span className="division-orb flex h-11 w-11 items-center justify-center rounded-2xl" style={tintVars(a.color)} aria-hidden>
+                        <Symbol className="h-5 w-5" />
+                      </span>
+                      <span className="line-clamp-2 text-[10px] font-semibold leading-tight text-ink-muted">{a.name}</span>
+                    </Link>
+                  </li>
+                );
+              })}
+              {lifeColor && (
+                <li>
+                  <Link to="/misiones?f=life" aria-label="Misiones de Vida Universitaria" className="flex flex-col items-center gap-1.5 text-center">
+                    <span className="division-orb flex h-11 w-11 items-center justify-center rounded-2xl" style={tintVars(lifeColor)} aria-hidden>
+                      <Flag className="h-5 w-5" />
+                    </span>
+                    <span className="line-clamp-2 text-[10px] font-semibold leading-tight text-ink-muted">Vida Universitaria</span>
+                  </Link>
+                </li>
+              )}
+            </ul>
+          </div>
+        )}
       </section>
     );
   }

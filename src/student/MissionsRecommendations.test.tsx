@@ -74,7 +74,7 @@ const recommendations = [
 const renderMissions = async (recs: RecommendationsResult | null = result(recommendations), list = sessions) => {
   m.board = board(list);
   m.recs.mockResolvedValue(recs);
-  render(<MemoryRouter><Missions /></MemoryRouter>);
+  render(<MemoryRouter initialEntries={['/misiones?f=all']}><Missions /></MemoryRouter>);
   await screen.findByRole('heading', { name: list[0].title });
 };
 const card = (title: string) => screen.getByRole('heading', { name: title }).closest('li') as HTMLElement;
@@ -240,7 +240,7 @@ async function mountWith(...snapshots: Array<RecommendationsResult | Error>) {
   m.recs.mockReset();
   snapshots.forEach((s) => (s instanceof Error ? m.recs.mockRejectedValueOnce(s) : m.recs.mockResolvedValueOnce(s)));
   m.recs.mockResolvedValue(snapshots[snapshots.length - 1] instanceof Error ? snapshots.find((x) => !(x instanceof Error)) : snapshots[snapshots.length - 1]);
-  render(<MemoryRouter><Missions /></MemoryRouter>);
+  render(<MemoryRouter initialEntries={['/misiones?f=all']}><Missions /></MemoryRouter>);
   await screen.findByRole('heading', { name: 'Mercados financieros' });
   await waitFor(() => expect(m.recs).toHaveBeenCalledTimes(1));
 }
@@ -284,7 +284,7 @@ test('an initial failure of the recommender never breaks Talleres', async () => 
   m.board = board(sessions);
   m.recs.mockReset();
   m.recs.mockRejectedValue(new Error('rpc down'));
-  render(<MemoryRouter><Missions /></MemoryRouter>);
+  render(<MemoryRouter initialEntries={['/misiones?f=all']}><Missions /></MemoryRouter>);
   await screen.findByRole('heading', { name: 'Mercados financieros' });
   expect(titles()).toHaveLength(6);
   expect(screen.queryByRole('button', { name: 'Para ti' })).not.toBeInTheDocument();
@@ -306,7 +306,7 @@ test('coming back to the tab after a long time hidden re-queries once; a quick f
   m.board = board(sessions);
   m.recs.mockReset();
   m.recs.mockResolvedValue(reservedSnapshot([]));
-  render(<MemoryRouter><Missions /></MemoryRouter>);
+  render(<MemoryRouter initialEntries={['/misiones?f=all']}><Missions /></MemoryRouter>);
   await act(async () => { await vi.advanceTimersByTimeAsync(10); });
   expect(m.recs).toHaveBeenCalledTimes(1);
   const visibility = (state: 'hidden' | 'visible') => {
