@@ -98,6 +98,28 @@ test('«En curso ahora» is announced on the landing only when something is real
   expect(screen.queryByRole('link', { name: /En curso ahora/ })).not.toBeInTheDocument();
 });
 
+test('«En curso ahora» only describes what is running, and says how many of those the student can really book', async () => {
+  await show();
+  // one running mission with room and an open window: bookable under the existing rules
+  expect(screen.getByRole('link', { name: /En curso ahora/ })).toHaveTextContent('1 misión en curso · 1 acepta reservación ahora');
+  document.body.innerHTML = '';
+  // the same mission once its enrollment tolerance is over: still running, but it no longer promises anything
+  await show('/misiones', CATALOGUE.map((s) => (s.in_progress ? { ...s, enrollment_open: false } : s)));
+  const live = screen.getByRole('link', { name: /En curso ahora/ });
+  expect(live).toHaveTextContent('1 misión en curso · revisa cuáles aún aceptan reservación');
+  expect(live).not.toHaveTextContent(/aún puedes entrar/);
+});
+
+test('the search box describes the search that exists: name, topic or room (careers are not indexed, so it does not promise them)', async () => {
+  await show();
+  const box = screen.getByRole('searchbox', { name: 'Buscar misión' });
+  expect(box).toHaveAttribute('placeholder', 'Busca por nombre, tema o salón');
+  expect(box.getAttribute('placeholder')).not.toMatch(/carrera/i);
+  fireEvent.change(box, { target: { value: 'zzz' } });
+  expect(await screen.findByText(/un tema, el área o el nombre del salón/)).toBeInTheDocument();
+  expect(screen.queryByText(/carrera/i)).not.toBeInTheDocument();
+});
+
 test('«Para ti» is featured only when the server really recommends something', async () => {
   await show();
   expect(screen.queryByRole('region', { name: 'Misiones para ti' })).not.toBeInTheDocument();

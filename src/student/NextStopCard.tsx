@@ -1,4 +1,4 @@
-import { ArrowRight, Clock, Flag, MapPin, MapPinned, ScanQrCode, Sparkles, Timer } from 'lucide-react';
+import { ArrowRight, Clock, Flag, MapPin, MapPinned, ScanQrCode, Timer } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { buttonClasses } from '../components/ui';
 import { formatTime } from '../lib/catalog';
@@ -75,12 +75,6 @@ export default function NextStopCard({
             Explorar {MISSION.many.toLowerCase()}
             <ArrowRight className="h-4 w-4" aria-hidden />
           </Link>
-          {!closed && (
-            <Link to="/misiones?f=foryou" className="inline-flex min-h-11 items-center justify-center gap-1.5 text-sm font-semibold text-fg-accent">
-              <Sparkles className="h-4 w-4" aria-hidden />
-              Ver las que son para ti
-            </Link>
-          )}
         </div>
 
         {canPick && areas.length > 0 && (

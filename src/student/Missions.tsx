@@ -6,7 +6,7 @@ import { fetchDivisions, formatTime } from '../lib/catalog';
 import { matchesMission } from '../lib/missionSearch';
 import { recommendationReason } from '../lib/recommendationReason';
 import { fetchRecommendedActivities } from '../lib/recommendationsApi';
-import { belongsToDivision, type BoardSession } from '../lib/reservations';
+import { belongsToDivision, isSelectable, sessionState, type BoardSession } from '../lib/reservations';
 import { experienceCategoriesIn, isUniversityLife, UNIVERSITY_LIFE, universityLifeCategory, universityLifeLabel } from '../lib/universityLife';
 import { workshopDivisionIds } from '../lib/workshopDiscovery';
 import { useLoad } from '../lib/useLoad';
@@ -242,7 +242,7 @@ export default function Missions() {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             aria-label="Buscar misión"
-            placeholder="Busca por tema, carrera o salón"
+            placeholder="Busca por nombre, tema o salón"
             enterKeyHint="search"
             autoComplete="off"
             className="min-h-12 w-full rounded-full border border-line bg-surface/80 pl-11 pr-12 text-base text-ink placeholder:text-ink-muted focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/40"
@@ -268,6 +268,7 @@ export default function Missions() {
           featured={forYou.slice(0, 3).map(renderCard)}
           featuredTotal={forYou.length}
           liveCount={workshops.filter((w) => w.some((s) => s.in_progress)).length}
+          liveOpenCount={workshops.filter((w) => w.some((s) => s.in_progress && isSelectable(sessionState(board, s, null)))).length}
           lifeCount={workshops.filter((w) => isUniversityLife(w[0])).length}
           href={hrefFor}
         />
@@ -354,7 +355,7 @@ export default function Missions() {
 
           {visible.length === 0 ? (
             <EmptyState icon={Telescope} title={searching ? `No encontramos «${query.trim()}»` : current.kind === 'all' ? text('activitiesEmpty') : 'No hay misiones con este filtro'}>
-              {searching ? 'Prueba con otra palabra (un tema, una carrera o el nombre del salón) o borra la búsqueda.' : current.kind === 'all' ? undefined : 'Prueba con «Todos» para ver todas las misiones.'}
+              {searching ? 'Prueba con otra palabra (un tema, el área o el nombre del salón) o borra la búsqueda.' : current.kind === 'all' ? undefined : 'Prueba con «Todos» para ver todas las misiones.'}
             </EmptyState>
           ) : (
             <ul key={listKey} className="space-y-3">

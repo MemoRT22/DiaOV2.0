@@ -39,6 +39,9 @@ test('with nothing booked, Inicio invites to explore: what there is, one main ac
   expect(facts).toHaveTextContent('2 áreas');
   expect(facts).toHaveTextContent('hasta 4 en tu ruta');
   expect(within(region).getByRole('link', { name: /Explorar misiones/ })).toHaveAttribute('href', '/misiones');
+  // no promise of personalised picks here (the server may have none), and no second link to the same place
+  expect(within(region).queryByRole('link', { name: /para ti/i })).not.toBeInTheDocument();
+  expect(within(region).getAllByRole('link').filter((l) => l.getAttribute('href') === '/misiones')).toHaveLength(1);
   expect(within(region).getByRole('link', { name: 'Misiones de Negocios' })).toHaveAttribute('href', '/misiones?f=division&d=d2');
   expect(within(region).getByRole('link', { name: 'Misiones de Vida Universitaria' })).toHaveAttribute('href', '/misiones?f=life');
 });

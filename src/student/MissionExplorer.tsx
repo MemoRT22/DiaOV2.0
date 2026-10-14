@@ -23,6 +23,7 @@ export default function MissionExplorer({
   featured,
   featuredTotal,
   liveCount,
+  liveOpenCount,
   lifeCount,
   href,
 }: {
@@ -34,7 +35,10 @@ export default function MissionExplorer({
   /** Up to three ready-made cards of recommended missions, in the server's order. */
   featured: ReactNode[];
   featuredTotal: number;
+  /** Missions with a session in progress (it only says what is happening). */
   liveCount: number;
+  /** Of those, the ones the student can actually book right now under the existing rules (seats, route, enrollment tolerance…). */
+  liveOpenCount: number;
   lifeCount: number;
   /** URL of a filter (keeps the rest of the query). */
   href: (kind: 'all' | 'foryou' | 'live' | 'life' | { division: string }) => string;
@@ -53,7 +57,12 @@ export default function MissionExplorer({
           <span className="anim-blink h-2.5 w-2.5 shrink-0 rounded-full bg-primary-500" aria-hidden />
           <span className="min-w-0 flex-1">
             <strong className="block">En curso ahora</strong>
-            <span className="text-ink-muted">{count(liveCount)} {liveCount === 1 ? 'ya empezó' : 'ya empezaron'}: aún puedes entrar</span>
+            <span className="text-ink-muted">
+              {count(liveCount)} en curso
+              {liveOpenCount > 0
+                ? ` · ${liveOpenCount === 1 ? '1 acepta' : `${liveOpenCount} aceptan`} reservación ahora`
+                : ' · revisa cuáles aún aceptan reservación'}
+            </span>
           </span>
           <ArrowRight className="h-4 w-4 shrink-0 text-fg-brand" aria-hidden />
         </Link>
