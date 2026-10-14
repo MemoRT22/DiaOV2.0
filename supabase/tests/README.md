@@ -20,6 +20,7 @@ Ejecutar **solo en una base local/descartable** con las migraciones actuales. No
 | Centro de Operación | `regression_operaciones.sql` | `OPERACIONES REGRESSION: ... 0 failed` |
 | Intereses posteriores | `regression_post_event_interests.sql` | `... 0 fail` |
 | Talleres, publicación y edición | `regression_workshop_admin.sql`, `regression_workshop_intake.sql`, `regression_workshop_publishing.sql`, `regression_published_workshop_editing.sql`, `regression_workshops_single_flow_fixes.sql`, `regression_backend_legacy_cleanup.sql` | Marcador propio sin fallos |
+| Calendario oficial de talleres: horarios exactos 15/30/60, traslados, sellos, publicación idempotente, edición con IDs reutilizados y bloqueo atómico con reservaciones | `regression_official_workshop_schedule.sql` | `OFFICIAL_WORKSHOP_SCHEDULE_OK`, salida 0 |
 
 El harness HTTP `concurrency_reservations.mjs` y su `concurrency_fixture_setup.sql` / `concurrency_fixture_cleanup.sql` prueban clientes distintos, cupo y máximo. `concurrency_checkin.mjs` tiene setup/cleanup propios y usa una sesión de 60 minutos: 20 solicitudes simultáneas (QR y código) deben dejar una sola asistencia con 2 sellos. Requieren **Supabase local completo** (Auth, Edge Functions y base), una contraseña DEMO en `CONCURRENCY_TEST_PASSWORD` y la URL local en `CONCURRENCY_TEST_SUPABASE_URL`; los scripts rechazan URLs fuera de localhost. `node --check` solo confirma sintaxis y no reemplaza la prueba concurrente.
 

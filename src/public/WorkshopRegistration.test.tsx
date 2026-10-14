@@ -279,7 +279,7 @@ describe('tipo de taller y logística simplificada', () => {
     expect(within(group).queryByRole('radio', { name: '15 minutos' })).not.toBeInTheDocument();
     expect(within(group).getByRole('radio', { name: '30 minutos' })).toBeInTheDocument();
     expect(within(group).getByRole('radio', { name: '1 hora' })).toBeInTheDocument();
-    expect(screen.getByText(/entre las 10:00 a\. m\. y las 12:00 p\. m\./)).toBeInTheDocument();
+    expect(screen.getByText(/horarios oficiales según la duración, con traslados entre sesiones/)).toBeInTheDocument();
     expect(screen.queryByLabelText(/Desde|Hasta|Descanso/)).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/Duración de cada sesión/)).not.toBeInTheDocument();
     // sin duración no avanza

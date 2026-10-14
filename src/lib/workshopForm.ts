@@ -29,7 +29,7 @@ export type FormState = {
   objective: string;
   takeaway: string;
   keywords: string[];
-  /** '15' solo para Vida Universitaria; el horario 10:00–12:00 lo fija el servidor. */
+  /** '15' solo para Vida Universitaria; el calendario oficial lo fija el servidor. */
   session_duration_minutes: string;
   capacity_per_session: string;
   building: string;

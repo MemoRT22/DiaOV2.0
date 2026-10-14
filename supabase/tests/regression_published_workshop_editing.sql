@@ -23,6 +23,7 @@ DECLARE
   v_p1 uuid;
   v_p2 uuid;
   v_session_ids uuid[];
+  v_previous_session_ids uuid[];
   v_detail jsonb;
   v_error text;
 BEGIN
@@ -66,10 +67,10 @@ BEGIN
     jsonb_build_object('activity_type','vida_universitaria','experience_category','otra',
       'career_ids',jsonb_build_array(),'session_duration_minutes',15,'title','Vida 15 inicial'))->>'submission_id')::uuid;
   v_initial_life_activity := (public.publish_workshop_submission_internal(v_actor, v_initial_life)->>'activity_id')::uuid;
-  IF (SELECT count(*) FROM public.activity_sessions WHERE activity_id = v_initial_life_activity) <> 8 OR
+  IF (SELECT count(*) FROM public.activity_sessions WHERE activity_id = v_initial_life_activity) <> 6 OR
      EXISTS (SELECT 1 FROM public.activity_sessions WHERE activity_id = v_initial_life_activity AND
        (ends_at - starts_at <> interval '15 minutes' OR
-        ends_at > ((SELECT event_date FROM public.editions WHERE id = v_edition) + TIME '12:00') AT TIME ZONE 'America/Cancun')) THEN
+        ends_at > ((SELECT event_date FROM public.editions WHERE id = v_edition) + TIME '12:20') AT TIME ZONE 'America/Cancun')) THEN
     RAISE EXCEPTION 'FAIL_PUBLISH_LIFE_15';
   END IF;
 
@@ -104,8 +105,13 @@ BEGIN
   END IF;
 
   v_payload := v_payload || jsonb_build_object('session_duration_minutes',60);
+  SELECT array_agg(id ORDER BY starts_at) INTO v_previous_session_ids
+  FROM (SELECT id, starts_at FROM public.activity_sessions WHERE activity_id = v_activity ORDER BY starts_at LIMIT 2) s;
   PERFORM public.workshop_admin_edit_internal(v_actor, v_sub, v_payload);
-  IF (SELECT count(*) FROM public.activity_sessions WHERE activity_id = v_activity) <> 2 THEN RAISE EXCEPTION 'FAIL_60_SESSIONS'; END IF;
+  IF (SELECT count(*) FROM public.activity_sessions WHERE activity_id = v_activity) <> 2 OR
+     (SELECT array_agg(id ORDER BY starts_at) FROM public.activity_sessions WHERE activity_id = v_activity) <> v_previous_session_ids THEN
+    RAISE EXCEPTION 'FAIL_60_SESSIONS_OR_IDS';
+  END IF;
   SELECT array_agg(id ORDER BY starts_at) INTO v_session_ids FROM public.activity_sessions WHERE activity_id = v_activity;
   PERFORM public.workshop_admin_edit_internal(v_actor, v_sub, v_payload);
   IF (SELECT array_agg(id ORDER BY starts_at) FROM public.activity_sessions WHERE activity_id = v_activity) <> v_session_ids OR
@@ -128,11 +134,11 @@ BEGIN
     GET STACKED DIAGNOSTICS v_error = MESSAGE_TEXT;
     IF v_error <> 'INVALID_DURATION' THEN RAISE; END IF;
   END;
-  IF (SELECT count(*) FROM public.activity_sessions WHERE activity_id = v_activity) <> 8 OR
+  IF (SELECT count(*) FROM public.activity_sessions WHERE activity_id = v_activity) <> 6 OR
      (SELECT min(starts_at) FROM public.activity_sessions WHERE activity_id = v_activity) <>
        ((SELECT event_date FROM public.editions WHERE id = v_edition) + TIME '10:00') AT TIME ZONE 'America/Cancun' OR
      (SELECT max(ends_at) FROM public.activity_sessions WHERE activity_id = v_activity) <>
-       ((SELECT event_date FROM public.editions WHERE id = v_edition) + TIME '12:00') AT TIME ZONE 'America/Cancun' OR
+       ((SELECT event_date FROM public.editions WHERE id = v_edition) + TIME '12:20') AT TIME ZONE 'America/Cancun' OR
      EXISTS (SELECT 1 FROM public.activity_sessions WHERE activity_id = v_activity AND ends_at - starts_at <> interval '15 minutes') OR
      (SELECT count(*) FROM public.activity_careers WHERE activity_id = v_activity) <> 0 OR
      (SELECT count(*) FROM public.activity_divisions WHERE activity_id = v_activity) <> 0 OR

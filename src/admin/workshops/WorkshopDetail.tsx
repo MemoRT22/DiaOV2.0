@@ -30,7 +30,7 @@ function Item({ label, children }: { label: string; children: React.ReactNode })
 }
 function Operational({ detail }: { detail: Detail }) {
   return <Section title="Operación del taller">
-    <p className="text-sm text-ink-muted">Horarios y cupos del taller.</p>
+    <p className="text-sm text-ink-muted">Horarios efectivos y cupos del taller.</p>
     {detail.sessions?.length ? <div className="space-y-3">{detail.sessions.map((session) => <div key={session.id} className="rounded-theme border border-line p-4">
       <p className="font-semibold">{formatEventDateTime(session.starts_at)} – {formatEventTime(session.ends_at)}</p>
       <p className="mt-1 text-sm text-ink-muted">Cupo {session.capacity} · Reservados {session.reserved} · {fallback(session.location)} · {sessionStatusLabel(session.status)}</p>
@@ -103,7 +103,7 @@ export default function WorkshopDetail() {
 
     <Section title="Logística"><dl className="grid gap-4 sm:grid-cols-2">
       <Item label="Duración">{data.session_duration_minutes} minutos</Item><Item label="Cupo por sesión">{data.capacity_per_session}</Item>
-      <Item label="Horario">{data.operating_start_time.slice(0, 5)}–{data.operating_end_time.slice(0, 5)}</Item>
+      <Item label="Calendario">{group === 'published' ? `${data.sessions.length} horarios oficiales publicados` : 'Se asigna automáticamente al publicar'}</Item>
       <Item label="Ubicación">{data.building} · {data.room_space}</Item>
       <Item label="Requerimientos">{fallback(data.requirements)}</Item><Item label="Notas">{fallback(data.notes)}</Item>
     </dl></Section>
