@@ -1,20 +1,25 @@
 import { Check, Ticket, Trophy } from 'lucide-react';
 import { describeRules, nextTierHint, type MyRaffleStatus } from '../lib/raffleRules';
+import type { MyRafflePrize } from '../lib/raffleWinner';
+import PrizeCard from './PrizeCard';
 
 /**
  * «Sorteo» in the logbook: the stamps that count (académicos / Vida Universitaria — a 60-minute mission grants 2),
  * the category reached (always the highest one), the closest step up and how each category is unlocked.
  * Everything shown comes from the server; this card never decides the category.
  */
-export default function RaffleStatusCard({ raffle }: { raffle: MyRaffleStatus | null }) {
+export default function RaffleStatusCard({ raffle, prizes = [], verified = true, onRetry }: { raffle: MyRaffleStatus | null; prizes?: MyRafflePrize[]; verified?: boolean; onRetry?: () => void }) {
   const hint = raffle && !raffle.has_won ? nextTierHint(raffle) : null;
   return (
-    <section className="space-card p-5" aria-label="Sorteo">
+    <section id="premio" className="space-card scroll-mt-20 p-5" aria-label="Sorteo">
       <div className="flex items-center gap-2">
         <Ticket className="h-5 w-5 text-fg-accent" aria-hidden />
         <h2 className="text-base font-extrabold">Sorteo</h2>
       </div>
-      {!raffle ? (
+      {prizes.length > 0 ? (
+        // El resultado vigente que el servidor tiene de esta persona manda sobre el progreso: ya ganó.
+        <div className="mt-4 space-y-3">{prizes.map((prize) => <PrizeCard key={prize.winnerId} prize={prize} verified={verified} onRetry={onRetry} />)}</div>
+      ) : !raffle ? (
         <p className="mt-4 text-sm text-ink-muted">Acepta el Aviso de Privacidad para ver tu progreso en el sorteo.</p>
       ) : raffle.has_won ? (
         <div className="mt-4 rounded-theme border border-success-500/40 bg-success-500/10 p-4 text-center">

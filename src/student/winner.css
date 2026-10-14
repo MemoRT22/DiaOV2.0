@@ -1,0 +1,32 @@
+/* Aviso y tarjeta de ganador del alumno. Usa los tokens de la temática; el movimiento se corta con prefers-reduced-motion (index.css). */
+.wn-overlay { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; padding: 1rem; background: rgb(var(--surface-sunken) / 0.82); backdrop-filter: blur(6px); animation: wn-fade .25s ease-out both; }
+.wn-panel { position: relative; width: min(100%, 26rem); max-height: calc(100dvh - 2rem); overflow-y: auto; border-radius: calc(var(--radius) + 6px); border: 1px solid rgb(var(--c-accent-500) / 0.55);
+  padding: 2.25rem 1.5rem 1.5rem; text-align: center; background:
+    radial-gradient(90% 60% at 50% 0%, rgb(var(--c-accent-500) / 0.28), transparent 70%),
+    radial-gradient(70% 50% at 100% 100%, rgb(var(--c-primary-500) / 0.18), transparent 70%),
+    linear-gradient(180deg, rgb(var(--surface-raised)), rgb(var(--surface)));
+  box-shadow: 0 0 0 1px rgb(var(--c-accent-500) / 0.15), 0 24px 70px -20px rgb(var(--c-accent-500) / 0.55); animation: wn-pop .45s cubic-bezier(.2, 1.3, .4, 1) both; }
+.wn-halo { position: relative; display: grid; place-items: center; width: 5.5rem; height: 5.5rem; margin: 0 auto 1rem; border-radius: 999px; background: rgb(var(--c-accent-500) / 0.18); color: rgb(var(--c-accent-400)); }
+.wn-halo::before, .wn-halo::after { content: ''; position: absolute; inset: -.55rem; border-radius: 999px; border: 1px solid rgb(var(--c-accent-400) / 0.5); animation: wn-ring 2.6s ease-out infinite; }
+.wn-halo::after { animation-delay: 1.3s; }
+.wn-star { position: absolute; width: .4rem; height: .4rem; border-radius: 999px; background: rgb(var(--c-accent-300)); animation: twinkle 2.4s ease-in-out infinite; }
+.wn-title { font-family: var(--font-display); font-size: 1.55rem; font-weight: 800; line-height: 1.15; }
+.wn-facts { display: grid; gap: .55rem; margin: 1.1rem 0 0; padding: .9rem 1rem; text-align: left; border-radius: var(--radius); border: 1px solid rgb(var(--line)); background: rgb(var(--surface-sunken) / 0.55); }
+.wn-facts dt { color: rgb(var(--ink-muted)); font-size: .7rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+.wn-facts dd { margin: 0; font-weight: 700; overflow-wrap: anywhere; }
+.wn-folio { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 1.35rem; font-weight: 800; letter-spacing: .1em; color: rgb(var(--c-accent-400)); }
+.wn-actions { display: grid; gap: .6rem; margin-top: 1.25rem; }
+@keyframes wn-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes wn-pop { from { opacity: 0; transform: translateY(14px) scale(.94); } to { opacity: 1; transform: none; } }
+@keyframes wn-ring { from { opacity: .7; transform: scale(.85); } to { opacity: 0; transform: scale(1.45); } }
+
+.pz-card { position: relative; overflow: hidden; border-radius: var(--radius); padding: 1.1rem; text-align: center; border: 1px solid rgb(var(--c-accent-500) / 0.5);
+  background: radial-gradient(90% 70% at 50% 0%, rgb(var(--c-accent-500) / 0.22), transparent 70%), linear-gradient(180deg, rgb(var(--surface-raised)), rgb(var(--surface))); }
+.pz-card[data-state='confirmado'] { border-color: rgb(var(--c-success-500) / 0.5); background: radial-gradient(90% 70% at 50% 0%, rgb(var(--c-success-500) / 0.16), transparent 70%), linear-gradient(180deg, rgb(var(--surface-raised)), rgb(var(--surface))); }
+.pz-card dl { display: grid; gap: .5rem; margin: .9rem 0 0; text-align: left; }
+.pz-card dl > div { display: flex; justify-content: space-between; gap: 1rem; border-top: 1px solid rgb(var(--line)); padding-top: .5rem; font-size: .88rem; }
+.pz-card dt { color: rgb(var(--ink-muted)); }
+.pz-card dd { margin: 0; font-weight: 700; text-align: right; overflow-wrap: anywhere; }
+.pz-folio { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .08em; }
+.pz-prize { margin-top: .25rem; font-size: 1.15rem; font-weight: 800; color: rgb(var(--c-accent-400)); overflow-wrap: anywhere; }
+.pz-card[data-state='sin-verificar'] { border-color: rgb(var(--line)); opacity: .9; }

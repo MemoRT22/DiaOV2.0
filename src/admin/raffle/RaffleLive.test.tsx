@@ -5,6 +5,12 @@ import { FakeBroadcastChannel } from './fakeBroadcastChannel';
 import { AMAZON, category, demoCategories, demoPrizes, IPAD, MACBOOK, OFFICIAL, officialPrizes, SWITCH, WATCH } from './raffleFixtures';
 import { chooseRehearsalSet, fireEvent, openConsole, readyToDraw, screen, setReducedMotion, stage, view, waitFor, within } from './raffleRunHarness';
 
+// El folio lo asigna el servidor; aquí se simula con uno derivado del id para no consultar la red.
+vi.mock('../../lib/raffleWinner', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../lib/raffleWinner')>()),
+  fetchWinnerFolios: async (ids: string[]) => new Map(ids.map((id) => [id, `GAN-${id.replace(/\D/g, '').padStart(6, '0')}`])),
+}));
+
 type Server = { prizes: ReturnType<typeof officialPrizes>; winners: { id: string; prize_id: string; status: string; name: string }[] };
 
 const m = vi.hoisted(() => ({
@@ -300,4 +306,30 @@ test('Coordinación can invalidate a delivered prize it just confirmed and draw 
   await act(async () => { fireEvent.click(dialog.getByRole('button', { name: 'Invalidar' })); });
   await waitFor(() => expect(m.invalidate).toHaveBeenCalledWith('w1', 'Se fue antes'));
   expect(await screen.findByText(/Ganador invalidado\. El premio volvió al inventario/)).toBeInTheDocument();
+});
+
+// ------------------------------------------------------------------ folio para el cotejo visual con la Bitácora del alumno
+
+test('the operator sees the winner’s folio while announcing them, and keeps the existing «Confirmar ganador» flow', async () => {
+  openConsole();
+  fireEvent.click(await readyToDraw());
+  await stage().findByText('Alumno 1');
+  await waitFor(() => expect(stage().getByTestId('winner-folio')).toHaveTextContent('Folio: GAN-000001'));
+  const confirm = await stage().findByRole('button', { name: /Confirmar ganador/ });
+  await waitFor(() => expect(confirm).toBeEnabled());
+  fireEvent.click(confirm);
+  await stage().findByText('Entrega confirmada');
+  expect(stage().getByTestId('winner-folio')).toHaveTextContent('GAN-000001'); // sigue a la vista tras confirmar
+  expect(m.confirm).toHaveBeenCalledTimes(1);
+});
+
+test('each winner has their own folio, one per result', async () => {
+  openConsole();
+  await drawAndConfirm();
+  await waitFor(() => expect(stage().getByTestId('winner-folio')).toHaveTextContent('GAN-000001'));
+  const next = stage().getByRole('button', { name: 'Siguiente ronda' });
+  await waitFor(() => expect(next).toBeEnabled());
+  fireEvent.click(next);
+  await drawAndConfirm();
+  await waitFor(() => expect(stage().getByTestId('winner-folio')).toHaveTextContent('GAN-000002'));
 });

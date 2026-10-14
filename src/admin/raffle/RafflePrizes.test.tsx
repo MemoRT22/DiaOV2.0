@@ -4,6 +4,12 @@ import { beforeEach, expect, test, vi } from 'vitest';
 import RaffleAdmin from '../RaffleAdmin';
 import { AMAZON, category, IPAD, MACBOOK, OFFICIAL, prize, SWITCH, WATCH, winner } from './raffleFixtures';
 
+// El folio lo asigna el servidor; aquí se simula con uno derivado del id para no consultar la red.
+vi.mock('../../lib/raffleWinner', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../lib/raffleWinner')>()),
+  fetchWinnerFolios: async (ids: string[]) => new Map(ids.map((id) => [id, `GAN-${id.replace(/\D/g, '').padStart(6, '0')}`])),
+}));
+
 type Row = ReturnType<typeof prize>;
 const m = vi.hoisted(() => ({ view: vi.fn(), prizes: vi.fn(), winners: vi.fn(), save: vi.fn() }));
 
