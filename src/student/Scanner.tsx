@@ -37,6 +37,8 @@ export default function Scanner() {
   const [next, setNext] = useState<Stop | null>(null);
   const [raffle, setRaffle] = useState<MyRaffleStatus | null>(null);
   const [errorMsg, setErrorMsg] = useState('');
+  // A scan without a reservation points to Misiones: the student can still enrol if the tolerance allows it.
+  const [needsReservation, setNeedsReservation] = useState(false);
   const [manualCode, setManualCode] = useState('');
   const [cameraError, setCameraError] = useState(false);
   // Bumped to request a fresh camera session. The <video> only exists on the scanning screen, so the camera must be
@@ -92,6 +94,8 @@ export default function Scanner() {
         .catch(() => undefined);
       void Promise.resolve(fetchMyRaffleStatus()).then((status) => setRaffle(status ?? null)).catch(() => undefined);
     } catch (cause) {
+      // Supabase reports RPC errors as plain objects with `message`, not as Error instances.
+      setNeedsReservation((cause as { message?: unknown } | null)?.message === 'NO_RESERVATION');
       setErrorMsg(friendlyError(cause));
       setPhase('error');
     }
@@ -110,6 +114,7 @@ export default function Scanner() {
     setNext(null);
     setRaffle(null);
     setErrorMsg('');
+    setNeedsReservation(false);
     setManualCode('');
     setPhase('scanning');
     setCameraRun((n) => n + 1);
@@ -292,6 +297,11 @@ export default function Scanner() {
           <div className="min-w-0">
             <p className="font-extrabold">No pudimos registrar tu asistencia</p>
             <p className="mt-0.5 text-ink-muted">{errorMsg || 'No se pudo validar la asistencia.'}</p>
+            {needsReservation && (
+              <Link to="/misiones" className="mt-2 inline-block font-extrabold text-fg-brand underline underline-offset-2">
+                Ver misiones y reservar
+              </Link>
+            )}
           </div>
         </div>
       )}

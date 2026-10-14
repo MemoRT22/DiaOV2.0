@@ -7,7 +7,7 @@ import { durationMinutes, hasTightTransfer, isSelectable, sessionState, type Boa
 import { useLoad } from '../lib/useLoad';
 import { useReservationBoard } from '../lib/useReservationBoard';
 import { fetchWorkshopDetail } from '../lib/workshopDetailApi';
-import { workshopDivisionIds, workshopDuration, workshopLocation, workshopPersonalStatus } from '../lib/workshopDiscovery';
+import { bookableSeats, enrollmentClosedWithSeats, workshopDivisionIds, workshopDuration, workshopFinished, workshopLocation, workshopPersonalStatus } from '../lib/workshopDiscovery';
 import { useEdition } from '../edition/EditionProvider';
 import { usePublicTheme } from '../theme/PublicThemeProvider';
 import { MISSION } from './copy';
@@ -97,7 +97,7 @@ export default function StudentWorkshopDetail() {
   const headline = missionHeadline(board, sessions, replacing, status);
   const openCount = sessions.filter((s) => isSelectable(sessionState(board, s, replacing))).length;
   const pitch = metadata?.student_pitch || first.description;
-  const seatsLeft = sessions.filter((s) => !s.ended && s.status === 'activa').reduce((n, s) => n + Math.max(s.remaining, 0), 0);
+  const seatsLeft = bookableSeats(sessions);
   return (
     <div className="space-y-5">
       {back}
@@ -119,7 +119,7 @@ export default function StudentWorkshopDetail() {
           <dl className="relative mt-4 grid grid-cols-3 gap-2 text-center">
             <Fact icon={Clock3} label="Duración" value={workshopDuration(sessions)} />
             <Fact icon={CalendarClock} label="Horarios" value={status === 'En tu ruta' ? 'En tu ruta' : status === 'Explorado' ? 'Completada' : openCount ? `${openCount} disponible${openCount === 1 ? '' : 's'}` : 'Ninguno libre'} />
-            <Fact icon={Users} label="Lugares" value={seatsLeft > 0 ? `${seatsLeft} libres` : 'Llena'} />
+            <Fact icon={Users} label="Lugares" value={seatsLeft > 0 ? `${seatsLeft} libres` : workshopFinished(sessions) ? 'Finalizada' : enrollmentClosedWithSeats(sessions) ? 'Inscripción cerrada' : 'Llena'} />
           </dl>
           {location && (
             <div className="relative mt-3 rounded-theme border border-line bg-surface/70 px-3 py-2.5 text-sm">

@@ -1,6 +1,6 @@
-import { expect, test } from 'vitest';
+import { describe, expect, test } from 'vitest';
 import type { Board, BoardSession, MyReservation } from './reservations';
-import { applyClock } from './useReservationBoard';
+import { applyClock, nextEnrollmentClose } from './useReservationBoard';
 
 const START = Date.parse('2026-10-15T15:00:00Z');
 const END = Date.parse('2026-10-15T15:30:00Z');
@@ -65,4 +65,59 @@ test('an explicitly configured closure also updates on an already open screen', 
   const b: Board = { ...board(), opens_at: new Date(OPEN).toISOString(), closes_at: new Date(OPEN + 3_600_000).toISOString() };
   expect(applyClock(b, OPEN + 3_600_000 - 1 - Date.now()).window).toBe('open');
   expect(applyClock(b, OPEN + 3_600_000 - Date.now()).window).toBe('closed');
+});
+
+describe('enrollment close follows the clock', () => {
+  // Official examples: a session starting at 10:00 Cancún (15:00Z) closes enrollment at 10:05 / 10:10 / 10:20.
+  const CASES = [{ minutes: 15, tolerance: 5 }, { minutes: 30, tolerance: 10 }, { minutes: 60, tolerance: 20 }];
+  const sessionOf = (minutes: number, tolerance: number, over: Partial<BoardSession> = {}) => session({
+    ends_at: new Date(START + minutes * 60_000).toISOString(),
+    enrollment_closes_at: new Date(START + tolerance * 60_000).toISOString(),
+    enrollment_open: true, my_reservation_id: null, ...over,
+  });
+  const boardOf = (s: BoardSession): Board => ({ ...board(), sessions: [s], reservations: [], active_reservation_count: 0 });
+  const at = (b: Board, ms: number) => applyClock(b, ms - Date.now());
+
+  test.each(CASES)('$minutes min: open before, at the start and exactly at +$tolerance min; closed one millisecond later', ({ minutes, tolerance }) => {
+    const b = boardOf(sessionOf(minutes, tolerance));
+    expect(at(b, START - 60_000).sessions[0].enrollment_open).toBe(true);
+    expect(at(b, START).sessions[0].enrollment_open).toBe(true);
+    expect(at(b, START + (tolerance * 60_000) / 2).sessions[0].enrollment_open).toBe(true);
+    expect(at(b, START + tolerance * 60_000).sessions[0].enrollment_open).toBe(true);
+    const closed = at(b, START + tolerance * 60_000 + 1);
+    expect(closed.sessions[0].enrollment_open).toBe(false);
+    // The session is still running; only NEW enrollment closed.
+    expect(closed.sessions[0]).toMatchObject({ started: true, ended: false, in_progress: true });
+  });
+
+  test('an existing reservation is untouched when enrollment closes', () => {
+    const s = sessionOf(30, 10, { my_reservation_id: 'r' });
+    const b: Board = { ...board(reservation()), sessions: [s] };
+    const closed = at(b, START + 10 * 60_000 + 1);
+    expect(closed.sessions[0].my_reservation_id).toBe('r');
+    expect(closed.reservations[0]).toMatchObject({ status: 'vigente', derived_status: 'in_progress' });
+    expect(closed.active_reservation_count).toBe(b.active_reservation_count);
+  });
+
+  test('enrollment state is derived from the (server-offset) clock, not trusted from a stale snapshot', () => {
+    const b = boardOf(sessionOf(15, 5, { enrollment_open: false }));
+    expect(at(b, START - 3_600_000).sessions[0].enrollment_open).toBe(true); // a stale `false` is corrected from the clock
+    const skewed = applyClock(boardOf(sessionOf(15, 5)), START + 5 * 60_000 + 1 - Date.now());
+    expect(skewed.sessions[0].enrollment_open).toBe(false);
+  });
+
+  test('a payload without the field is left alone', () => {
+    const b = boardOf(session({ my_reservation_id: null }));
+    expect(at(b, START + 3_600_000).sessions[0]).not.toHaveProperty('enrollment_open');
+  });
+
+  test('nextEnrollmentClose picks the nearest future limit among open sessions', () => {
+    const b: Board = { ...board(), sessions: [
+      sessionOf(60, 20, { id: 'a' }), sessionOf(15, 5, { id: 'b' }), sessionOf(30, 10, { id: 'c', enrollment_open: false }),
+      sessionOf(15, 5, { id: 'd', status: 'cancelada' }),
+    ] };
+    expect(nextEnrollmentClose(b, START)).toBe(START + 5 * 60_000);
+    expect(nextEnrollmentClose(b, START + 5 * 60_000 + 1)).toBe(START + 20 * 60_000);
+    expect(nextEnrollmentClose(b, START + 20 * 60_000 + 1)).toBeNull();
+  });
 });

@@ -1,4 +1,4 @@
-import { isSelectable, sessionState, durationMinutes, type Board, type BoardSession, type MyReservation } from './reservations';
+import { isEnrollmentOpen, isSelectable, sessionState, durationMinutes, type Board, type BoardSession, type MyReservation } from './reservations';
 
 export function workshopDivisionIds(session: BoardSession): string[] {
   return session.division_ids?.length ? [...new Set(session.division_ids)] : session.division_id ? [session.division_id] : [];
@@ -16,10 +16,30 @@ export function workshopDuration(sessions: BoardSession[]): string {
   return shortest === longest ? `${shortest} min` : `${shortest}–${longest} min`;
 }
 
+/** Seats of the sessions that are still bookable by time: not ended, active and inside their enrollment tolerance. */
+export function bookableSeats(sessions: BoardSession[]): number {
+  return sessions.filter((s) => !s.ended && s.status === 'activa' && isEnrollmentOpen(s)).reduce((n, s) => n + Math.max(s.remaining, 0), 0);
+}
+
+/**
+ * True when places remain but no session accepts new reservations any more (enrollment tolerance over).
+ * Not the same as «Llena», where capacity is what ran out.
+ */
+export function enrollmentClosedWithSeats(sessions: BoardSession[]): boolean {
+  const live = sessions.filter((s) => !s.ended && s.status === 'activa');
+  return live.some((s) => s.remaining > 0) && !live.some((s) => s.remaining > 0 && isEnrollmentOpen(s));
+}
+
+/** Every schedule is over: no future or in-progress session is left (cancelled ones do not count as schedules). */
+export function workshopFinished(sessions: BoardSession[]): boolean {
+  return sessions.some((s) => s.ended) && !sessions.some((s) => !s.ended && s.status === 'activa');
+}
+
 export function workshopAvailability(board: Board, sessions: BoardSession[], replacing: MyReservation | null): string {
   if (sessions.some((s) => s.in_progress)) return 'En curso';
   const count = sessions.filter((s) => isSelectable(sessionState(board, s, replacing))).length;
   if (count) return `${count} ${count === 1 ? 'horario disponible' : 'horarios disponibles'}`;
+  if (enrollmentClosedWithSeats(sessions)) return 'Inscripción cerrada';
   if (sessions.every((s) => s.remaining <= 0)) return 'Sin lugares disponibles';
   return 'Consulta horarios';
 }

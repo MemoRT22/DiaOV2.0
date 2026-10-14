@@ -141,3 +141,40 @@ test('a failed check-in keeps the screen usable: error shown, camera can be reop
   expect(q.announce).not.toHaveBeenCalled();
   expect(screen.getByRole('button', { name: 'Abrir cámara' })).toBeInTheDocument();
 });
+
+test('a scan without reservation explains that the student must enrol first and links to Misiones (never reserves for them)', async () => {
+  // The Supabase client rejects with a plain object, not an Error instance.
+  q.checkIn.mockRejectedValue({ message: 'NO_RESERVATION', code: 'P0001' });
+  mount();
+  await waitFor(() => expect(scanners()).toHaveLength(1));
+  scanners()[0].onDecode({ data: 'QR-SIN-RESERVA' });
+  expect(await screen.findByText(/primero debes inscribirte/)).toBeInTheDocument();
+  expect(screen.getByText(/periodo de inscripción y quedan lugares/)).toBeInTheDocument();
+  expect(screen.getByRole('link', { name: 'Ver misiones y reservar' })).toHaveAttribute('href', '/misiones');
+  expect(q.announce).not.toHaveBeenCalled();
+});
+
+test('other failures do not send the student to Misiones', async () => {
+  q.checkIn.mockRejectedValue(new Error('INVALID_CREDENTIAL'));
+  mount();
+  await waitFor(() => expect(scanners()).toHaveLength(1));
+  scanners()[0].onDecode({ data: 'QR-MALO' });
+  await screen.findByText(/no es válido/);
+  expect(screen.queryByRole('link', { name: 'Ver misiones y reservar' })).not.toBeInTheDocument();
+});
+
+test('a student enrolled earlier registers attendance after the workshop ended: the scanner applies no time rule of its own', async () => {
+  q.checkIn.mockResolvedValue(result({ starts_at: '2026-10-15T15:00:00Z', ends_at: '2026-10-15T15:30:00Z' }));
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(Date.parse('2026-10-15T20:00:00Z')); // hours after the workshop ended
+  try {
+    mount();
+    await waitFor(() => expect(scanners()).toHaveLength(1));
+    scanners()[0].onDecode({ data: 'QR-TARDE' });
+    expect(await screen.findByRole('heading', { name: 'Misión completada' })).toBeInTheDocument();
+    expect(q.checkIn).toHaveBeenCalledWith('QR-TARDE');
+    expect(q.announce).toHaveBeenCalledWith('attendance');
+  } finally {
+    vi.useRealTimers();
+  }
+});

@@ -102,3 +102,47 @@ describe('cancel and change', () => {
     expect(canModify(board(), session({ attended: true }), reservation({ derived_status: 'completed' }))).toEqual({ cancel: false, change: false });
   });
 });
+
+describe('enrollment tolerance (15 → 5 min, 30 → 10 min, 60 → 20 min)', () => {
+  const inProgress = { started: true, in_progress: true } as const;
+
+  test('an in-progress session inside its tolerance is still selectable', () => {
+    const state = sessionState(board(), session({ ...inProgress, enrollment_open: true }));
+    expect(state).toBe('in_progress');
+    expect(isSelectable(state)).toBe(true);
+  });
+
+  test('past the tolerance a new reservation is not selectable and says so', () => {
+    const state = sessionState(board(), session({ ...inProgress, enrollment_open: false }));
+    expect(state).toBe('enrollment_closed');
+    expect(isSelectable(state)).toBe(false);
+  });
+
+  test('a future session is open and an older payload without the field behaves as before', () => {
+    expect(sessionState(board(), session({ enrollment_open: true }))).toBe('available');
+    expect(sessionState(board(), session({ ...inProgress }))).toBe('in_progress');
+  });
+
+  test('changing a reservation towards a closed session is blocked like reserving it', () => {
+    const current = reservation({ id: 'mine', session_id: 'other', activity_id: 'a2' });
+    const state = sessionState(board({ reservations: [current], active_reservation_count: 1 }), session({ ...inProgress, enrollment_open: false }), current);
+    expect(state).toBe('enrollment_closed');
+  });
+
+  test('a closed, full session reports the closure (it will not reopen) and ended wins over closed', () => {
+    expect(sessionState(board(), session({ ...inProgress, enrollment_open: false, remaining: 0 }))).toBe('enrollment_closed');
+    expect(sessionState(board(), session({ started: true, ended: true, enrollment_open: false }))).toBe('ended');
+  });
+
+  test('an existing reservation, an attended workshop and a cancelled session keep their own state', () => {
+    expect(sessionState(board(), session({ ...inProgress, enrollment_open: false, my_reservation_id: 'r1' }))).toBe('reserved');
+    expect(sessionState(board(), session({ ...inProgress, enrollment_open: false, attended: true }))).toBe('already_attended');
+    expect(sessionState(board(), session({ ...inProgress, enrollment_open: false, status: 'cancelada' }))).toBe('cancelled');
+  });
+
+  test('a reservation made inside the tolerance can still be cancelled or changed afterwards (only NEW entries are limited)', () => {
+    const mine = reservation({ derived_status: 'in_progress' });
+    const s = session({ ...inProgress, enrollment_open: false, my_reservation_id: 'r1' });
+    expect(canModify(board({ reservations: [mine] }), s, mine)).toEqual({ cancel: true, change: true });
+  });
+});
