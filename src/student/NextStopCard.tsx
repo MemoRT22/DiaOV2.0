@@ -118,7 +118,7 @@ export default function NextStopCard({ board, journey, now }: { board: Board; jo
           )}
         </dl>
         {/* While the main action is «scan» (live / pending) the map stays a quiet link; when the student still has to GET there,
-            «Cómo llegar» IS the main action (below), so the link would only repeat it. */}
+            «Ubicar en el mapa» IS the main action (below), so the link would only repeat it. */}
         {session.location && (live || pending) && (
           <MapLink
             to={mapForSession(session.id)}
@@ -159,7 +159,7 @@ export default function NextStopCard({ board, journey, now }: { board: Board; jo
                 <>
                   <MapLink to={mapForSession(session.id)} className={buttonClasses('primary')}>
                     <MapPinned className="h-5 w-5" aria-hidden />
-                    Cómo llegar
+                    Ubicar en el mapa
                   </MapLink>
                   <Link to="/ruta" className={buttonClasses('secondary')}>
                     Ver mi ruta

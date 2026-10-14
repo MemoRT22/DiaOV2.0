@@ -1,6 +1,6 @@
 import { Suspense } from 'react';
 import { MapPinned } from 'lucide-react';
-import { Navigate, Link, Outlet, useLocation } from 'react-router-dom';
+import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { Backdrop } from '../components/themed';
 import { BootSpinner } from '../components/BootSpinner';
 import RouteErrorBoundary from '../components/RouteErrorBoundary';
@@ -8,6 +8,7 @@ import { useAuth } from '../lib/auth';
 import { useEdition } from '../edition/EditionProvider';
 import { usePublicTheme } from '../theme/PublicThemeProvider';
 import BottomNav from './BottomNav';
+import { MapLink } from './campus/mapLinks';
 import ExitSurveyInvite from './ExitSurveyInvite';
 import { ExitSurveyProvider } from './ExitSurveyProvider';
 import { RafflePrizeProvider } from './RafflePrizeProvider';
@@ -41,21 +42,24 @@ export default function StudentLayout() {
               {theme.assets.logoMark && <img src={theme.assets.logoMark} alt="" className="h-6 w-6 object-contain" />}
               <span className="truncate font-display text-sm font-extrabold uppercase tracking-wider">{theme.meta.eventName}</span>
             </div>
-            {consentOk && (
-              <Link
-                to="/mapa"
-                aria-label="Mapa del campus"
-                aria-current={location.pathname === '/mapa' ? 'page' : undefined}
-                className={`inline-flex h-11 items-center gap-1.5 rounded-full px-3.5 text-xs font-extrabold ring-1 transition-colors ${
-                  location.pathname === '/mapa'
-                    ? 'bg-primary-500 text-on-primary ring-primary-500'
-                    : 'bg-primary-500/15 text-fg-brand ring-primary-500/45 hover:bg-primary-500/25'
-                }`}
-              >
-                <MapPinned className="h-4 w-4" aria-hidden />
-                Mapa
-              </Link>
-            )}
+            {consentOk &&
+              (location.pathname === '/mapa' ? (
+                // Already on the map: the badge only says so (a link to itself would also overwrite «Volver»).
+                <span aria-current="page" className="inline-flex h-11 items-center gap-1.5 rounded-full bg-primary-500 px-3.5 text-xs font-extrabold text-on-primary ring-1 ring-primary-500">
+                  <MapPinned className="h-4 w-4" aria-hidden />
+                  Mapa
+                </span>
+              ) : (
+                // MapLink carries the screen we come from, so «Volver» on the map returns there and not always to Inicio.
+                <MapLink
+                  to="/mapa"
+                  ariaLabel="Mapa del campus"
+                  className="inline-flex h-11 items-center gap-1.5 rounded-full bg-primary-500/15 px-3.5 text-xs font-extrabold text-fg-brand ring-1 ring-primary-500/45 transition-colors hover:bg-primary-500/25"
+                >
+                  <MapPinned className="h-4 w-4" aria-hidden />
+                  Mapa
+                </MapLink>
+              ))}
           </div>
         </header>
 

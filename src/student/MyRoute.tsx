@@ -261,7 +261,7 @@ function StopCard({
               <PlaceLine location={s.location} />
               {/* Discreet; only the next/live station gets a little more weight. */}
               {!cancelled && !completed && ds !== 'expired' && (
-                <MapActionLink to={mapForSession(s.id)} label="Cómo llegar" emphasis={variant === 'next'} ariaLabel={`Cómo llegar a ${s.title}`} />
+                <MapActionLink to={mapForSession(s.id)} label="Ver en el mapa" emphasis={variant === 'next'} ariaLabel={`Ver ${s.title} en el mapa`} />
               )}
             </div>
           )}

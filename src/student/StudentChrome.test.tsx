@@ -1,5 +1,5 @@
-import { render, screen, within } from '@testing-library/react';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { fireEvent, render, screen, within } from '@testing-library/react';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { beforeEach, expect, test, vi } from 'vitest';
 import type { Board } from '../lib/reservations';
 import { useAuth } from '../lib/auth';
@@ -24,13 +24,19 @@ beforeEach(() => {
   vi.mocked(usePublicTheme).mockReturnValue({ loading: false, theme: { assets: {}, meta: { eventName: 'Día OV' } } } as unknown as ReturnType<typeof usePublicTheme>);
 });
 
+function MapProbe() {
+  const { state, pathname } = useLocation();
+  return <p>{`en ${pathname} · viene de ${(state as { from?: string } | null)?.from ?? 'nada'}`}</p>;
+}
+
 const layout = (path: string) =>
   render(
     <MemoryRouter initialEntries={[path]}>
       <Routes>
         <Route element={<StudentLayout />}>
           <Route path="/misiones" element={<p>Pantalla</p>} />
-          <Route path="/mapa" element={<p>Mapa</p>} />
+          <Route path="/ruta" element={<p>Ruta</p>} />
+          <Route path="/mapa" element={<MapProbe />} />
         </Route>
       </Routes>
     </MemoryRouter>,
@@ -41,14 +47,20 @@ test('the header offers the campus map (not a second way into the Bitácora, whi
   const header = screen.getByRole('banner');
   const map = within(header).getByRole('link', { name: 'Mapa del campus' });
   expect(map).toHaveAttribute('href', '/mapa');
-  expect(map).not.toHaveAttribute('aria-current');
   expect(within(header).queryByRole('link', { name: /bitácora/i })).not.toBeInTheDocument();
-  expect(within(header).queryByText('AP')).not.toBeInTheDocument();
 });
 
-test('on the map itself the shortcut is marked as the current page', () => {
+test('regression (PR #51 review): opening the map from the header remembers the screen it came from, so «Volver» does not always land on Inicio', () => {
+  layout('/misiones?f=division&d=d2');
+  fireEvent.click(within(screen.getByRole('banner')).getByRole('link', { name: 'Mapa del campus' }));
+  expect(screen.getByText('en /mapa · viene de /misiones?f=division&d=d2')).toBeInTheDocument();
+});
+
+test('on the map itself the badge only says where you are: no link to itself that would erase the way back', () => {
   layout('/mapa');
-  expect(within(screen.getByRole('banner')).getByRole('link', { name: 'Mapa del campus' })).toHaveAttribute('aria-current', 'page');
+  const header = screen.getByRole('banner');
+  expect(within(header).queryByRole('link', { name: 'Mapa del campus' })).not.toBeInTheDocument();
+  expect(within(header).getByText('Mapa').closest('[aria-current="page"]')).not.toBeNull();
 });
 
 const board = (over: Partial<Board> = {}): Board => ({
