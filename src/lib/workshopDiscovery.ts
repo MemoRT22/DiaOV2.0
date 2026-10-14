@@ -41,6 +41,10 @@ export function workshopAvailability(board: Board, sessions: BoardSession[], rep
   if (count) return `${count} ${count === 1 ? 'horario disponible' : 'horarios disponibles'}`;
   if (enrollmentClosedWithSeats(sessions)) return 'Inscripción cerrada';
   if (sessions.every((s) => s.remaining <= 0)) return 'Sin lugares disponibles';
+  // Say WHY nothing can be picked when the reason is the student's own route, instead of a vague «Consulta horarios».
+  const states = sessions.filter((s) => !s.ended && s.status === 'activa' && s.remaining > 0).map((s) => sessionState(board, s, replacing));
+  if (states.length > 0 && states.every((state) => state === 'max')) return 'Tu ruta está completa';
+  if (states.length > 0 && states.every((state) => state === 'conflict')) return 'Se cruzan con tu ruta';
   return 'Consulta horarios';
 }
 

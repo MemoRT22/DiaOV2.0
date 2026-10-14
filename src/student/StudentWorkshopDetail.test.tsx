@@ -68,15 +68,17 @@ beforeEach(() => {
 });
 
 test('catalogue has one compact card per activity, a clamped pitch, all divisions, and no session controls', async () => {
-  mount('/misiones', board([slot('one'), slot('two', { location: 'Laboratorio 2' })]));
+  mount('/misiones?f=all', board([slot('one'), slot('two', { location: 'Laboratorio 2' })]));
   const heading = await screen.findByRole('heading', { name: 'Taller de prototipos' });
   const card = heading.closest('li') as HTMLElement;
   expect(screen.getAllByRole('heading', { name: 'Taller de prototipos' })).toHaveLength(1);
   expect(within(card).getByText('Ingenierías · Negocios')).toBeInTheDocument();
   expect(within(card).getByText('Construye una idea con tus manos.').className).toMatch(/line-clamp-2/);
-  expect(within(card).getByText('Ubicaciones según horario')).toBeInTheDocument();
+  // the card says what and how long; where is the detail's job (less metadata on the card)
+  expect(within(card).queryByText('Ubicaciones según horario')).not.toBeInTheDocument();
+  expect(within(card).getByText('45 min')).toBeInTheDocument();
   expect(within(card).getByText('2 horarios disponibles')).toBeInTheDocument();
-  expect(within(card).getByRole('link', { name: 'Ver misión' })).toHaveAttribute('href', detailPath);
+  expect(within(card).getByRole('link', { name: 'Ver misión' })).toHaveAttribute('href', `${detailPath}?f=all`); // the way back keeps the list
   expect(within(card).queryByRole('button', { name: 'Reservar' })).not.toBeInTheDocument();
   expect(within(card).queryByText(/Ver más|Ver menos/)).not.toBeInTheDocument();
   expect(m.fetchDetail).not.toHaveBeenCalled();
@@ -87,14 +89,14 @@ test('a large catalogue does not request editorial detail for its cards', async 
     activity_id: `a0000000-0000-4000-8000-${i.toString(16).padStart(12, '0')}`,
     title: `Taller ${i}`,
   }));
-  mount('/misiones', board(many));
+  mount('/misiones?f=all', board(many));
   await screen.findByRole('heading', { name: 'Taller 0' });
   expect(screen.getAllByRole('link', { name: 'Ver misión' })).toHaveLength(65);
   expect(m.fetchDetail).not.toHaveBeenCalled();
 });
 
 test('a Vida Universitaria card without academic divisions has a useful label and no per-card detail request', async () => {
-  mount('/misiones', board([slot('life', { title: 'Yoga en campus', division_id: null, division_ids: [] })]));
+  mount('/misiones?f=all', board([slot('life', { title: 'Yoga en campus', division_id: null, division_ids: [] })]));
   const card = (await screen.findByRole('heading', { name: 'Yoga en campus' })).closest('li') as HTMLElement;
   expect(within(card).getByText('Vida Universitaria')).toBeInTheDocument();
   expect(within(card).queryByText(/Ingenierías|Negocios/)).not.toBeInTheDocument();
@@ -120,7 +122,7 @@ test('catalogue preserves division and change context on the way to the detail a
 });
 
 test('En curso filter only shows workshops with a live session and a single division has one name', async () => {
-  mount('/misiones', board([
+  mount('/misiones?f=all', board([
     slot('live', { in_progress: true, division_id: 'd1', division_ids: ['d1'] }),
     slot('later', { activity_id: B, title: 'Después', division_id: 'd2', division_ids: ['d2'] }),
   ]));
@@ -150,7 +152,7 @@ test('detail loads editorial fields and the board sessions, with visible time, d
 test('Vida Universitaria 10:00–10:15 appears in card and detail, then enters the normal booking flow', async () => {
   m.fetchDetail.mockResolvedValue({ ...metadata, title: 'Yoga en campus', student_pitch: 'Relájate con una sesión breve.',
     activity_type: 'vida_universitaria', experience_category: 'deportiva', careers: [], divisions: [] });
-  mount('/misiones', board([slot('life', { title: 'Yoga en campus', description: 'Relájate con una sesión breve.',
+  mount('/misiones?f=all', board([slot('life', { title: 'Yoga en campus', description: 'Relájate con una sesión breve.',
     division_id: null, division_ids: [], starts_at: '2026-10-15T15:00:00Z', ends_at: '2026-10-15T15:15:00Z',
     location: 'Terraza', capacity: 20, reserved: 5, remaining: 15 })]));
   const card = (await screen.findByRole('heading', { name: 'Yoga en campus' })).closest('li') as HTMLElement;
@@ -384,7 +386,7 @@ test('a server rejection by tolerance (clock race) shows the clear message and k
 });
 
 test('the mission card does not promise «reserva y entra ahora» when every live session is past its tolerance', async () => {
-  mount('/misiones', board([slot('late', { started: true, in_progress: true, enrollment_open: false })]));
+  mount('/misiones?f=all', board([slot('late', { started: true, in_progress: true, enrollment_open: false })]));
   const card = (await screen.findByRole('heading', { name: 'Taller de prototipos' })).closest('li') as HTMLElement;
   expect(within(card).queryByText('Puedes reservar y entrar ahora')).not.toBeInTheDocument();
   expect(within(card).getByText('En curso ahora')).toBeInTheDocument();

@@ -25,7 +25,7 @@ export function MapLink({ to, children, className = '', ariaLabel }: { to: strin
   );
 }
 
-/** The small, secondary «Ver en el mapa» / «Cómo llegar» action used across screens. */
+/** The small, secondary «Ver en el mapa» action used across screens (the map shows WHERE: building, floor and room — not turn-by-turn directions). */
 export function MapActionLink({ to, label = 'Ver en el mapa', emphasis = false, ariaLabel }: { to: string; label?: string; emphasis?: boolean; ariaLabel?: string }) {
   return (
     <MapLink

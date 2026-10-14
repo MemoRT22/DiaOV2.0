@@ -1,4 +1,4 @@
-import { ArrowRight, ChevronRight, Compass, PartyPopper, ScanQrCode, Sparkles, Trophy, X } from 'lucide-react';
+import { ChevronRight, Compass, PartyPopper, ScanQrCode, Sparkles, Trophy, X } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { buttonClasses, PageSkeleton } from '../components/ui';
@@ -10,12 +10,16 @@ import { buildJourney, firstName, heroAction, latestPending, type Journey } from
 import { useLoad } from '../lib/useLoad';
 import { useNow } from '../lib/useNow';
 import { useParticipantSync } from '../lib/useParticipantSync';
+import { belongsToDivision, type Board } from '../lib/reservations';
+import { isUniversityLife } from '../lib/universityLife';
+import type { ThemeConfig } from '../theme/types';
+import { divisionColor } from './ui/divisionVisuals';
 import { useReservationBoard } from '../lib/useReservationBoard';
 import { useEdition } from '../edition/EditionProvider';
 import { usePublicTheme } from '../theme/PublicThemeProvider';
 import { formatPlace } from './campus/resolveCampusLocation';
 import { missions } from './copy';
-import NextStopCard from './NextStopCard';
+import NextStopCard, { type ExploreArea } from './NextStopCard';
 import { progressNextMessage } from './progressText';
 import StampCollection from './StampCollection';
 import { GuideTip } from './ui/Guide';
@@ -29,7 +33,7 @@ const DISMISS_KEY = 'diaov.interestsPromptDismissed';
  * «¿cómo voy?» (rank and stamps) and, only when they apply, the interests question, the raffle and the closing.
  */
 export default function Home() {
-  const { text } = usePublicTheme();
+  const { text, theme } = usePublicTheme();
   const { profile } = useAuth();
   const { edition } = useEdition();
   const now = useNow();
@@ -74,7 +78,13 @@ export default function Home() {
       </header>
 
       {board && journey ? (
-        <NextStopCard board={board} journey={journey} now={now} />
+        <NextStopCard
+          board={board}
+          journey={journey}
+          now={now}
+          areas={homeAreas(board, divisions, theme)}
+          lifeColor={board.sessions.some((s) => isUniversityLife(s)) ? (theme.colors.accent || theme.colors.secondary) : undefined}
+        />
       ) : boardError ? (
         <ErrorState error={boardError} onRetry={() => void reloadBoard()} title="No pudimos cargar tu ruta" />
       ) : (
@@ -178,24 +188,19 @@ export default function Home() {
   );
 }
 
-/** What comes after the hero today, as a mini trajectory. Tapping it opens Mi ruta. */
+/** What comes after the hero today, as a mini trajectory. */
 function LaterToday({ stops }: { stops: Journey['upcoming'] }) {
   return (
     <section aria-label="Después en tu ruta" className="animate-fade-up">
-      <div className="mb-2 flex items-baseline justify-between">
-        <h2 className="text-xs font-extrabold uppercase tracking-[0.18em] text-ink-muted">Después en tu ruta</h2>
-        <Link to="/ruta" className="inline-flex min-h-11 items-center gap-1 text-sm font-semibold text-fg-brand">
-          Ver mi ruta
-          <ArrowRight className="h-4 w-4" aria-hidden />
-        </Link>
-      </div>
+      {/* No «Ver mi ruta» here: the hero right above already offers it (and so does the tab bar). */}
+      <h2 className="mb-2 text-xs font-extrabold uppercase tracking-[0.18em] text-ink-muted">Después en tu ruta</h2>
       <ol className="space-card divide-y divide-line overflow-hidden">
         {stops.map(({ reservation, session }) => (
           <li key={reservation.id} className="flex items-center gap-3 px-4 py-3">
             <span className="w-12 shrink-0 font-display text-base font-extrabold">{formatTime(session.starts_at)}</span>
             <span className="h-2.5 w-2.5 shrink-0 rounded-full border-2 border-primary-500" aria-hidden />
             <span className="min-w-0 flex-1">
-              <span className="block truncate text-sm font-semibold">{session.title}</span>
+              <span className="line-clamp-2 text-sm font-semibold leading-snug">{session.title}</span>
               {session.location && <span className="block truncate text-xs text-ink-muted">{formatPlace(session.location)}</span>}
             </span>
           </li>
@@ -252,4 +257,12 @@ function JourneyProgress({ progress, divisions }: { progress: Progress; division
       )}
     </section>
   );
+}
+
+/** Academic areas that have at least one active mission, with their theme colour (for the empty state of the hero). */
+function homeAreas(board: Board, divisions: Division[], theme: ThemeConfig): ExploreArea[] {
+  const active = board.sessions.filter((s) => s.status === 'activa');
+  return divisions
+    .filter((d) => active.some((s) => belongsToDivision(s, d.id)))
+    .map((d) => ({ id: d.id, name: d.name, color: divisionColor(theme, d) }));
 }

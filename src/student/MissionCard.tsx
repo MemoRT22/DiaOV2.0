@@ -1,10 +1,9 @@
-import { ArrowRight, Clock3, MapPin, Sparkles } from 'lucide-react';
+import { ArrowRight, Clock3, Sparkles } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { formatTime } from '../lib/catalog';
 import { isFewPlaces, isSelectable, sessionState, type Board, type BoardSession, type MyReservation } from '../lib/reservations';
-import { workshopAvailability, workshopDuration, workshopLocation, workshopPersonalStatus } from '../lib/workshopDiscovery';
-import { formatPlace } from './campus/resolveCampusLocation';
-import { DivisionOrb, tintVars } from './ui/divisionVisuals';
+import { workshopAvailability, workshopDuration, workshopPersonalStatus } from '../lib/workshopDiscovery';
+import { divisionIcon, tintVars } from './ui/divisionVisuals';
 import { StatusPill, type StatusKind } from './ui/StatusPill';
 
 /** The single most important state of a mission for THIS student, as one pill (or none when it is simply open). */
@@ -87,10 +86,11 @@ export default function MissionCard({
   const first = sessions[0];
   const personal = workshopPersonalStatus(sessions, attended, reserved);
   const headline = missionHeadline(board, sessions, replacing, personal);
-  const location = workshopLocation(sessions);
   const done = personal === 'Explorado';
   const dim = headline?.kind === 'full';
   const footer = missionFooter(board, sessions, replacing, personal);
+
+  const Symbol = divisionIcon(divisionName);
 
   return (
     <li
@@ -99,25 +99,32 @@ export default function MissionCard({
       }`}
       style={{ animationDelay: `${Math.min(index, 8) * 45}ms`, ...tintVars(color) }}
     >
-      {/* division colour as a glowing edge */}
-      <span className="absolute inset-y-0 left-0 w-1 bg-[rgb(var(--tint))] shadow-[0_0_14px_rgb(var(--tint)/0.8)]" aria-hidden />
-      <div className={`p-4 pl-5 ${dim ? 'opacity-75' : ''}`}>
-        <div className="flex items-start gap-3">
-          <DivisionOrb name={divisionName} color={color} />
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-[11px] font-bold uppercase tracking-wide text-ink-muted">{divisionLabel}</p>
-            <h2 className="mt-0.5 text-base font-extrabold leading-snug">{first.title}</h2>
-          </div>
+      {/* depth without images: a glow of the area colour and a large, faint symbol of the area (clipped by the card) */}
+      <span className="pointer-events-none absolute inset-0 bg-[radial-gradient(90%_70%_at_100%_0%,rgb(var(--tint)/0.2),transparent_65%)]" aria-hidden />
+      <Symbol className="pointer-events-none absolute -right-5 -top-5 h-32 w-32 text-[rgb(var(--tint))] opacity-[0.1]" strokeWidth={1.25} aria-hidden />
+      <span className="absolute inset-x-0 top-0 h-0.5 bg-[rgb(var(--tint))] opacity-70" aria-hidden />
+      <div className={`relative p-4 ${dim ? 'opacity-75' : ''}`}>
+        <div className="flex items-center justify-between gap-3">
+          <p className="flex min-w-0 items-center gap-2 text-[11px] font-extrabold uppercase tracking-wider text-[rgb(var(--tint))]">
+            <span className="h-2 w-2 shrink-0 rounded-full bg-[rgb(var(--tint))] shadow-[0_0_8px_rgb(var(--tint)/0.9)]" aria-hidden />
+            <span className="truncate">{divisionLabel}</span>
+          </p>
+          <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-line bg-surface/70 px-2.5 py-0.5 text-[11px] font-bold text-ink-muted">
+            <Clock3 className="h-3 w-3" aria-hidden />
+            {workshopDuration(sessions)}
+          </span>
         </div>
 
+        <h2 className="mt-2.5 pr-8 font-display text-[1.2rem] font-extrabold leading-snug">{first.title}</h2>
+
         {(headline || (recommended && !personal)) && (
-          <div className="mt-3 flex flex-wrap gap-1.5">
+          <div className="mt-2.5 flex flex-wrap gap-1.5">
             {headline && <StatusPill kind={headline.kind}>{headline.label}</StatusPill>}
             {recommended && !personal && <StatusPill kind="for_you">Para ti</StatusPill>}
           </div>
         )}
 
-        {first.description && <p className="mt-2 line-clamp-2 text-sm text-ink-muted">{first.description}</p>}
+        {first.description && <p className="mt-2 line-clamp-2 text-sm leading-relaxed text-ink-muted">{first.description}</p>}
 
         {/* why it is suggested: accent-coloured while it is an open suggestion, quieter once it is in my route */}
         {reason && !done && (
@@ -127,23 +134,8 @@ export default function MissionCard({
           </p>
         )}
 
-        <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-ink-muted">
-          <span className="inline-flex items-center gap-1">
-            <Clock3 className="h-3.5 w-3.5" aria-hidden />
-            {workshopDuration(sessions)}
-          </span>
-          {location && (
-            <span className="inline-flex min-w-0 items-center gap-1">
-              <MapPin className="h-3.5 w-3.5 shrink-0" aria-hidden />
-              <span className="truncate">{formatPlace(location)}</span>
-            </span>
-          )}
-        </div>
-
-        <div className="mt-3 flex items-center justify-between gap-3 border-t border-line pt-3">
-          <span className={`text-xs font-semibold ${FOOTER_TONE[footer.tone]}`}>
-            {footer.text}
-          </span>
+        <div className="mt-3.5 flex items-center justify-between gap-3">
+          <span className={`min-w-0 text-xs font-semibold ${FOOTER_TONE[footer.tone]}`}>{footer.text}</span>
           <Link
             to={href}
             className={`inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-full px-4 text-sm font-bold transition-colors after:absolute after:inset-0 after:content-[''] ${

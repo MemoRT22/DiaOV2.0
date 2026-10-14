@@ -1,5 +1,6 @@
 import { expect, test } from 'vitest';
 import { isSelectable, sessionState, type Board, type BoardSession, type MyReservation } from '../lib/reservations';
+import { workshopAvailability } from '../lib/workshopDiscovery';
 import { LIVE_JOINABLE, LIVE_ONLY, missionFooter, missionHeadline } from './MissionCard';
 
 const slot = (over: Partial<BoardSession> = {}): BoardSession => ({
@@ -83,4 +84,15 @@ test('personal state still wins in the footer: my own slot, or completed', () =>
   const mine = live({ my_reservation_id: 'r1' });
   expect(missionFooter(board([mine]), [mine], null, 'En tu ruta').text).toMatch(/^Tu horario: /);
   expect(missionFooter(board([live()]), [live()], null, 'Explorado').text).toBe('¡Ya la completaste!');
+});
+
+test('the catalogue footer says why nothing can be picked when the reason is the student\'s own route', () => {
+  const overlapping = [slot({ conflicts_with: ['r1'] }), slot({ id: 't', conflicts_with: ['r2'] })];
+  expect(workshopAvailability(board(overlapping), overlapping, null)).toBe('Se cruzan con tu ruta');
+  const free = [slot(), slot({ id: 't' })];
+  expect(workshopAvailability(board(free, { active_reservation_count: 4 }), free, null)).toBe('Tu ruta está completa');
+  // a pickable schedule still counts, and an unrelated reason keeps the neutral text
+  const mixed = [slot(), slot({ id: 't', conflicts_with: ['r2'] })];
+  expect(workshopAvailability(board(mixed), mixed, null)).toBe('1 horario disponible');
+  expect(workshopAvailability(board(free, { window: 'not_open' }), free, null)).toBe('Consulta horarios');
 });

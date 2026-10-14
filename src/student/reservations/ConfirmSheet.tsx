@@ -15,7 +15,16 @@ export type ConfirmRequest = {
   /** What is being booked: rendered as a clear summary (what / when / where) instead of one line of text. */
   summary?: { title: string; when: string; where?: string };
   /** After a successful action, show this feedback instead of closing silently. */
-  success?: { title: string; body?: string; link?: { to: string; label: string } };
+  success?: {
+    title: string;
+    body?: string;
+    link?: { to: string; label: string };
+    /**
+     * How full the route is NOW, read after the server accepted the action and the board was refreshed. Only shown
+     * after a real success; it is never computed from the tap itself.
+     */
+    progress?: () => { active: number; max: number };
+  };
   action: () => Promise<unknown>;
 };
 
@@ -78,6 +87,7 @@ export default function ConfirmSheet({ request, onClose }: { request: ConfirmReq
   const close = () => !busy && onClose(done);
 
   if (done && request.success) {
+    const route = request.success.progress?.();
     return (
       <BottomSheet title={request.success.title} onClose={close}>
         <div className="space-y-4 text-center">
@@ -93,6 +103,25 @@ export default function ConfirmSheet({ request, onClose }: { request: ConfirmReq
             <h2 className="text-xl font-extrabold">{request.success.title}</h2>
             {request.success.body && <p className="mt-1 text-sm text-ink-muted">{request.success.body}</p>}
           </div>
+          {route && route.active > 0 && (
+            <div className="mx-auto w-full max-w-[16rem]" role="img" aria-label={`Tu ruta: ${route.active} de ${route.max} misiones reservadas`}>
+              <div className="flex items-center" aria-hidden>
+                {Array.from({ length: route.max }, (_, i) => (
+                  <span key={i} className="flex flex-1 items-center last:flex-none">
+                    <span
+                      className={`h-3.5 w-3.5 shrink-0 rounded-full border-2 ${
+                        i < route.active ? 'border-primary-500 bg-primary-500 shadow-[0_0_10px_rgb(var(--c-primary-500)/0.8)]' : 'border-line'
+                      } ${i === route.active - 1 ? 'anim-pop' : ''}`}
+                    />
+                    {i < route.max - 1 && <span className={`h-0.5 flex-1 ${i < route.active - 1 ? 'bg-primary-500' : 'bg-line'}`} />}
+                  </span>
+                ))}
+              </div>
+              <p className="mt-2 text-xs font-semibold text-ink-muted">
+                Tu ruta: <span className="text-ink">{route.active} de {route.max}</span> misiones
+              </p>
+            </div>
+          )}
           <div className="grid gap-2">
             {request.success.link && (
               <Link to={request.success.link.to} onClick={() => onClose(true)} className={buttonClasses('primary')}>

@@ -44,7 +44,7 @@ test('grade and period offer the stable Forms options and keep their stored valu
   expect(Array.from(grade.options).map((o) => [o.value, o.textContent])).toEqual([
     ['', 'Sin dato'], ['1', '1.º año'], ['2', '2.º año'], ['3', '3.º año'], ['graduado', 'Egresado'],
   ]);
-  expect(Array.from(period.options).map((o) => o.value)).toEqual(['', '2027-01', '2027-08', '2028-01', '2028-08']);
+  expect(Array.from(period.options).map((o) => o.value)).toEqual(['', '2027-01', '2027-08', '2028-01', '2028-08', '2029-01', '2029-08']);
   expect(grade.value).toBe('3');
   expect(period.value).toBe('2027-08');
 });

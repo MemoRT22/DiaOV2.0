@@ -137,7 +137,7 @@ test('Inicio without reservations guides to pick workshops instead of showing de
   m.board = board([], []);
   renderAt('/bitacora', <Home />);
   const hero = await screen.findByRole('region', { name: 'Tu siguiente misión' });
-  expect(within(hero).getByRole('heading', { name: 'Arma tu ruta del día' })).toBeInTheDocument();
+  expect(within(hero).getByRole('heading', { name: 'Elige tu primera misión' })).toBeInTheDocument();
   expect(within(hero).getByRole('link', { name: /Explorar misiones/ })).toHaveAttribute('href', '/misiones');
 });
 
@@ -201,7 +201,7 @@ test('Home E: nothing booked and nothing pending → pick workshops', async () =
   m.board = board([], []);
   renderAt('/bitacora', <Home />);
   const hero = await screen.findByRole('region', { name: 'Tu siguiente misión' });
-  expect(within(hero).getByRole('heading', { name: 'Arma tu ruta del día' })).toBeInTheDocument();
+  expect(within(hero).getByRole('heading', { name: 'Elige tu primera misión' })).toBeInTheDocument();
   expect(within(hero).getByRole('link', { name: /Explorar misiones/ })).toHaveAttribute('href', '/misiones');
   expect(screen.queryByText(/¿Ya fuiste a/)).not.toBeInTheDocument();
 });
