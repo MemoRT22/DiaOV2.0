@@ -13,6 +13,8 @@ export const PERIOD_OPTIONS = [
   { value: '2027-08', label: 'Agosto 2027' },
   { value: '2028-01', label: 'Enero 2028' },
   { value: '2028-08', label: 'Agosto 2028' },
+  { value: '2029-01', label: 'Enero 2029' },
+  { value: '2029-08', label: 'Agosto 2029' },
 ] as const;
 
 export type GradeValue = (typeof GRADE_OPTIONS)[number]['value'];
