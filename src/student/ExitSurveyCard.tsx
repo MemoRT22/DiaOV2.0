@@ -1,7 +1,7 @@
 import { CheckCircle2, ClipboardList, Clock } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { buttonClasses } from '../components/ui';
-import { formatOpening } from '../lib/exitSurvey';
+import { describeOpening } from '../lib/exitSurvey';
 import { useExitSurvey } from './ExitSurveyProvider';
 
 /**
@@ -40,7 +40,7 @@ export default function ExitSurveyCard() {
       ) : (
         <div className="mt-3 flex items-start gap-3 rounded-theme border border-line bg-surface-raised p-4">
           <Clock className="mt-0.5 h-5 w-5 shrink-0 text-ink-muted" aria-hidden />
-          <p className="text-sm text-ink-muted">Se abrirá hoy a las {formatOpening(status)} (hora de Cancún). Será un requisito adicional para participar en el sorteo.</p>
+          <p className="text-sm text-ink-muted">Se abrirá {describeOpening(status)} (hora de Cancún). Será un requisito adicional para participar en el sorteo.</p>
         </div>
       )}
     </section>

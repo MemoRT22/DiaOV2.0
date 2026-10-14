@@ -1,5 +1,5 @@
 -- Concurrencia real de la encuesta de salida: SEIS envíos simultáneos de la misma persona (conexiones distintas, vía dblink) y otros
--- de dos personas a la vez. Base local/descartable: los fixtures se CONFIRMAN (dblink usa otras conexiones) y se borran al final.
+-- de dos personas a la vez; además SEIS reclamos simultáneos de la invitación (exactamente UNO obtiene el derecho de mostrar el popup). Base local/descartable: los fixtures se CONFIRMAN (dblink usa otras conexiones) y se borran al final.
 -- Ejecutar como superusuario local (dblink lo exige): psql -U supabase_admin -d postgres -f concurrency_exit_survey.sql   (SIN ON_ERROR_STOP,
 -- para que la limpieza final corra aunque falle la carrera). Éxito: «EXIT_SURVEY_CONCURRENCY_OK» y, para cada persona, exactamente una fila y
 -- exactamente un envío con saved = true.
@@ -8,7 +8,7 @@ DO $setup$
 DECLARE ed uuid := active_edition_id(); u uuid; pid uuid; k int;
 BEGIN
   IF (SELECT mode FROM editions WHERE id = ed) <> 'preparacion' THEN RAISE EXCEPTION 'TEST_REQUIRES_PREPARACION'; END IF;
-  FOR k IN 1..2 LOOP
+  FOR k IN 1..3 LOOP
     u := gen_random_uuid();
     INSERT INTO auth.users (id, instance_id, aud, role, email, raw_app_meta_data, raw_user_meta_data, created_at, updated_at)
     VALUES (u, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'ecs.' || k || '@test.invalid', '{}', '{}', now(), now());
@@ -73,6 +73,37 @@ BEGIN
   IF failed <> '' THEN RAISE EXCEPTION 'EXIT_SURVEY_CONCURRENCY_FAIL: %', failed; END IF;
   RAISE NOTICE 'EXIT_SURVEY_CONCURRENCY_OK: 3 envíos simultáneos por persona → 1 fila, 1 guardado y 2 «ya completada»; respuesta íntegra';
 END $race$;
+
+-- Reclamo atómico de la invitación: 6 dispositivos (conexiones) de la MISMA persona piden el derecho a la vez; exactamente uno lo obtiene.
+DO $claim$
+DECLARE
+  uid uuid := (SELECT auth_user_id FROM participants WHERE email = 'ecs.3@test.invalid');
+  conn text; i int; res jsonb; claimed int := 0; rows_n int; names text[] := '{}';
+BEGIN
+  PERFORM dblink_connect('ecs_holder2', 'dbname=' || current_database() || ' user=' || current_user);
+  PERFORM dblink_exec('ecs_holder2', 'begin');
+  PERFORM * FROM dblink('ecs_holder2', format('select 1 from participants where auth_user_id = %L for update', uid)) AS t(x int);
+  FOR i IN 1..6 LOOP
+    conn := 'ecs_claim_' || i;
+    PERFORM dblink_connect(conn, 'dbname=' || current_database() || ' user=' || current_user);
+    PERFORM dblink_exec(conn, format('set request.jwt.claim.sub = %L', uid));
+    PERFORM dblink_exec(conn, format('set request.jwt.claims = %L', jsonb_build_object('sub', uid, 'role', 'authenticated')::text));
+    PERFORM dblink_exec(conn, 'set role authenticated');
+    PERFORM dblink_send_query(conn, 'select exit_survey_mark_invited()::text');
+    names := names || conn;
+  END LOOP;
+  PERFORM pg_sleep(0.5);
+  PERFORM dblink_exec('ecs_holder2', 'commit');
+  PERFORM dblink_disconnect('ecs_holder2');
+  FOREACH conn IN ARRAY names LOOP
+    SELECT t.r::jsonb INTO res FROM dblink_get_result(conn) AS t(r text);
+    IF (res->>'claimed')::boolean THEN claimed := claimed + 1; END IF;
+    PERFORM dblink_disconnect(conn);
+  END LOOP;
+  SELECT count(*) INTO rows_n FROM exit_survey_invitations i JOIN participants p ON p.id = i.participant_id WHERE p.email = 'ecs.3@test.invalid';
+  IF claimed <> 1 OR rows_n <> 1 THEN RAISE EXCEPTION 'EXIT_SURVEY_CLAIM_FAIL: % dispositivos obtuvieron el derecho (debía ser 1) y hay % filas', claimed, rows_n; END IF;
+  RAISE NOTICE 'EXIT_SURVEY_CLAIM_OK: 6 reclamos simultáneos → exactamente 1 obtiene el derecho de mostrar el popup';
+END $claim$;
 
 DO $cleanup$
 BEGIN

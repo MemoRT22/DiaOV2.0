@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import {
-  answered, asSurveyError, EMPTY_ANSWERS, EXIT_SURVEY_VERSION, isComplete, MAX_AREAS, msUntilOpen, nextCheckDelay, normalizeExitSurvey, nps,
+  answered, asSurveyError, describeOpening, EMPTY_ANSWERS, EXIT_SURVEY_VERSION, isComplete, MAX_AREAS, msUntilOpen, nextCheckDelay, normalizeExitSurvey, nps,
   NO_AREA, OPEN_JITTER_MS, RESYNC_MS, toPayload, toggleArea, type ExitSurveyStatus,
 } from './exitSurvey';
 
@@ -112,5 +112,32 @@ describe('errores de red', () => {
   test('NPS', () => {
     expect(nps({ completed: 0, q5_promoters: 0, q5_detractors: 0 })).toBeNull();
     expect(nps({ completed: 10, q5_promoters: 6, q5_detractors: 2 })).toBe(40);
+  });
+});
+
+describe('fecha de apertura en palabras (hora de Cancún)', () => {
+  // «Ahora» según el servidor: jueves 15 de octubre de 2026, 12:00 en Cancún (17:00 UTC).
+  const now = Date.parse('2026-10-15T17:00:00Z');
+  const at = (iso: string, offsetMs = 0) => describeOpening(status({ opensAt: iso, offsetMs }), now);
+  test('el mismo día de Cancún: «hoy»', () => {
+    expect(at('2026-10-15T18:00:00Z')).toBe('hoy a las 1:00 p.m.');
+  });
+  test('«hoy» se mide en Cancún, no en UTC: las 23:30 de Cancún ya son el día 16 en UTC y siguen siendo hoy', () => {
+    expect(at('2026-10-16T04:30:00Z')).toBe('hoy a las 11:30 p.m.');
+  });
+  test('el día siguiente: «mañana»', () => {
+    expect(at('2026-10-16T19:30:00Z')).toBe('mañana a las 2:30 p.m.');
+  });
+  test('otro día (Coordinación movió la apertura): nunca «hoy», con día y mes', () => {
+    expect(at('2026-10-17T15:00:00Z')).toBe('el sábado, 17 de octubre a las 10:00 a.m.');
+    expect(at('2026-10-14T18:00:00Z')).toBe('el miércoles, 14 de octubre a las 1:00 p.m.');
+    expect(at('2026-11-02T18:00:00Z')).toBe('el lunes, 2 de noviembre a las 1:00 p.m.');
+  });
+  test('usa el reloj del servidor: un dispositivo con la fecha equivocada no cambia «hoy»', () => {
+    const wrongDevice = Date.parse('2026-10-20T17:00:00Z');
+    expect(describeOpening(status({ opensAt: '2026-10-15T18:00:00Z', offsetMs: now - wrongDevice }), wrongDevice)).toBe('hoy a las 1:00 p.m.');
+  });
+  test('sin hora no inventa nada', () => {
+    expect(describeOpening(status({ opensAt: '' }), now)).toBe('');
   });
 });

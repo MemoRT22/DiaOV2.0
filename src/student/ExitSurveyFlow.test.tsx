@@ -30,7 +30,12 @@ const view = (extra: Record<string, unknown> = {}) => ({
 function mockServer() {
   vi.mocked(rpc).mockImplementation(async (name: string, args?: Record<string, unknown>) => {
     if (name === 'my_exit_survey') return view();
-    if (name === 'exit_survey_mark_invited') { if (isOpen()) server.invitedAt ??= server.now; return view(); }
+    if (name === 'exit_survey_mark_invited') {
+      // Reclamo atómico: solo la PRIMERA solicitud obtiene el derecho; con la encuesta cerrada o contestada, nadie.
+      const claimed = isOpen() && !server.completed && server.invitedAt === null;
+      if (claimed) server.invitedAt = server.now;
+      return view({ claimed });
+    }
     if (name === 'submit_exit_survey') return submitImpl((args as { p: Record<string, unknown> }).p);
     throw new Error(`rpc inesperado ${name}`);
   });
@@ -92,7 +97,7 @@ describe('popup de invitación', () => {
     expect(popup()).toBeNull();
     await tick(120_000);
     expect(popup()).toBeNull(); // no insiste
-    expect(vi.mocked(rpc).mock.calls.filter(([name]) => name === 'exit_survey_mark_invited')).toHaveLength(1);
+    expect(vi.mocked(rpc).mock.calls.filter(([name]) => name === 'exit_survey_mark_invited')).toHaveLength(1); // un solo reclamo, nunca insiste
   });
 
   test('un reloj del dispositivo adelantado no abre nada: manda el servidor', async () => {
@@ -181,7 +186,7 @@ describe('acceso permanente desde la Bitácora', () => {
   test('pendiente: invita a completarla; completada: agradece y no ofrece contestar de nuevo; antes de la hora: dice cuándo abre', async () => {
     server.now = '2026-10-15T17:00:00Z';
     const first = app('/pasaporte');
-    expect(await screen.findByText(/Se abrirá hoy a las 1:00 p\.m\./)).toBeInTheDocument();
+    expect(await screen.findByText(/Se abrirá hoy a las 1:00 p\.m\. \(hora de Cancún\)/)).toBeInTheDocument();
     first.unmount();
     server.now = '2026-10-15T19:00:00Z';
     const second = app('/pasaporte');
@@ -210,6 +215,32 @@ describe('acceso permanente desde la Bitácora', () => {
     expect(server.completed).toBe(true);
     expect(popup()).toBeNull();
     expect(vi.mocked(rpc).mock.calls.filter(([name]) => name === 'submit_exit_survey')).toHaveLength(1);
+  });
+});
+
+describe('fecha de apertura', () => {
+  test('el mismo día dice «hoy»; si Coordinación la movió a otro día, dice cuál (nunca «hoy»), en la Bitácora y en la encuesta', async () => {
+    server.now = '2026-10-15T17:00:00Z';
+    const today = app('/pasaporte');
+    expect(await screen.findByText(/Se abrirá hoy a las 1:00 p\.m\. \(hora de Cancún\)/)).toBeInTheDocument();
+    today.unmount();
+    server.opensAt = '2026-10-17T15:00:00Z'; // Coordinación la movió al sábado 17, 10:00
+    const card = app('/pasaporte');
+    expect(await screen.findByText(/Se abrirá el sábado, 17 de octubre a las 10:00 a\.m\. \(hora de Cancún\)/)).toBeInTheDocument();
+    expect(screen.queryByText(/hoy/)).toBeNull();
+    card.unmount();
+    app('/encuesta');
+    expect(await screen.findByText(/Se abre el sábado, 17 de octubre a las 10:00 a\.m\. \(hora de Cancún\)/)).toBeInTheDocument();
+    expect(screen.queryByText(/hoy/)).toBeNull();
+  });
+  test('«mañana» y un ajuste de hora el mismo día se reflejan', async () => {
+    server.now = '2026-10-15T17:00:00Z'; server.opensAt = '2026-10-16T19:30:00Z';
+    const tomorrow = app('/encuesta');
+    expect(await screen.findByText(/Se abre mañana a las 2:30 p\.m\./)).toBeInTheDocument();
+    tomorrow.unmount();
+    server.opensAt = '2026-10-15T20:45:00Z';
+    app('/encuesta');
+    expect(await screen.findByText(/Se abre hoy a las 3:45 p\.m\./)).toBeInTheDocument();
   });
 });
 

@@ -1,5 +1,5 @@
 import { rpc } from './adminApi';
-import { formatEventTime } from './eventTime';
+import { EVENT_TIME_ZONE, formatEventTime } from './eventTime';
 
 /*
  * Encuesta de salida del Día OV 2026: preguntas, envío y estado.
@@ -132,8 +132,25 @@ export function msUntilOpen(status: Pick<ExitSurveyStatus, 'opensAt' | 'offsetMs
   return Number.isFinite(opens) ? opens - (now + status.offsetMs) : null;
 }
 
-/** «1:00 p. m.» en hora de Cancún, sin depender de la zona del dispositivo. */
-export const formatOpening = (status: Pick<ExitSurveyStatus, 'opensAt'>) => (status.opensAt ? formatEventTime(status.opensAt) : '');
+const dayKey = new Intl.DateTimeFormat('en-CA', { timeZone: EVENT_TIME_ZONE, year: 'numeric', month: '2-digit', day: '2-digit' });
+const dayLong = new Intl.DateTimeFormat('es-MX', { timeZone: EVENT_TIME_ZONE, weekday: 'long', day: 'numeric', month: 'long' });
+const DAY_MS = 24 * 3_600_000;
+
+/**
+ * Cuándo abre, en palabras y en hora de Cancún (nunca la del dispositivo): «hoy a las 1:00 p.m.», «mañana a las 2:30 p.m.» o «el
+ * viernes 16 de octubre a las 2:30 p.m.». «Hoy» y «mañana» se miden contra el día de Cancún según el reloj del SERVIDOR, así que
+ * respetan cualquier cambio de hora que haga Coordinación (otro día, otra hora) y un dispositivo mal configurado no los altera.
+ */
+export function describeOpening(status: Pick<ExitSurveyStatus, 'opensAt' | 'offsetMs'>, now: number = Date.now()): string {
+  const opens = Date.parse(status.opensAt);
+  if (!Number.isFinite(opens)) return '';
+  const time = formatEventTime(status.opensAt);
+  const today = dayKey.format(now + status.offsetMs);
+  const day = dayKey.format(opens);
+  if (day === today) return `hoy a las ${time}`;
+  if (day === dayKey.format(now + status.offsetMs + DAY_MS)) return `mañana a las ${time}`;
+  return `el ${dayLong.format(opens)} a las ${time}`;
+}
 
 /**
  * Una llamada a Supabase que no llegó (sin conexión, tiempo agotado, puerta de enlace saturada) no es un error de las respuestas: se
@@ -183,10 +200,14 @@ export function nextCheckDelay(status: ExitSurveyStatus | null, failures: number
   return Math.round(Math.min(remaining + random() * OPEN_JITTER_MS, RESYNC_MS));
 }
 
-/** Registra en el servidor que ya se le mostró la invitación (idempotente). Un fallo no importa: solo podría volver a salir. */
-export async function markExitSurveyInvited(): Promise<ExitSurveyStatus> {
+/**
+ * Reclama, de forma atómica en el servidor, el derecho a mostrar la invitación automática. `claimed` es `true` para UNA sola solicitud
+ * en toda la vida de la persona: solo el dispositivo que lo obtiene abre el popup; los demás conservan el acceso desde la Bitácora.
+ * Un fallo de conexión se lanza (no se sabe si se obtuvo): el popup no se abre sin la confirmación del servidor.
+ */
+export async function claimExitSurveyInvitation(): Promise<{ status: ExitSurveyStatus; claimed: boolean }> {
   const raw = await call<Record<string, unknown>>('exit_survey_mark_invited');
-  return normalizeExitSurvey(raw);
+  return { status: normalizeExitSurvey(raw, Date.now()), claimed: raw?.claimed === true };
 }
 
 /**

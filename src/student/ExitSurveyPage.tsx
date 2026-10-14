@@ -5,7 +5,7 @@ import { Alert, Button, buttonClasses, PageSkeleton } from '../components/ui';
 import { useAuth } from '../lib/auth';
 import { friendlyError } from '../lib/errors';
 import {
-  AREA_OPTIONS, answered, COMMENT_MAX, EMPTY_ANSWERS, formatOpening, isComplete, MAX_AREAS, NO_AREA, Q1_OPTIONS, Q3_OPTIONS, QUESTION_COUNT,
+  AREA_OPTIONS, answered, COMMENT_MAX, describeOpening, EMPTY_ANSWERS, isComplete, MAX_AREAS, NO_AREA, Q1_OPTIONS, Q3_OPTIONS, QUESTION_COUNT,
   submitExitSurvey, toggleArea, type ExitSurveyOutcome, type ExitSurveyStatus, type SurveyAnswers,
 } from '../lib/exitSurvey';
 import { isTemporaryAccessError } from '../lib/accessErrors';
@@ -159,7 +159,7 @@ export default function ExitSurveyPage() {
     return (
       <EmptyState icon={Clock} title="La encuesta aún no está abierta"
         action={<div className="flex flex-col gap-2 sm:flex-row sm:justify-center"><Button variant="secondary" onClick={() => void refresh()}>Actualizar</Button><Link to="/pasaporte" className={buttonClasses('ghost')}>Volver a mi bitácora</Link></div>}>
-        Se abre hoy a las {formatOpening(status)} (hora de Cancún). Cuando llegue la hora te avisaremos aquí.
+        Se abre {describeOpening(status)} (hora de Cancún). Cuando llegue la hora podrás contestarla aquí y desde tu Bitácora.
       </EmptyState>
     );
   }

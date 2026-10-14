@@ -393,22 +393,45 @@ BEGIN
   PERFORM pg_temp.expect_true('14: A entró al sorteo sin haber elegido carreras de interés',
     v_interests = 0 AND participant_exit_survey_completed(pg_temp.id('p:a')));
 
-  -- ===== 14b. Invitación automática: una sola vez por alumno, solo con la encuesta abierta ==========================
+  -- ===== 14b. Invitación automática: reclamo ATÓMICO, una sola vez por alumno, solo con la encuesta abierta ======================
   PERFORM pg_temp.mk_participant('inv');
   PERFORM pg_temp.as_user(coord, format('select set_exit_survey_opens_at(%L::timestamptz)::text', now() + interval '2 days'));
   PERFORM pg_temp.mk_participant('invreal', false);
-  PERFORM pg_temp.expect('14b: antes de la hora no se «gasta» la invitación de un alumno real',
-    (pg_temp.as_user(pg_temp.id('u:invreal'), 'select exit_survey_mark_invited()::text')::jsonb)->>'invited_at', NULL);
+  answer := pg_temp.as_user(pg_temp.id('u:invreal'), 'select exit_survey_mark_invited()::text');
+  PERFORM pg_temp.expect('14b: antes de la hora no se «gasta» la invitación de un alumno real (no la obtiene)', (answer::jsonb)->>'claimed', 'false');
+  PERFORM pg_temp.expect('14b: y no queda registrada', (answer::jsonb)->>'invited_at', NULL);
   PERFORM pg_temp.as_user(coord, format('select set_exit_survey_opens_at(%L::timestamptz)::text', now() - interval '1 minute'));
   PERFORM pg_temp.expect('14b: sin invitación al inicio', ((pg_temp.status('inv'))->>'invited_at'), NULL);
   answer := pg_temp.as_user(pg_temp.id('u:inv'), 'select exit_survey_mark_invited()::text');
+  PERFORM pg_temp.expect('14b: el PRIMER dispositivo obtiene el derecho (claimed = true)', (answer::jsonb)->>'claimed', 'true');
   PERFORM pg_temp.expect_true('14b: queda registrada en el servidor', (answer::jsonb->>'invited_at') IS NOT NULL);
-  PERFORM pg_temp.expect('14b: es idempotente: la fecha no se mueve',
-    (pg_temp.as_user(pg_temp.id('u:inv'), 'select exit_survey_mark_invited()::text')::jsonb)->>'invited_at', answer::jsonb->>'invited_at');
+  PERFORM pg_temp.expect('14b: el SEGUNDO (otra pestaña / otro dispositivo / reintento) no lo obtiene',
+    (pg_temp.as_user(pg_temp.id('u:inv'), 'select exit_survey_mark_invited()::text')::jsonb)->>'claimed', 'false');
+  PERFORM pg_temp.expect('14b: ni un tercero', (pg_temp.as_user(pg_temp.id('u:inv'), 'select exit_survey_mark_invited()::text')::jsonb)->>'claimed', 'false');
+  PERFORM pg_temp.expect('14b: la fecha del reclamo no se mueve', (pg_temp.as_user(pg_temp.id('u:inv'), 'select exit_survey_mark_invited()::text')::jsonb)->>'invited_at', answer::jsonb->>'invited_at');
   PERFORM pg_temp.expect('14b: no depende del dispositivo: otra sesión del mismo alumno lo ve', ((pg_temp.status('inv'))->>'invited_at'), answer::jsonb->>'invited_at');
   PERFORM pg_temp.expect_true('14b: haber sido invitado NO impide contestar', (pg_temp.submit('inv'))::jsonb->>'saved' = 'true');
+  PERFORM pg_temp.mk_participant('invdone');
+  PERFORM pg_temp.submit('invdone');
+  PERFORM pg_temp.expect('14b: quien ya contestó no obtiene la invitación', (pg_temp.as_user(pg_temp.id('u:invdone'), 'select exit_survey_mark_invited()::text')::jsonb)->>'claimed', 'false');
   PERFORM pg_temp.expect('14b: anónimo no puede', pg_temp.as_anon('select exit_survey_mark_invited()::text'), 'ERR:permission denied');
   PERFORM pg_temp.expect('14b: la tabla no se lee directo', pg_temp.as_user(pg_temp.id('u:inv'), 'select count(*)::text from exit_survey_invitations'), 'ERR:permission denied');
+
+  -- ===== 14c. Ganador histórico de ensayo (de antes de la encuesta): su resultado no se toca ni se invalida ============
+  PERFORM pg_temp.mk_participant('hist'); PERFORM pg_temp.stamp_ss('hist');
+  ALTER TABLE raffle_winners DISABLE TRIGGER raffle_winners_require_survey; -- solo para simular una fila anterior a la migración
+  INSERT INTO raffle_winners (edition_id, category_id, prize_id, participant_id, status, is_demo, confirmed_at)
+    VALUES (ed, ss, prize_ss, pg_temp.id('p:hist'), 'confirmado', true, now()) RETURNING id INTO winner_row;
+  ALTER TABLE raffle_winners ENABLE TRIGGER raffle_winners_require_survey;
+  PERFORM pg_temp.expect_true('14c: sigue siendo ganador (sin encuesta, sin invalidarse)', participant_has_won(pg_temp.id('p:hist')) AND (SELECT status = 'confirmado' FROM raffle_winners WHERE id = winner_row));
+  PERFORM pg_temp.expect_true('14c: su premio sigue visible para él', jsonb_array_length((pg_temp.as_user(pg_temp.id('u:hist'), 'select my_raffle_prizes()::text')::jsonb)->'prizes') = 1);
+  PERFORM pg_temp.expect_true('14c: sin segundo premio: fuera de su categoría y de todos los conjuntos', participant_raffle_category(pg_temp.id('p:hist')) IS NULL AND NOT pg_temp.in_pool('hist', 'Sistema Solar'));
+  PERFORM pg_temp.expect('14c: la Bitácora lo marca como ganador y sin categoría ofrecida', (pg_temp.raffle('hist'))->>'has_won', 'true');
+  answer := pg_temp.as_user(pg_temp.id('u:hist'), 'select exit_survey_mark_invited()::text');
+  PERFORM pg_temp.expect('14c: puede ser invitado a la encuesta (no es requisito para conservar su premio)', (answer::jsonb)->>'claimed', 'true');
+  PERFORM pg_temp.expect('14c: y puede contestarla', (pg_temp.submit('hist'))::jsonb->>'saved', 'true');
+  PERFORM pg_temp.expect_true('14c: contestarla no cambia su resultado', (SELECT status = 'confirmado' AND confirmed_at IS NOT NULL FROM raffle_winners WHERE id = winner_row));
+  PERFORM pg_temp.expect('14c: ni lo devuelve al sorteo', pg_temp.in_pool('hist', 'Sistema Solar')::text, 'false');
 
   -- ===== 15. Limpieza: borrar al participante borra su encuesta (cascada) ==========================================
   PERFORM pg_temp.expect_true('15: existe la encuesta de X', pg_temp.surveyed('x'));

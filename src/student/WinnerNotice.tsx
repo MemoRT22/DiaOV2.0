@@ -5,32 +5,11 @@ import { useNavigate } from 'react-router-dom';
 import { buttonClasses } from '../components/ui';
 import { markSeen, pendingNotice, readSeen, SEEN_STORAGE_KEY } from '../lib/raffleWinner';
 import { usePublicTheme } from '../theme/PublicThemeProvider';
+import { useBackgroundLocked } from './backgroundLock';
 import { useRafflePrizes } from './RafflePrizeProvider';
 import './winner.css';
 
 const STARS = [[12, 14], [86, 10], [20, 70], [90, 62], [50, 6], [8, 40], [94, 36]];
-const APP_ROOT = 'root';
-
-/**
- * Mientras el aviso está abierto, el resto de la aplicación no recibe foco ni lo leen los lectores de pantalla (`inert` +
- * `aria-hidden` en la raíz; el aviso vive en un portal fuera de ella). Al cerrarlo se restituye exactamente lo que había.
- */
-function useBackgroundLocked(active: boolean) {
-  useEffect(() => {
-    if (!active) return;
-    const root = document.getElementById(APP_ROOT);
-    if (!root) return;
-    const hadInert = root.hasAttribute('inert');
-    const hadHidden = root.getAttribute('aria-hidden');
-    root.setAttribute('inert', '');
-    root.setAttribute('aria-hidden', 'true');
-    return () => {
-      if (!hadInert) root.removeAttribute('inert');
-      if (hadHidden === null) root.removeAttribute('aria-hidden'); else root.setAttribute('aria-hidden', hadHidden);
-    };
-  }, [active]);
-}
-
 /**
  * Aviso de ganador. Vive en el layout del alumno, así que aparece en cualquier sección. Sale cuando el servidor tiene un resultado
  * «seleccionado» de ESTA persona, confirmado por una consulta reciente, que aún no se cerró en este dispositivo. Cerrarlo solo lo

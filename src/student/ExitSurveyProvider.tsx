@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { fetchMyExitSurvey, markExitSurveyInvited, nextCheckDelay, type ExitSurveyStatus } from '../lib/exitSurvey';
+import { claimExitSurveyInvitation, fetchMyExitSurvey, nextCheckDelay, type ExitSurveyStatus } from '../lib/exitSurvey';
 import { subscribeParticipantChanges } from '../lib/participantSync';
 import { MIN_GAP_MS } from '../lib/raffleWinner';
 
@@ -25,11 +25,14 @@ type ExitSurveyState = {
   refresh: () => Promise<void>;
   /** Aplica un estado que el servidor acaba de devolver (p. ej. el del envío), sin otra consulta. */
   apply: (status: ExitSurveyStatus) => void;
-  /** Anota en el servidor que ya se le mostró la invitación automática. */
-  markInvited: () => Promise<void>;
+  /**
+   * Reclama el derecho a mostrar la invitación automática (atómico en el servidor): `claimed` = este dispositivo lo obtuvo y puede abrir
+   * el popup; `taken` = otro dispositivo/pestaña ya lo tiene (o ya contestó); `failed` = no se pudo confirmar (conexión): no se abre.
+   */
+  claimInvitation: () => Promise<'claimed' | 'taken' | 'failed'>;
 };
 
-const NOOP: ExitSurveyState = { enabled: false, status: null, loaded: false, failed: false, refresh: async () => undefined, apply: () => undefined, markInvited: async () => undefined };
+const NOOP: ExitSurveyState = { enabled: false, status: null, loaded: false, failed: false, refresh: async () => undefined, apply: () => undefined, claimInvitation: async () => 'failed' };
 const Context = createContext<ExitSurveyState>(NOOP);
 
 /** Fuera del proveedor (pantallas aisladas, pruebas) no hay encuesta: la Bitácora funciona como siempre. */
@@ -83,12 +86,13 @@ export function ExitSurveyProvider({ children, enabled = true }: { children: Rea
     return run;
   }, [apply, arm]);
 
-  const markInvited = useCallback(async () => {
+  const claimInvitation = useCallback(async (): Promise<'claimed' | 'taken' | 'failed'> => {
     try {
-      const next = await markExitSurveyInvited();
+      const { status: next, claimed } = await claimExitSurveyInvitation();
       if (alive.current) apply(next);
+      return claimed ? 'claimed' : 'taken';
     } catch {
-      // Solo se perdería la memoria de «ya se le invitó»: a lo más la invitación vuelve a salir una vez. No es un error para la persona.
+      return 'failed'; // sin confirmación del servidor no se sabe si este dispositivo obtuvo el derecho: no se abre nada
     }
   }, [apply]);
 
@@ -118,6 +122,6 @@ export function ExitSurveyProvider({ children, enabled = true }: { children: Rea
     };
   }, [enabled, refresh]);
 
-  const value = useMemo(() => ({ enabled, status, loaded, failed, refresh, apply, markInvited }), [enabled, status, loaded, failed, refresh, apply, markInvited]);
+  const value = useMemo(() => ({ enabled, status, loaded, failed, refresh, apply, claimInvitation }), [enabled, status, loaded, failed, refresh, apply, claimInvitation]);
   return <Context.Provider value={value}>{children}</Context.Provider>;
 }

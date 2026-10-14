@@ -13,7 +13,7 @@
     el comentario opcional, la versión de la encuesta, `is_demo` (separa ensayo de operación oficial) y `completed_at` puesto por el
     servidor. RLS activo y sin políticas: nadie lee ni escribe la tabla directamente; solo las funciones de abajo (SECURITY DEFINER).
     No se puede modificar una respuesta enviada. Se borra en cascada con el participante (y con el reinicio de preparación).
-  - `exit_survey_invitations` + `exit_survey_mark_invited()`: memoria por alumno de «ya se le invitó» (el popup sale una sola vez aunque cambie de dispositivo).
+  - `exit_survey_invitations` + `exit_survey_mark_invited()`: reclamo atómico del derecho a mostrar el popup (`claimed` es `true` para una sola solicitud en la vida de la persona), así que sale una sola vez aunque haya varias pestañas o dispositivos.
   - `my_exit_survey()`: estado de la propia persona (hora del servidor, si está abierta, si ya contestó, categoría por sellos, si es
     elegible). `submit_exit_survey(p)`: guarda la encuesta de la persona AUTENTICADA (nunca un participant_id del navegador), valida todo,
     es idempotente (reenviar o enviar dos veces a la vez no duplica ni sobrescribe).
@@ -220,20 +220,23 @@ BEGIN
 END;
 $$;
 
--- Registra que ya se le mostró la invitación automática (idempotente: la primera vez gana). Solo si la encuesta está abierta para
--- esa persona: una invitación nunca se «gasta» antes de tiempo.
+-- Reclama, de forma ATÓMICA, el derecho a mostrar la invitación automática. `claimed = true` solo para UNA solicitud en toda la vida de
+-- la persona (la que inserta la fila; las demás —otra pestaña, otro dispositivo, un reintento— reciben `false`), así que solo el
+-- dispositivo que lo obtuvo abre el popup. Solo se reclama con la encuesta abierta y sin contestar: una invitación nunca se «gasta»
+-- antes de tiempo ni para quien ya contestó. Quien no lo obtiene conserva el acceso desde la Bitácora.
 CREATE OR REPLACE FUNCTION public.exit_survey_mark_invited()
 RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
 AS $$
-DECLARE v_pid uuid := require_participant(true);
+DECLARE v_pid uuid := require_participant(true); v_rows int := 0;
 BEGIN
-  IF exit_survey_is_open(v_pid) THEN
+  IF exit_survey_is_open(v_pid) AND NOT participant_exit_survey_completed(v_pid) THEN
     INSERT INTO exit_survey_invitations (participant_id) VALUES (v_pid) ON CONFLICT (participant_id) DO NOTHING;
+    GET DIAGNOSTICS v_rows = ROW_COUNT;
   END IF;
-  RETURN exit_survey_status_internal(v_pid);
+  RETURN exit_survey_status_internal(v_pid) || jsonb_build_object('claimed', v_rows = 1);
 END;
 $$;
 

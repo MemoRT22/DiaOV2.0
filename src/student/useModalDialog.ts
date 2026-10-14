@@ -1,28 +1,15 @@
 import { useEffect, useRef, type KeyboardEvent, type RefObject } from 'react';
-
-const APP_ROOT = 'root';
+import { useBackgroundLocked } from './backgroundLock';
 
 /**
  * Comportamiento de un diálogo modal accesible: mientras está abierto el resto de la aplicación no recibe foco ni lo leen los
- * lectores de pantalla (`inert` + `aria-hidden` en la raíz; el diálogo vive en un portal fuera de ella), el foco entra al botón
+ * lectores de pantalla (bloqueo compartido con los demás diálogos: `backgroundLock.ts`), el foco entra al botón
  * principal, Tab gira dentro y, al cerrarse, regresa a donde estaba la persona. Escape cierra.
  */
 export function useModalDialog(open: boolean, panel: RefObject<HTMLElement | null>, primary: RefObject<HTMLElement | null>, onClose: () => void) {
   const returnFocus = useRef<HTMLElement | null>(null);
 
-  useEffect(() => {
-    if (!open) return;
-    const root = document.getElementById(APP_ROOT);
-    if (!root) return;
-    const hadInert = root.hasAttribute('inert');
-    const hadHidden = root.getAttribute('aria-hidden');
-    root.setAttribute('inert', '');
-    root.setAttribute('aria-hidden', 'true');
-    return () => {
-      if (!hadInert) root.removeAttribute('inert');
-      if (hadHidden === null) root.removeAttribute('aria-hidden'); else root.setAttribute('aria-hidden', hadHidden);
-    };
-  }, [open]);
+  useBackgroundLocked(open);
 
   useEffect(() => {
     if (!open) return;
@@ -35,10 +22,16 @@ export function useModalDialog(open: boolean, panel: RefObject<HTMLElement | nul
     };
   }, [open, primary]);
 
-  // Si el foco llegara a escapar (clic fuera en un navegador sin `inert`), vuelve al diálogo.
+  // Si el foco llegara a escapar (clic fuera en un navegador sin `inert`), vuelve al diálogo. Si el foco entra a OTRO diálogo modal
+  // (el aviso de ganador, una confirmación) no se le disputa: dos trampas de foco a la vez se pelearían indefinidamente.
   useEffect(() => {
     if (!open) return;
-    const onFocusIn = (event: FocusEvent) => { if (panel.current && event.target instanceof Node && !panel.current.contains(event.target)) primary.current?.focus(); };
+    const onFocusIn = (event: FocusEvent) => {
+      const target = event.target;
+      if (!panel.current || !(target instanceof Node) || panel.current.contains(target)) return;
+      if (target instanceof Element && target.closest('[aria-modal="true"]')) return;
+      primary.current?.focus();
+    };
     document.addEventListener('focusin', onFocusIn);
     return () => document.removeEventListener('focusin', onFocusIn);
   }, [open, panel, primary]);
