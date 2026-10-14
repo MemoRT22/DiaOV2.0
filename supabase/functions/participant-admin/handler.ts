@@ -20,6 +20,10 @@ export type Deps = {
    * timeout, any other error) it must THROW: «no answer» is never read as «no account».
    */
   getUser: (id: string) => Promise<AuthUserInfo | null>;
+  /** Búsqueda por correo, solo para reclamar la cuenta que dejó a medias un intento de registro del mismo participante. Lanza si Auth no responde. */
+  findUserByEmail: (email: string) => Promise<AuthUserInfo | null>;
+  /** El participante (de cualquier edición) que ya usa esa cuenta de Auth. */
+  participantByAuthUser: (authUserId: string) => Promise<{ id: string } | null>;
   createUser: (email: string, password: string) => Promise<{ id?: string; code?: 'EMAIL_TAKEN' | 'AUTH_ERROR' }>;
   updateUser: (id: string, email: string, password: string) => Promise<{ ok: boolean; code?: 'EMAIL_TAKEN' | 'AUTH_ERROR' }>;
   deleteUser: (id: string) => Promise<void>;
@@ -93,13 +97,39 @@ async function applyPassword(deps: Deps, participant: ParticipantRow, password: 
   }
   // Sin cuenta todavía: restablecer también sirve para configurarla.
   const created = await deps.createUser(participant.email, password);
-  if (!created.id) return created.code === 'EMAIL_TAKEN' ? 'EMAIL_EXISTS' : 'SERVER_ERROR';
+  if (!created.id) return created.code === 'EMAIL_TAKEN' ? claimInterruptedAccount(deps, participant, password) : 'SERVER_ERROR';
   const linked = await deps.rpc('participant_link_auth_internal', { p_participant: participant.id, p_auth_user: created.id });
   if (linked.error) {
     await deps.deleteUser(created.id).catch(() => deps.log('rollback_delete_failed'));
     return 'SERVER_ERROR';
   }
   return 'ok';
+}
+
+/**
+ * El correo ya tiene cuenta en Auth. Aquí quien actúa es personal autenticado y auditado que verificó la identidad de la persona (es la
+ * ruta segura cuando el alumno no recuerda la contraseña de su primer intento), así que puede reclamar la cuenta que dejó a medias su
+ * propio registro: solo si es de participante, tiene ese correo y NINGÚN otro participante la usa. Staff, Coordinación y cuentas de
+ * otro alumno jamás se tocan.
+ */
+async function claimInterruptedAccount(deps: Deps, participant: ParticipantRow, password: string): Promise<'ok' | 'EMAIL_EXISTS' | 'SERVER_ERROR'> {
+  let user: AuthUserInfo | null;
+  let owner: { id: string } | null;
+  try {
+    user = await deps.findUserByEmail(participant.email);
+    owner = user ? await deps.participantByAuthUser(user.id) : null;
+  } catch {
+    deps.log('auth_lookup_failed');
+    return 'SERVER_ERROR';
+  }
+  if (!user || user.kind !== 'participant' || (user.email ?? '').toLowerCase() !== participant.email.toLowerCase() || (owner && owner.id !== participant.id)) {
+    return 'EMAIL_EXISTS';
+  }
+  const updated = await deps.updateUser(user.id, participant.email, password);
+  if (!updated.ok) return updated.code === 'EMAIL_TAKEN' ? 'EMAIL_EXISTS' : 'SERVER_ERROR';
+  // La cuenta ya existía: si el vínculo falla NO se borra; repetir la operación la termina.
+  const linked = await deps.rpc('participant_link_auth_internal', { p_participant: participant.id, p_auth_user: user.id });
+  return linked.error ? 'SERVER_ERROR' : 'ok';
 }
 
 type DeletePlan = { participant_id?: string; auth_user_id?: string | null; linked_non_participant_account?: boolean };

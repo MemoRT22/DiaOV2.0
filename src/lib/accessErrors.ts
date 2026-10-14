@@ -31,10 +31,14 @@ export const retryAfterOf = (cause: unknown): number | undefined =>
 export const temporaryCodeOf = (cause: unknown): TemporaryCode | null =>
   cause instanceof AccessError ? cause.code : cause instanceof Error && TEMPORARY.includes(cause.message) ? (cause.message as TemporaryCode) : null;
 
-/** El tope de espera que se le pide a una persona; un valor absurdo del servidor no la deja bloqueada. */
-export const MAX_RETRY_AFTER_SECONDS = 120;
+/**
+ * Se respeta lo que pide el servidor: si dice 5 minutos, no se anima a la persona a reintentar a los 2. El único tope es de cordura
+ * (una hora, lo más largo que dura una ventana de límite): un valor absurdo o corrupto no deja el botón bloqueado indefinidamente.
+ * Los reintentos AUTOMÁTICOS siguen acotados aparte (`retryTransient`): no esperan en segundo plano más de unos segundos.
+ */
+export const MAX_RETRY_AFTER_SECONDS = 3600;
 
-/** `Retry-After`: segundos enteros o una fecha HTTP. Devuelve segundos (acotados) o undefined. */
+/** `Retry-After`: segundos enteros o una fecha HTTP. Devuelve segundos (hasta el tope de cordura) o undefined. */
 export function parseRetryAfter(value: string | number | null | undefined, now: number = Date.now()): number | undefined {
   if (value === null || value === undefined || value === '') return undefined;
   const text = String(value).trim();

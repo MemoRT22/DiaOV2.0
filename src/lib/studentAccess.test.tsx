@@ -2,7 +2,7 @@ import { act, renderHook } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { AuthProvider, useAuth } from './auth';
-import { AccessError } from './accessErrors';
+import { AccessError, MAX_RETRY_AFTER_SECONDS } from './accessErrors';
 import { ACCESS_TIMEOUT_MS, studentAccess } from './studentAccess';
 import { supabase } from './supabase';
 
@@ -36,9 +36,9 @@ test('identify sends only the normalised email and returns just the state', asyn
   expect(init.body).not.toMatch(/birth|nacimiento/i);
 });
 
-test('an unexpected state, an error code and a network failure are all surfaced as safe error codes', async () => {
+test('an unreadable state, an error code and a network failure are all surfaced as safe error codes', async () => {
   reply({ state: 'admin' });
-  await expect(studentAccess.identify('a@b.co')).rejects.toThrow('SERVER_ERROR');
+  await expect(studentAccess.identify('a@b.co')).rejects.toThrow('TEMPORARILY_UNAVAILABLE'); // respuesta ilegible: no es un dato de la persona
   reply({ error: 'EMAIL_EXISTS' }, false);
   await expect(studentAccess.register({
     email: 'a@b.co', password: 'clave-segura-1', first_name: 'A', last_name: 'B', phone: '9981234567', high_school_id: 'h-1',
@@ -110,8 +110,67 @@ test('503 and gateway failures are temporary; a 503 that carries a business code
   await expect(studentAccess.register(credentials)).rejects.toMatchObject({ message: 'TEMPORARILY_UNAVAILABLE', retryAfterSeconds: 6 });
   fetchMock.mockResolvedValueOnce(http(503, { error: 'NO_ACTIVE_EDITION' }));
   await expect(studentAccess.register(credentials)).rejects.toMatchObject({ message: 'NO_ACTIVE_EDITION' });
-  fetchMock.mockResolvedValueOnce(http(500, { error: 'SERVER_ERROR' }));
-  await expect(studentAccess.register(credentials)).rejects.toMatchObject({ message: 'SERVER_ERROR' });
+});
+
+test('HTTP 500 is infrastructure, with or without a body: the outcome is uncertain, so it is temporary and never a data error', async () => {
+  for (const reply500 of [http(500, { error: 'SERVER_ERROR' }), http(500, undefined), http(500, {}), http(500, { error: 'ALGO_NUEVO' }), http(500, 'texto' as never)]) {
+    fetchMock.mockResolvedValueOnce(reply500);
+    const error = await studentAccess.register(credentials).catch((cause) => cause);
+    expect(error).toBeInstanceOf(AccessError);
+    expect(error.message).toBe('TEMPORARILY_UNAVAILABLE');
+  }
+  // un 200 cuyo cuerpo se cortó o no es JSON tampoco dice nada de los datos
+  fetchMock.mockResolvedValueOnce({ ok: true, status: 200, headers: new Headers(), json: async () => { throw new SyntaxError('cut'); } });
+  await expect(studentAccess.setupPassword('a@b.co', 'clave-segura-1')).rejects.toMatchObject({ message: 'TEMPORARILY_UNAVAILABLE' });
+});
+
+test('business codes stay definitive (4xx, and the one state the server emits with 503)', async () => {
+  for (const [status, code] of [[503, 'NO_ACTIVE_EDITION'], [400, 'INVALID_PHONE'], [409, 'ACCOUNT_RECOVERY_REQUIRED'], [409, 'EMAIL_EXISTS']] as const) {
+    fetchMock.mockResolvedValueOnce(http(status, { error: code }));
+    const error = await studentAccess.register(credentials).catch((cause) => cause);
+    expect(error).not.toBeInstanceOf(AccessError);
+    expect(error.message).toBe(code);
+  }
+});
+
+test('a 500 is NEVER repeated by itself on writes (one send per decision) but reads retry a bounded number of times', async () => {
+  vi.useFakeTimers();
+  for (const failure of [http(500, { error: 'SERVER_ERROR' }), http(500, undefined)]) {
+    fetchMock.mockClear();
+    fetchMock.mockResolvedValue(failure);
+    const setup = studentAccess.setupPassword('a@b.co', 'clave-segura-1').catch((cause) => cause);
+    const register = studentAccess.register(credentials).catch((cause) => cause);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect((await setup).message).toBe('TEMPORARILY_UNAVAILABLE');
+    expect((await register).message).toBe('TEMPORARILY_UNAVAILABLE');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  }
+  fetchMock.mockClear();
+  fetchMock.mockResolvedValue(http(500, { error: 'SERVER_ERROR' }));
+  const read = studentAccess.identify('a@b.co').catch((cause) => cause);
+  await vi.advanceTimersByTimeAsync(60_000);
+  expect((await read).message).toBe('TEMPORARILY_UNAVAILABLE');
+  expect(fetchMock).toHaveBeenCalledTimes(3); // 1 + 2 reintentos
+  vi.useRealTimers();
+});
+
+test('Retry-After above two minutes is honoured as the server sent it; an absurd value is bounded; automatic retries do not wait for it', async () => {
+  fetchMock.mockResolvedValueOnce(http(429, { error: 'RATE_LIMITED' }, { 'Retry-After': '300' }));
+  await expect(studentAccess.register(credentials)).rejects.toMatchObject({ message: 'RATE_LIMITED', retryAfterSeconds: 300 });
+  fetchMock.mockResolvedValueOnce(http(503, undefined, { 'Retry-After': '900' }));
+  await expect(studentAccess.setupPassword('a@b.co', 'clave-segura-1')).rejects.toMatchObject({ message: 'TEMPORARILY_UNAVAILABLE', retryAfterSeconds: 900 });
+  fetchMock.mockResolvedValueOnce(http(429, undefined, { 'Retry-After': '9999999' }));
+  await expect(studentAccess.register(credentials)).rejects.toMatchObject({ retryAfterSeconds: MAX_RETRY_AFTER_SECONDS });
+
+  vi.useFakeTimers();
+  fetchMock.mockClear();
+  fetchMock.mockResolvedValue(http(429, { error: 'RATE_LIMITED' }, { 'Retry-After': '300' }));
+  const read = studentAccess.identify('a@b.co').catch((cause) => cause);
+  await vi.advanceTimersByTimeAsync(30_000);
+  const error = await read;
+  expect(error.retryAfterSeconds).toBe(300);
+  expect(fetchMock).toHaveBeenCalledTimes(1); // no se esperó 5 minutos en segundo plano: lo decide la persona con la cuenta atrás
+  vi.useRealTimers();
 });
 
 test('validation errors and conflicts keep their own code (no retry, no temporary notice)', async () => {

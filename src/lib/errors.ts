@@ -54,6 +54,7 @@ const MESSAGES: Record<string, string> = {
   CONSENT_REQUIRED: 'Para continuar, acepta el Aviso de Privacidad.',
   EMAIL_EXISTS: 'Este correo ya está registrado.',
   INVALID_PASSWORD: 'La contraseña debe tener entre 8 y 72 caracteres.',
+  ACCOUNT_RECOVERY_REQUIRED: 'Este correo ya tiene un registro iniciado y no podemos continuarlo sin verificar que eres tú. Escribe la misma contraseña que usaste en tu primer intento. Si no la recuerdas, acércate al módulo de atención de Día OV con tu identificación y el personal restablecerá tu acceso.',
   ACCESS_ALREADY_CONFIGURED: 'Este correo ya tiene una contraseña. Inicia sesión con ella.',
   INVALID_GRADE: 'Elige tu grado.',
   INVALID_PERIOD: 'Elige el periodo en el que te interesa ingresar.',

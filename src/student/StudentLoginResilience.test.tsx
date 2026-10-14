@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { AccessError } from '../lib/accessErrors';
 import { useAuth } from '../lib/auth';
 import { studentAccess } from '../lib/studentAccess';
+import { formatWait } from './AccessNotice';
 import StudentLogin from './StudentLogin';
 
 vi.mock('../lib/auth', () => ({ useAuth: vi.fn() }));
@@ -68,7 +69,7 @@ describe('identificar el correo', () => {
   test('respeta Retry-After: lo comunica y mantiene el botón apagado solo ese tiempo, luego «Volver a intentar» continúa', async () => {
     vi.mocked(studentAccess.identify).mockRejectedValueOnce(limited(3)).mockResolvedValue('password_login');
     show();
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] });
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'] });
     fireEvent.change(email(), { target: { value: 'ana@ejemplo.com' } });
     fireEvent.click(screen.getByRole('button', { name: 'Continuar' }));
     await act(async () => { await vi.advanceTimersByTimeAsync(10); });
@@ -331,5 +332,77 @@ describe('autorregistro', () => {
     expect(screen.queryByRole('button', { name: 'Volver a intentar' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Registrarme y entrar' })).toBeEnabled();
     expect(within(screen.getByRole('region', { name: 'Aviso de Privacidad' })).getByRole('checkbox')).toBeChecked();
+  });
+});
+
+describe('esperas largas del servidor (Retry-After > 2 minutos)', () => {
+  test('se respeta el plazo real: nada de animar a reintentar a los 2 minutos si el servidor pidió 5', async () => {
+    vi.mocked(studentAccess.identify).mockRejectedValueOnce(limited(300)).mockResolvedValue('password_login');
+    show();
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'] });
+    fireEvent.change(email(), { target: { value: 'ana@ejemplo.com' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Continuar' }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(10); });
+    expect(notice()).toHaveTextContent('Puedes volver a intentar en 5 minutos.');
+    expect(notice()).toHaveTextContent('lo que escribiste se conserva');
+    await act(async () => { await vi.advanceTimersByTimeAsync(125_000); });
+    expect(notice()).toHaveTextContent('en 2 minutos 55 segundos');
+    expect(retryButton()).toBeDisabled(); // pasaron más de 120 s y sigue esperando lo que pidió el servidor
+    await act(async () => { await vi.advanceTimersByTimeAsync(176_000); });
+    expect(retryButton()).toBeEnabled(); // no es un bloqueo permanente
+    expect(email().value).toBe('ana@ejemplo.com');
+    fireEvent.click(retryButton());
+    await act(async () => { await vi.advanceTimersByTimeAsync(10); });
+    expect(screen.getByRole('heading', { name: 'Ingresa tu contraseña' })).toBeInTheDocument();
+  });
+
+  test('durante la espera la persona no queda atrapada: puede cambiar de correo', async () => {
+    vi.mocked(studentAccess.identify).mockRejectedValue(limited(900));
+    show();
+    await userEvent.type(email(), 'ana@ejemplo.com');
+    fireEvent.click(screen.getByRole('button', { name: 'Continuar' }));
+    await waitFor(() => expect(notice()).toHaveTextContent('15 minutos'));
+    expect(retryButton()).toBeDisabled();
+    expect(email()).toBeEnabled();
+  });
+
+  test('formatWait', () => {
+    expect([1, 45, 60, 65, 300, 3600].map(formatWait)).toEqual(['1 segundo', '45 segundos', '1 minuto', '1 minuto 5 segundos', '5 minutos', '60 minutos']);
+  });
+});
+
+describe('recuperación que exige demostrar que es la misma persona', () => {
+  test('autorregistro: «ACCOUNT_RECOVERY_REQUIRED» explica la ruta segura, conserva los campos y permite escribir la contraseña original', async () => {
+    registered().mockRejectedValueOnce(new Error('TIMEOUT')).mockRejectedValueOnce(new Error('ACCOUNT_RECOVERY_REQUIRED')).mockResolvedValue(undefined);
+    await identifyAs('self_registration', 'nueva@ejemplo.com');
+    await fillRegistration();
+    register();
+    await waitFor(() => expect(notice()).toHaveTextContent('La conexión tardó demasiado'));
+    fireEvent.click(retryButton());
+    const alert = await screen.findByText(/no podemos continuarlo sin verificar que eres tú/);
+    expect(alert).toHaveTextContent('misma contraseña que usaste en tu primer intento');
+    expect(alert).toHaveTextContent('acércate al módulo de atención');
+    expect(signIn).not.toHaveBeenCalled(); // no se entra a ciegas ni se cambia nada
+    expect(screen.queryByRole('button', { name: 'Volver a intentar' })).toBeNull();
+    expect((screen.getByLabelText('Nombre') as HTMLInputElement).value).toBe('Ana María');
+    expect(screen.getByLabelText('Nombre')).toBeEnabled();
+    expect(screen.getByRole('checkbox', { name: 'He leído y acepto el Aviso de Privacidad.' })).toBeChecked();
+    // escribe la contraseña de su primer intento y lo envía otra vez
+    fireEvent.click(screen.getByRole('button', { name: 'Registrarme y entrar' }));
+    await waitFor(() => expect(signIn).toHaveBeenCalledTimes(1));
+    expect(registered()).toHaveBeenCalledTimes(3);
+  });
+
+  test('prerregistro: lo mismo, sin cambiar de paso y con la contraseña editable', async () => {
+    vi.mocked(studentAccess.setupPassword).mockRejectedValueOnce(new Error('NETWORK')).mockRejectedValueOnce(new Error('ACCOUNT_RECOVERY_REQUIRED'));
+    await identifyAs('password_setup');
+    await fillSetup();
+    create();
+    await waitFor(() => expect(notice()).toHaveTextContent('No pudimos conectarnos'));
+    fireEvent.click(retryButton());
+    expect(await screen.findByText(/no podemos continuarlo sin verificar que eres tú/)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Encontramos tu prerregistro' })).toBeInTheDocument();
+    expect(screen.getByLabelText(/^Contraseña/)).toBeEnabled();
+    expect(signIn).not.toHaveBeenCalled();
   });
 });

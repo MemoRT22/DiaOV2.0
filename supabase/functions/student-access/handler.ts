@@ -21,6 +21,11 @@ export type Deps = {
   createUser: (email: string, password: string) => Promise<{ id?: string; code?: 'EMAIL_TAKEN' | 'AUTH_ERROR' }>;
   updateUser: (id: string, email: string, password?: string) => Promise<{ ok: boolean; code?: 'EMAIL_TAKEN' | 'AUTH_ERROR' }>;
   deleteUser: (id: string) => Promise<void>;
+  /**
+   * Prueba de posesión: ¿esta contraseña abre esa cuenta de Auth? Es la ÚNICA forma de reclamar una cuenta que ya existía. No cambia
+   * nada en la cuenta. Un límite o una caída se lanza como `TemporaryError`; solo una negativa definitiva devuelve `invalid`.
+   */
+  verifyPassword: (email: string, password: string) => Promise<'valid' | 'invalid'>;
   log: (event: string, code?: string) => void;
 };
 
@@ -67,7 +72,8 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const SYNTHETIC = /^p\.[0-9a-f-]{36}@participantes\.diaov\.invalid$/i;
 const KNOWN_ERRORS = ['INVALID_EMAIL', 'INVALID_NAME', 'INVALID_PHONE', 'PHONE_REQUIRED', 'HIGH_SCHOOL_REQUIRED', 'INVALID_GRADE',
-  'INVALID_PERIOD', 'INVALID_CAREER', 'INVALID_HIGH_SCHOOL', 'CONSENT_REQUIRED', 'EMAIL_EXISTS', 'NO_ACTIVE_EDITION', 'NOT_FOUND'];
+  'INVALID_PERIOD', 'INVALID_CAREER', 'INVALID_HIGH_SCHOOL', 'CONSENT_REQUIRED', 'EMAIL_EXISTS', 'NO_ACTIVE_EDITION', 'NOT_FOUND',
+  'ACCOUNT_RECOVERY_REQUIRED'];
 
 export const PASSWORD_MIN = 8;
 export const PASSWORD_MAX = 72;
@@ -84,7 +90,7 @@ function normalizeEmail(value: unknown): string | null {
 const temporary = (error: TemporaryError) =>
   new Response(JSON.stringify({ error: error.message, retry_after: error.retryAfter }), { status: error.status, headers: { ...headers, 'Retry-After': String(error.retryAfter) } });
 
-const statusFor = (code: string) => code === 'EMAIL_EXISTS' || code === 'ACCESS_ALREADY_CONFIGURED' ? 409
+const statusFor = (code: string) => code === 'EMAIL_EXISTS' || code === 'ACCESS_ALREADY_CONFIGURED' || code === 'ACCOUNT_RECOVERY_REQUIRED' ? 409
   : code === 'NO_ACTIVE_EDITION' ? 503 : code === 'SERVER_ERROR' ? 500 : code === 'NOT_FOUND' ? 404 : 400;
 const fail = (code: string) => json({ error: code }, statusFor(code));
 const rpcErrorCode = (error: { message: string }) => KNOWN_ERRORS.find((code) => error.message.includes(code)) ?? 'SERVER_ERROR';
@@ -92,10 +98,18 @@ const rpcErrorCode = (error: { message: string }) => KNOWN_ERRORS.find((code) =>
 /** Una identidad solo se reutiliza si es de participante: nunca se cambia la contraseña de Staff por un vínculo erróneo. */
 const isParticipantIdentity = (user: AuthUserInfo) => user.kind === 'participant' || SYNTHETIC.test(user.email ?? '');
 
+/** Una cuenta con contraseña de marcador (la que el sistema crea al prerregistrar): nadie la conoce, así que no hay nada que proteger. */
+const isPlaceholder = (user: AuthUserInfo) => SYNTHETIC.test(user.email ?? '');
+
 /**
- * Una cuenta de Auth que quedó a medias de un intento anterior de ESTA misma persona (se creó pero no llegó a vincularse porque se
- * perdió la respuesta, hubo un 429, etc.). Solo se reutiliza si: es de participante (nunca Staff ni otra identidad), tiene este correo
- * y ningún OTRO participante la usa. Así reintentar no duplica la identidad y no se toca una cuenta ajena.
+ * Una cuenta de Auth que YA EXISTÍA con este correo (quedó a medias de un intento anterior: se creó pero no llegó a vincularse porque se
+ * perdió la respuesta, hubo un 429, etc.). El correo y los metadatos NO prueban que quien llama sea su dueño original, así que:
+ *   - nunca se cambia su contraseña (ni se usa `updateUser`);
+ *   - solo se vincula si quien llama demuestra conocer su contraseña actual (`verifyPassword`), que es justo lo que ocurre cuando la
+ *     misma persona reintenta con lo que escribió la primera vez;
+ *   - si no coincide, no se toca nada y se responde `ACCOUNT_RECOVERY_REQUIRED`: la ruta segura es la contraseña del primer intento o
+ *     que Staff verifique la identidad en persona y restablezca el acceso.
+ * Además, solo se considera una cuenta de participante con este correo que ningún OTRO participante use (nunca Staff).
  */
 async function adoptInterruptedIdentity(deps: Deps, participant: ParticipantRow, email: string, password: string): Promise<string> {
   const user = await deps.findUserByEmail(email);
@@ -108,10 +122,16 @@ async function adoptInterruptedIdentity(deps: Deps, participant: ParticipantRow,
     deps.log('email_taken_other_participant');
     throw new Error('EMAIL_EXISTS');
   }
-  const updated = await deps.updateUser(user.id, email, password);
-  if (!updated.ok) throw new Error(updated.code === 'EMAIL_TAKEN' ? 'EMAIL_EXISTS' : 'SERVER_ERROR');
+  await proveOwnership(deps, email, password);
   await linkIdentity(deps, participant.id, user.id, false);
   return user.id;
+}
+
+async function proveOwnership(deps: Deps, accountEmail: string, password: string) {
+  if ((await deps.verifyPassword(accountEmail, password)) !== 'valid') {
+    deps.log('ownership_not_proven');
+    throw new Error('ACCOUNT_RECOVERY_REQUIRED');
+  }
 }
 
 /**
@@ -143,8 +163,18 @@ async function establishIdentity(deps: Deps, participant: ParticipantRow, email:
     throw new Error('SERVER_ERROR');
   }
   if (existing) {
-    const updated = await deps.updateUser(existing.id, email, password);
-    if (!updated.ok) throw new Error(updated.code === 'EMAIL_TAKEN' ? 'EMAIL_EXISTS' : 'SERVER_ERROR');
+    if (isPlaceholder(existing)) {
+      // Cuenta de marcador creada al prerregistrar: se migra al correo real y recibe la primera contraseña real.
+      const updated = await deps.updateUser(existing.id, email, password);
+      if (!updated.ok) throw new Error(updated.code === 'EMAIL_TAKEN' ? 'EMAIL_EXISTS' : 'SERVER_ERROR');
+    } else {
+      // Una cuenta con correo propio puede tener una contraseña que alguien ya eligió: no se reemplaza; se vincula si la conoce.
+      await proveOwnership(deps, existing.email ?? email, password);
+      if ((existing.email ?? '').toLowerCase() !== email) {
+        const aligned = await deps.updateUser(existing.id, email); // solo el correo que Staff corrigió, jamás la contraseña
+        if (!aligned.ok) throw new Error(aligned.code === 'EMAIL_TAKEN' ? 'EMAIL_EXISTS' : 'SERVER_ERROR');
+      }
+    }
     await linkIdentity(deps, participant.id, existing.id, false);
     return existing.id;
   }

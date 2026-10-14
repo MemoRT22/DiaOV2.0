@@ -18,6 +18,9 @@ function fixture(opts: {
   create?: { id?: string; code?: 'EMAIL_TAKEN' | 'AUTH_ERROR' };
   update?: { ok: boolean; code?: 'EMAIL_TAKEN' | 'AUTH_ERROR' };
   link?: { message: string } | null;
+  byEmail?: AuthUserInfo | null;
+  owner?: { id: string } | null;
+  findThrows?: boolean;
 } = {}) {
   const calls: string[] = [];
   const logs: string[] = [];
@@ -31,6 +34,8 @@ function fixture(opts: {
       return { data: null, error: opts.link ?? null };
     },
     getUser: async () => opts.existing ?? null,
+    findUserByEmail: async (email) => { calls.push(`find:${email}`); if (opts.findThrows) throw new Error('AUTH_DOWN'); return opts.byEmail ?? null; },
+    participantByAuthUser: async (id) => { calls.push(`owner:${id}`); return opts.owner ?? null; },
     createUser: async (email, password) => { passwords.push(password); calls.push(`create:${email}`); return opts.create ?? { id: UID }; },
     updateUser: async (id, email, password) => { passwords.push(password); calls.push(`update:${id}:${email}`); return opts.update ?? { ok: true }; },
     deleteUser: async (id) => { calls.push(`delete:${id}`); },
@@ -385,4 +390,39 @@ test('reset_password: when Auth cannot answer, no second account is created and 
   assert.ok(!f.calls.some((c) => c.startsWith('create:') || c.startsWith('update:')));
   assert.deepEqual(f.passwords, []);
   assert.ok(f.logs.includes('auth_lookup_failed:'));
+});
+
+test('Staff can claim the account a participant\'s own interrupted registration left behind, but never Staff, another alumno or a different email', async () => {
+  const reset = (f: ReturnType<typeof fixture>) => handleRequest(post({ action: 'reset_password', participant_id: PID, password: 'Nueva-clave-91' }), f.deps);
+  const legit = fixture({ create: { code: 'EMAIL_TAKEN' }, byEmail: { id: UID, email: 'ana@example.com', kind: 'participant' } });
+  assert.equal((await reset(legit)).status, 200);
+  assert.ok(legit.calls.includes(`update:${UID}:ana@example.com`));
+  assert.ok(legit.calls.some((c) => c.startsWith('rpc:participant_link_auth_internal')));
+  assert.ok(!legit.calls.some((c) => c.startsWith('delete:')));
+
+  const mine = fixture({ create: { code: 'EMAIL_TAKEN' }, byEmail: { id: UID, email: 'ana@example.com', kind: 'participant' }, owner: { id: PID } });
+  assert.equal((await reset(mine)).status, 200);
+
+  const refused: [string, Parameters<typeof fixture>[0]][] = [
+    ['staff account', { create: { code: 'EMAIL_TAKEN' }, byEmail: { id: UID, email: 'ana@example.com', kind: null } }],
+    ['another alumno', { create: { code: 'EMAIL_TAKEN' }, byEmail: { id: UID, email: 'ana@example.com', kind: 'participant' }, owner: { id: '99999999-9999-4999-8999-999999999999' } }],
+    ['different email', { create: { code: 'EMAIL_TAKEN' }, byEmail: { id: UID, email: 'otra@example.com', kind: 'participant' } }],
+    ['no account', { create: { code: 'EMAIL_TAKEN' }, byEmail: null }],
+  ];
+  for (const [name, opts] of refused) {
+    const f = fixture(opts);
+    const response = await reset(f);
+    assert.equal(response.status, 409, name);
+    assert.deepEqual(await response.json(), { error: 'EMAIL_EXISTS' }, name);
+    assert.ok(!f.calls.some((c) => c.startsWith('update:') || c.startsWith('rpc:participant_link')), `${name}: nothing touched`);
+  }
+  const down = fixture({ create: { code: 'EMAIL_TAKEN' }, findThrows: true });
+  assert.equal((await reset(down)).status, 500);
+  assert.ok(!down.calls.some((c) => c.startsWith('update:')));
+});
+
+test('claiming still requires the audited Staff caller: no audit, no claim', async () => {
+  const f = fixture({ audit: { message: 'NOT_AUTHORIZED' }, create: { code: 'EMAIL_TAKEN' }, byEmail: { id: UID, email: 'ana@example.com', kind: 'participant' } });
+  assert.equal((await handleRequest(post({ action: 'reset_password', participant_id: PID }), f.deps)).status, 500);
+  assert.ok(!f.calls.some((c) => c.startsWith('find:') || c.startsWith('update:')));
 });

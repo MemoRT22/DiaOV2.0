@@ -24,6 +24,8 @@ export type SelfRegistration = {
 /** La Edge Function responde rápido; si no lo hace en este tiempo se trata como tiempo agotado (el resultado queda incierto). */
 export const ACCESS_TIMEOUT_MS = 30_000;
 type CallOptions = { signal?: AbortSignal };
+/** Estados de negocio que el servidor emite con 5xx y que NO son una falla de infraestructura. */
+const DEFINITIVE_5XX = ['NO_ACTIVE_EDITION'];
 
 async function call<T>(body: Record<string, unknown>, options: CallOptions = {}): Promise<T> {
   const controller = new AbortController();
@@ -45,15 +47,18 @@ async function call<T>(body: Record<string, unknown>, options: CallOptions = {})
     clearTimeout(timer);
   }
   const result = await response.json().catch(() => null);
+  const retryAfter = () => parseRetryAfter(response.headers?.get?.('Retry-After')) ?? parseRetryAfter(result?.retry_after);
   if (!response.ok || !result || typeof result !== 'object') {
     const code = typeof result?.error === 'string' ? result.error : null;
     // El estado HTTP manda: un 429/5xx nunca se convierte en un error de datos ni de contraseña, tenga o no cuerpo.
-    if (response.status === 429 || code === 'RATE_LIMITED') {
-      throw new AccessError('RATE_LIMITED', parseRetryAfter(response.headers?.get?.('Retry-After')) ?? parseRetryAfter(result?.retry_after));
-    }
-    // 503 con un código propio (p. ej. NO_ACTIVE_EDITION) es definitivo; sin código, es la puerta de enlace caída o saturada.
-    if (code === 'TEMPORARILY_UNAVAILABLE' || (code === null && [408, 502, 503, 504, 546].includes(response.status))) {
-      throw new AccessError('TEMPORARILY_UNAVAILABLE', parseRetryAfter(response.headers?.get?.('Retry-After')) ?? parseRetryAfter(result?.retry_after));
+    if (response.status === 429 || code === 'RATE_LIMITED') throw new AccessError('RATE_LIMITED', retryAfter());
+    // Con 4xx el código es de negocio (validación, correo ya registrado, recuperación…) y es definitivo. Con 5xx, 408 o una respuesta
+    // ilegible solo es definitivo el estado de negocio que el servidor emite con 5xx (sin edición activa); todo lo demás —
+    // `SERVER_ERROR`, un código desconocido, sin cuerpo— es infraestructura y el resultado de la operación es INCIERTO: no se afirma
+    // nada de los datos de la persona, se conservan y ella decide reintentar.
+    const definitive = code !== null && (response.status < 500 && response.status !== 408 ? response.ok === false : DEFINITIVE_5XX.includes(code));
+    if (code === 'TEMPORARILY_UNAVAILABLE' || (!definitive && (response.status >= 500 || response.status === 408 || response.ok))) {
+      throw new AccessError('TEMPORARILY_UNAVAILABLE', retryAfter());
     }
     throw new Error(code ?? 'SERVER_ERROR');
   }
@@ -64,7 +69,7 @@ export const studentAccess = {
   /** Solo lectura: se reintenta sola, con espera progresiva, ante un límite o una caída pasajera. */
   async identify(email: string, options: CallOptions = {}): Promise<AccessState> {
     const { state } = await retryTransient(() => call<{ state: AccessState }>({ action: 'identify', email: email.trim().toLowerCase() }, options), { signal: options.signal });
-    if (state !== 'password_login' && state !== 'password_setup' && state !== 'self_registration') throw new Error('SERVER_ERROR');
+    if (state !== 'password_login' && state !== 'password_setup' && state !== 'self_registration') throw new AccessError('TEMPORARILY_UNAVAILABLE'); // respuesta ilegible: no es un dato de la persona
     return state;
   },
   async catalog(options: CallOptions = {}): Promise<AccessCatalog> {

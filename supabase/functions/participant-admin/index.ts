@@ -46,6 +46,22 @@ const deps: Deps = {
     if (outcome !== 'found' || !data.user) throw new Error('AUTH_LOOKUP_FAILED');
     return { id: data.user.id, email: data.user.email ?? null, kind: (data.user.app_metadata?.kind as string | undefined) ?? null };
   },
+  // Solo para reclamar la cuenta que dejó a medias el registro del propio participante (lo hace personal autenticado y auditado).
+  findUserByEmail: async (email) => {
+    for (let page = 1; page <= 5; page += 1) {
+      const { data, error } = await need().auth.admin.listUsers({ page, perPage: 1000 });
+      if (error) throw error;
+      const match = data.users.find((user) => (user.email ?? '').toLowerCase() === email.toLowerCase());
+      if (match) return { id: match.id, email: match.email ?? null, kind: (match.app_metadata?.kind as string | undefined) ?? null };
+      if (data.users.length < 1000) return null;
+    }
+    return null;
+  },
+  participantByAuthUser: async (authUserId) => {
+    const { data, error } = await need().from('participants').select('id').eq('auth_user_id', authUserId).limit(1).maybeSingle();
+    if (error) throw error;
+    return data;
+  },
   createUser: async (email, password) => {
     const { data, error } = await need().auth.admin.createUser({
       email, password, email_confirm: true, app_metadata: { kind: 'participant' },

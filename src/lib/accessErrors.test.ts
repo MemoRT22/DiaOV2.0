@@ -15,8 +15,17 @@ describe('Retry-After', () => {
     expect(parseRetryAfter('Wed, 14 Oct 2026 12:00:30 GMT', now)).toBe(30);
     expect(parseRetryAfter('Wed, 14 Oct 2026 11:00:00 GMT', now)).toBeUndefined(); // en el pasado
   });
-  test('un valor absurdo no bloquea a nadie: se acota', () => {
+  test('una espera mayor a dos minutos se respeta tal cual', () => {
+    expect(parseRetryAfter('121')).toBe(121);
+    expect(parseRetryAfter('300')).toBe(300);
+    const now = Date.parse('2026-10-14T12:00:00Z');
+    expect(parseRetryAfter('Wed, 14 Oct 2026 12:10:00 GMT', now)).toBe(600);
+  });
+  test('un valor absurdo no bloquea a nadie indefinidamente: solo ese tope de cordura (una hora)', () => {
+    expect(MAX_RETRY_AFTER_SECONDS).toBe(3600);
+    expect(parseRetryAfter('3600')).toBe(3600);
     expect(parseRetryAfter('99999')).toBe(MAX_RETRY_AFTER_SECONDS);
+    expect(parseRetryAfter('Wed, 14 Oct 2027 12:00:00 GMT', Date.parse('2026-10-14T12:00:00Z'))).toBe(MAX_RETRY_AFTER_SECONDS);
   });
   test('basura o ausencia → sin dato', () => {
     for (const value of [undefined, null, '', 'pronto', '-5']) expect(parseRetryAfter(value as string | null | undefined)).toBeUndefined();

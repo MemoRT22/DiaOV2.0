@@ -3,6 +3,7 @@ import { handleRequest, upstreamTemporary, type Deps } from './handler.ts';
 
 const url = Deno.env.get('SUPABASE_URL');
 const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+const anonKey = Deno.env.get('SUPABASE_ANON_KEY');
 const authOptions = { auth: { persistSession: false, autoRefreshToken: false } };
 // service_role solo existe aquí, en el servidor. El navegador nunca la recibe.
 const admin = url && serviceKey ? createClient(url, serviceKey, authOptions) : null;
@@ -98,6 +99,20 @@ const deps: Deps = {
   },
   deleteUser: async (id) => {
     await need().auth.admin.deleteUser(id);
+  },
+  // Prueba de posesión de una cuenta que ya existía: un inicio de sesión desechable con la contraseña recibida. No modifica la cuenta
+  // y la sesión se cierra enseguida (solo esa sesión; `local`, para no sacar al alumno de sus otros dispositivos).
+  verifyPassword: async (email, password) => {
+    if (!url || !anonKey) throw new Error('CONFIG');
+    const probe = createClient(url, anonKey, authOptions);
+    const { error } = await probe.auth.signInWithPassword({ email, password });
+    if (error) {
+      throwIfTemporary(error);
+      if (error.status !== undefined && error.status >= 400 && error.status < 500) return 'invalid';
+      throw error;
+    }
+    await probe.auth.signOut({ scope: 'local' }).catch(() => undefined);
+    return 'valid';
   },
   // Solo códigos de evento: nunca correo, contraseña ni datos personales.
   log: (event, code) => console.error(`[student-access] ${event}`, code ?? ''),
