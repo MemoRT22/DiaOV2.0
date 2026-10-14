@@ -343,7 +343,8 @@ test('a session past its enrollment tolerance explains it and offers no reservat
     slot('late', { started: true, in_progress: true, enrollment_open: false, enrollment_closes_at: '2026-10-15T15:10:00Z' }),
     slot('inside', { starts_at: '2026-10-15T15:30:00Z', ends_at: '2026-10-15T16:00:00Z', started: true, in_progress: true, enrollment_open: true, enrollment_closes_at: '2026-10-15T15:40:00Z' }),
   ]));
-  await screen.findByText('Inscripción cerrada');
+  await screen.findByRole('heading', { name: 'Taller de prototipos' });
+  expect(await screen.findAllByText('Inscripción cerrada')).not.toHaveLength(0);
   expect(screen.getByText(CLOSED_MESSAGE)).toBeInTheDocument();
   expect(screen.getByText('Puedes inscribirte hasta las 10:40.')).toBeInTheDocument();
   // Only the open one can be reserved.
@@ -358,7 +359,7 @@ test('the same screen drops the button when enrollment closes while it stays ope
   view.rerender(<MemoryRouter initialEntries={[detailPath]}><Routes>
     <Route path="/misiones/:activityId" element={<StudentWorkshopDetail />} />
   </Routes></MemoryRouter>);
-  expect(await screen.findByText('Inscripción cerrada')).toBeInTheDocument();
+  expect((await screen.findAllByText('Inscripción cerrada')).length).toBeGreaterThan(0);
   expect(screen.queryByRole('button', { name: 'Reservar' })).not.toBeInTheDocument();
 });
 
@@ -368,7 +369,8 @@ test('changing a reservation offers no switch towards a session past its toleran
     slot('late', { started: true, in_progress: true, enrollment_open: false }),
     slot('later', { starts_at: '2026-10-15T16:00:00Z', ends_at: '2026-10-15T16:45:00Z', enrollment_open: true }),
   ], { reservations: [reservation('r1', 'old')], active_reservation_count: 1 }));
-  await screen.findByText('Inscripción cerrada');
+  await screen.findByRole('heading', { name: 'Taller de prototipos' });
+  expect(await screen.findAllByText('Inscripción cerrada')).not.toHaveLength(0);
   expect(screen.getAllByRole('button', { name: 'Cambiar aquí' })).toHaveLength(1);
 });
 
@@ -386,4 +388,26 @@ test('the mission card does not promise «reserva y entra ahora» when every liv
   const card = (await screen.findByRole('heading', { name: 'Taller de prototipos' })).closest('li') as HTMLElement;
   expect(within(card).queryByText('Puedes reservar y entrar ahora')).not.toBeInTheDocument();
   expect(within(card).getByText('En curso ahora')).toBeInTheDocument();
+});
+
+test('closed enrollment with seats left says «Inscripción cerrada», never «Llena»; a truly full mission still says «Llena»', async () => {
+  const closed = mount(detailPath, board([slot('late', { started: true, in_progress: true, enrollment_open: false, remaining: 12, reserved: 18 })]));
+  await screen.findByRole('heading', { name: 'Taller de prototipos' });
+  const fact = screen.getByText('Lugares').parentElement as HTMLElement;
+  expect(within(fact).getByText('Inscripción cerrada')).toBeInTheDocument();
+  expect(within(fact).queryByText('Llena')).not.toBeInTheDocument();
+  closed.unmount();
+
+  mount(detailPath, board([slot('full', { started: true, in_progress: true, enrollment_open: false, remaining: 0, reserved: 30 })]));
+  await screen.findByRole('heading', { name: 'Taller de prototipos' });
+  expect(within(screen.getByText('Lugares').parentElement as HTMLElement).getByText('Llena')).toBeInTheDocument();
+});
+
+test('seats count only sessions still open for enrollment while another one is bookable', async () => {
+  mount(detailPath, board([
+    slot('late', { started: true, in_progress: true, enrollment_open: false, remaining: 12 }),
+    slot('open', { starts_at: '2026-10-15T16:00:00Z', ends_at: '2026-10-15T16:45:00Z', remaining: 7 }),
+  ]));
+  await screen.findByRole('heading', { name: 'Taller de prototipos' });
+  expect(within(screen.getByText('Lugares').parentElement as HTMLElement).getByText('7 libres')).toBeInTheDocument();
 });

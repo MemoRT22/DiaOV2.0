@@ -249,6 +249,22 @@ BEGIN
   v := pg_temp.run(u, format($q$select change_reservation(%L, %L)$q$, rid2, sa->>'ses'));
   n := n + pg_temp.expect('reservación existente fuera de tolerancia puede cambiarse a una sesión abierta', (left(v, 4) <> 'ERR:')::text, 'true');
 
+  -- 7b) el cambio respeta 5/10/20 min según la duración del DESTINO: en el límite pasa, +1 s no y la original se conserva
+  FOREACH d IN ARRAY durs LOOP
+    t := d / 3.0;
+    sa := pg_temp.mk(d || '-cambio-origen', interval '3 hours', 30);
+    sx := pg_temp.mk(d || '-cambio-pasado', make_interval(secs => -t * 60 - 1), d);
+    sy := pg_temp.mk(d || '-cambio-limite', make_interval(secs => -t * 60), d);
+    u := pg_temp.mkp(d || 'cambio7b');
+    rid := (pg_temp.run(u, format($q$select reserve_session(%L)$q$, sa->>'ses')))::jsonb->>'reservation_id';
+    n := n + pg_temp.expect(d || ' min: cambio +1 s rechazado', pg_temp.run(u, format($q$select change_reservation(%L, %L)$q$, rid, sx->>'ses')), 'ERR:ENROLLMENT_CLOSED');
+    n := n + pg_temp.expect(d || ' min: cambio rechazado conserva la original', (SELECT status || ':' || coalesce(replaced_by::text, 'sin-reemplazo') FROM reservations WHERE id = rid::uuid), 'vigente:sin-reemplazo');
+    n := n + pg_temp.expect(d || ' min: cambio rechazado, una sola reservación', pg_temp.res_count(u)::text, '1');
+    v := pg_temp.run(u, format($q$select change_reservation(%L, %L)$q$, rid, sy->>'ses'));
+    n := n + pg_temp.expect(d || ' min: cambio exactamente en el límite', (left(v, 4) <> 'ERR:')::text, 'true');
+    n := n + pg_temp.expect(d || ' min: cambio aplicado', (SELECT status FROM reservations WHERE id = rid::uuid), 'cambiada');
+  END LOOP;
+
   -- ===== 8) el tablero publica el cierre de inscripción por sesión =====
   s := pg_temp.mk('tablero-dentro', interval '-10 minutes', 30);
   sx := pg_temp.mk('tablero-fuera', interval '-10 minutes' - interval '1 second', 30);

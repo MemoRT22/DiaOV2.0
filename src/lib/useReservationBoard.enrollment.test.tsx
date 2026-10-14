@@ -11,34 +11,35 @@ vi.mock('./supabase', () => ({
 vi.mock('./reservations', async (importOriginal) => ({ ...(await importOriginal<typeof import('./reservations')>()), fetchBoard: m.fetchBoard }));
 vi.mock('./participantSync', () => ({ announceParticipantChange: vi.fn(), subscribeParticipantChanges: () => () => {} }));
 
-// 10:00 Cancún = 15:00Z. A 30-minute workshop admits new reservations until 10:10:00.
+// 10:00 Cancún = 15:00Z. 15/30/60-minute workshops admit new reservations until 10:05:00 / 10:10:00 / 10:20:00.
 const START = Date.parse('2026-10-15T15:00:00Z');
-const CLOSES = START + 10 * 60_000;
+const CASES = [{ minutes: 15, tolerance: 5 }, { minutes: 30, tolerance: 10 }, { minutes: 60, tolerance: 20 }];
 
-const session = (over: Partial<BoardSession> = {}): BoardSession => ({
+const session = (minutes: number, tolerance: number): BoardSession => ({
   id: 's', activity_id: 'a', title: 'Taller', description: '', division_id: 'd', starts_at: new Date(START).toISOString(),
-  ends_at: new Date(START + 30 * 60_000).toISOString(), enrollment_closes_at: new Date(CLOSES).toISOString(), enrollment_open: true,
+  ends_at: new Date(START + minutes * 60_000).toISOString(), enrollment_closes_at: new Date(START + tolerance * 60_000).toISOString(), enrollment_open: true,
   location: '', credits: 1, status: 'activa', capacity: 30, reserved: 0, remaining: 30, started: true, ended: false, in_progress: true,
-  attended: false, my_reservation_id: null, conflicts_with: [], tight_transfer_with: [], ...over,
+  attended: false, my_reservation_id: null, conflicts_with: [], tight_transfer_with: [],
 });
-const board = (serverNow: number): Board => ({
+const board = (serverNow: number, minutes: number, tolerance: number): Board => ({
   server_time: new Date(serverNow).toISOString(), window: 'open', opens_at: null, closes_at: null, max_reservations: 4,
-  active_reservation_count: 0, travel_buffer_minutes: 10, sessions: [session()], reservations: [],
+  active_reservation_count: 0, travel_buffer_minutes: 10, sessions: [session(minutes, tolerance)], reservations: [],
 });
 
-beforeEach(() => { vi.useFakeTimers(); });
+beforeEach(() => { m.fetchBoard.mockReset(); vi.useFakeTimers(); });
 afterEach(() => { vi.useRealTimers(); });
 
-test('a screen left open stops offering the session the moment its enrollment closes, without reloading', async () => {
-  vi.setSystemTime(CLOSES - 60_000); // 10:09:00, one minute before the limit
-  m.fetchBoard.mockResolvedValue(board(CLOSES - 60_000));
+test.each(CASES)('$minutes min: a screen left open stops offering the session exactly after +$tolerance min, without reloading', async ({ minutes, tolerance }) => {
+  const closes = START + tolerance * 60_000;
+  vi.setSystemTime(closes - 60_000); // one minute before the limit
+  m.fetchBoard.mockResolvedValue(board(closes - 60_000, minutes, tolerance));
   const { result } = renderHook(() => useReservationBoard('ed'));
   await act(async () => { await vi.advanceTimersByTimeAsync(0); });
   expect(result.current.board?.sessions[0].enrollment_open).toBe(true);
 
-  await act(async () => { await vi.advanceTimersByTimeAsync(59_000); }); // 10:09:59
+  await act(async () => { await vi.advanceTimersByTimeAsync(59_000); }); // limit - 1 s
   expect(result.current.board?.sessions[0].enrollment_open).toBe(true);
-  await act(async () => { await vi.advanceTimersByTimeAsync(1_000); }); // 10:10:00 exactly: still open
+  await act(async () => { await vi.advanceTimersByTimeAsync(1_000); }); // the limit exactly: still open
   expect(result.current.board?.sessions[0].enrollment_open).toBe(true);
   await act(async () => { await vi.advanceTimersByTimeAsync(100); }); // just after
   expect(result.current.board?.sessions[0].enrollment_open).toBe(false);
@@ -46,8 +47,9 @@ test('a screen left open stops offering the session the moment its enrollment cl
 });
 
 test('the closing time follows the SERVER clock when the phone clock is wrong', async () => {
-  vi.setSystemTime(CLOSES - 60_000 - 3_600_000); // phone is one hour behind
-  m.fetchBoard.mockResolvedValue(board(CLOSES - 60_000)); // server says 10:09:00
+  const closes = START + 10 * 60_000;
+  vi.setSystemTime(closes - 60_000 - 3_600_000); // phone is one hour behind
+  m.fetchBoard.mockResolvedValue(board(closes - 60_000, 30, 10)); // server says 10:09:00
   const { result } = renderHook(() => useReservationBoard('ed'));
   await act(async () => { await vi.advanceTimersByTimeAsync(0); });
   expect(result.current.board?.sessions[0].enrollment_open).toBe(true);
