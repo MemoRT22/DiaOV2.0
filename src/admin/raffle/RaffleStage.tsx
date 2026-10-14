@@ -87,6 +87,8 @@ type Props = {
   ready?: boolean;
   /** Operator only. */
   blocker?: Blocker | null;
+  /** Operator only: the winner's reference, identical to the one on the student's logbook. Never shown on the projection. `undefined` = not read yet. */
+  folio?: string | null;
   /** Operator only: a one-line outcome of the previous step, e.g. that the last winner did not show up. */
   notice?: string;
   onRevealDone?: () => void;
@@ -97,7 +99,7 @@ type Props = {
 };
 
 /** What the audience sees: category, prize, how many compete and, at the end, the winner. The same stage serves the console and the public screen. */
-export default function RaffleStage({ variant, phase, rehearsal, categoryName, prize, poolCount, result, ready = true, blocker = null, notice, onRevealDone, alreadyRevealed, children }: Props) {
+export default function RaffleStage({ variant, phase, rehearsal, categoryName, prize, poolCount, result, ready = true, blocker = null, notice, onRevealDone, alreadyRevealed, folio, children }: Props) {
   const operator = variant === 'panel';
   const reduced = useReducedMotion();
   const animateReveal = phase === 'revealed' && !!result?.fresh && !reduced && !alreadyRevealed;
@@ -158,11 +160,12 @@ export default function RaffleStage({ variant, phase, rehearsal, categoryName, p
 
         {revealing && result && (
           <>
-            <p className="rf-label">{phase === 'confirmed' ? 'Premio confirmado' : 'Ganador'}</p>
+            <p className="rf-label">{phase === 'confirmed' ? 'Premio confirmado' : operator ? 'Ganador seleccionado' : 'Ganador'}</p>
             <p className="rf-winner" data-size={sizeBucket(name)} data-settled={settled || undefined} aria-hidden>{parts ? parts.map((part, index) => (part.glyph
               ? <span key={index} className="rf-ch"><span>{part.char}</span><b>{part.glyph}</b></span>
               : part.char)) : name}</p>
             <p className="rf-prize rf-prize-sub">{result.prizeName}</p>
+            {operator && <p className="rf-folio" data-testid="winner-folio">Folio: <strong>{folio ?? (folio === null ? 'no disponible' : '…')}</strong></p>}
             {phase === 'confirmed'
               ? <p className="rf-confirmed"><Check size={18} aria-hidden /> Entrega confirmada</p>
               : poolKnown && <p className="rf-facts">Elegido entre {result.poolSize} {result.poolSize === 1 ? 'participante' : 'participantes'}</p>}

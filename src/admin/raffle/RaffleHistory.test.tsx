@@ -4,6 +4,12 @@ import { beforeEach, expect, test, vi } from 'vitest';
 import RaffleAdmin from '../RaffleAdmin';
 import { AMAZON, category, MACBOOK, officialPrizes, OFFICIAL, winner } from './raffleFixtures';
 
+// El folio lo asigna el servidor; aquí se simula con uno derivado del id para no consultar la red.
+vi.mock('../../lib/raffleWinner', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../lib/raffleWinner')>()),
+  fetchWinnerFolios: async (ids: string[]) => new Map(ids.map((id) => [id, `GAN-${id.replace(/\D/g, '').padStart(6, '0')}`])),
+}));
+
 const m = vi.hoisted(() => ({ view: vi.fn(), prizes: vi.fn(), winners: vi.fn(), invalidate: vi.fn() }));
 
 vi.mock('../../lib/raffleApi', async (importOriginal) => ({
@@ -93,4 +99,10 @@ test('a failed read of the results is explained instead of showing an empty list
   open();
   expect(await screen.findByText(/No se pudieron consultar los resultados/)).toBeInTheDocument();
   expect(screen.queryByText('Todavía no hay ganadores.')).not.toBeInTheDocument();
+});
+
+test('cada resultado del historial muestra su folio, el mismo que ve la persona en su Bitácora', async () => {
+  open();
+  const row = (await screen.findByText('Luis Pérez')).closest('.rf-history-row') as HTMLElement;
+  await waitFor(() => expect(within(row).getByText(/Folio:/)).toHaveTextContent('Folio: GAN-000002'));
 });

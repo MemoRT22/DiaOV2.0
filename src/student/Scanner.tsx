@@ -11,6 +11,7 @@ import { fetchMyRaffleStatus } from '../lib/raffleApi';
 import { nextTierHint, type MyRaffleStatus } from '../lib/raffleRules';
 import { fetchBoard } from '../lib/reservations';
 import { buildJourney, focusStop, type Stop } from '../lib/studentJourney';
+import { useRafflePrizes } from './RafflePrizeProvider';
 import { usePublicTheme } from '../theme/PublicThemeProvider';
 import { NAV } from './copy';
 import { progressNextMessage } from './progressText';
@@ -29,6 +30,7 @@ export default function Scanner() {
   const scannerRef = useRef<QRScanner | null>(null);
   const decodedRef = useRef(false);
   const { theme, term, rankName } = usePublicTheme();
+  const { refresh: refreshPrizes } = useRafflePrizes();
   const [phase, setPhase] = useState<Phase>('scanning');
   const [result, setResult] = useState<CheckInResult | null>(null);
   const [progress, setProgress] = useState<Progress | null>(null);
@@ -74,6 +76,7 @@ export default function Scanner() {
       // A repeated check-in changes nothing, so only a new attendance is announced to the other tabs.
       if (!res.already_registered) {
         announceParticipantChange('attendance');
+        void refreshPrizes(); // el servidor ahora sabe que ya participa: que la cadencia y los avisos se pongan al día de inmediato
         try {
           navigator.vibrate?.(40);
         } catch {

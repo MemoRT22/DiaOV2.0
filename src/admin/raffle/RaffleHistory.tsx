@@ -6,6 +6,7 @@ import { DataPanel, EmptyState, RowAction } from '../design/Primitives';
 import { kindOf, plural, PrizeIcon, toneOf } from './PrizeParts';
 import { InvalidateModal } from './RaffleModals';
 import type { RaffleContext } from './types';
+import { useWinnerFolios } from './useWinnerFolios';
 
 /** The technical states, in the words of someone handing over a prize. */
 const STATUS: Record<WinnerStatus, { label: string; tone: 'success' | 'warning' | 'error' | 'neutral'; help: string }> = {
@@ -29,6 +30,7 @@ export default function RaffleHistory({ ctx }: { ctx: RaffleContext }) {
   const [invalidating, setInvalidating] = useState<RaffleWinner | null>(null);
   const [notice, setNotice] = useState('');
   const winners = ctx.winners;
+  const { folioOf } = useWinnerFolios((winners ?? []).map((winner) => winner.id));
 
   const shown = useMemo(() => {
     const rule = FILTERS.find((item) => item.value === filter)!;
@@ -59,6 +61,7 @@ export default function RaffleHistory({ ctx }: { ctx: RaffleContext }) {
               <div className="ad-row-main">
                 <p className="ad-row-title">{winner.display_name}</p>
                 <p className="ad-row-meta">{winner.prize_name} · {winner.category_name}</p>
+                <p className="ad-row-meta">Folio: <strong className="rf-folio-text">{folioOf(winner.id) ?? (folioOf(winner.id) === null ? 'no disponible' : '…')}</strong></p>
                 <p className="ad-row-meta">{formatDateTime(winner.drawn_at)}{winner.confirmed_at && ` · entregado ${formatDateTime(winner.confirmed_at)}`}</p>
                 {winner.invalidation_reason && <p className="rf-reason">Motivo: {winner.invalidation_reason}</p>}
               </div>

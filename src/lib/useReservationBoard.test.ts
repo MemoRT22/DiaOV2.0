@@ -41,3 +41,28 @@ test('completed, expired and cancelled reservations are never rewritten by the c
     expect(applyClock(b, END + 60_000 - Date.now()).reservations[0].derived_status).toBe(status);
   }
 });
+
+const OPEN = Date.parse('2026-10-15T14:45:00Z');
+
+test('the student can browse before opening but cannot select a mission', () => {
+  const b: Board = { ...board(), opens_at: new Date(OPEN).toISOString(), window: 'not_open', sessions: [session({ my_reservation_id: null })], reservations: [], active_reservation_count: 0 };
+  const before = applyClock(b, OPEN - 1 - Date.now());
+  expect(before.window).toBe('not_open');
+  expect(before.sessions).toHaveLength(1);
+  expect(before.sessions[0].title).toBe('Taller');
+});
+
+test('the reservation window unlocks at exactly 9:45 Cancun on October 15 without a board reload', () => {
+  const b: Board = { ...board(), opens_at: new Date(OPEN).toISOString(), window: 'not_open', sessions: [session({ my_reservation_id: null })], reservations: [], active_reservation_count: 0 };
+  expect(applyClock(b, OPEN - 1 - Date.now()).window).toBe('not_open');
+  const next = applyClock(b, OPEN - Date.now());
+  expect(next.window).toBe('open');
+  expect(next.sessions).toHaveLength(1);
+  expect(applyClock(next, OPEN + 60_000 - Date.now()).window).toBe('open');
+});
+
+test('an explicitly configured closure also updates on an already open screen', () => {
+  const b: Board = { ...board(), opens_at: new Date(OPEN).toISOString(), closes_at: new Date(OPEN + 3_600_000).toISOString() };
+  expect(applyClock(b, OPEN + 3_600_000 - 1 - Date.now()).window).toBe('open');
+  expect(applyClock(b, OPEN + 3_600_000 - Date.now()).window).toBe('closed');
+});
