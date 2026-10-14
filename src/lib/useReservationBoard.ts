@@ -25,9 +25,11 @@ export function applyClock(board: Board, offsetMs: number): Board {
     const started = new Date(s.starts_at).getTime() <= now;
     const ended = new Date(s.ends_at).getTime() <= now;
     const inProgress = started && !ended;
-    if (s.started === started && s.ended === ended && s.in_progress === inProgress) return s;
+    // Inscripción: el servidor manda el límite; aquí solo se refleja al cruzarlo con la pantalla abierta.
+    const enrollmentOpen = s.enrollment_closes_at ? now <= new Date(s.enrollment_closes_at).getTime() : s.enrollment_open;
+    if (s.started === started && s.ended === ended && s.in_progress === inProgress && s.enrollment_open === enrollmentOpen) return s;
     changed = true;
-    return { ...s, started, ended, in_progress: inProgress };
+    return { ...s, started, ended, in_progress: inProgress, ...(enrollmentOpen === undefined ? {} : { enrollment_open: enrollmentOpen }) };
   });
   const sessionById = new Map(sessions.map((s) => [s.id, s]));
   // A reservation moves active → in_progress → ended with the clock; completion/expiry only come from the server.
@@ -66,6 +68,17 @@ export function applyClock(board: Board, offsetMs: number): Board {
     reservations,
     active_reservation_count: Math.max(0, board.active_reservation_count - released),
   };
+}
+
+/** The nearest future `enrollment_closes_at` among sessions that are still open for enrollment (null when none). */
+export function nextEnrollmentClose(board: Board, now: number): number | null {
+  let next: number | null = null;
+  for (const s of board.sessions) {
+    if (!s.enrollment_closes_at || s.enrollment_open === false || s.status === 'cancelada') continue;
+    const at = new Date(s.enrollment_closes_at).getTime();
+    if (at >= now && (next === null || at < next)) next = at;
+  }
+  return next;
 }
 
 /**
@@ -118,6 +131,19 @@ export function useReservationBoard(editionId: string | undefined) {
     }, remaining + 10);
     return () => window.clearTimeout(timer);
   }, [board?.window, board?.opens_at]);
+
+  // Cierre de inscripción preciso: al cruzar el límite de una sesión el botón desaparece sin esperar el tick de 30 s
+  // ni recargar. El backend revalida cada reserva con su propio reloj.
+  useEffect(() => {
+    if (!board) return;
+    const now = Date.now() + offset.current;
+    const next = nextEnrollmentClose(board, now);
+    if (next == null) return;
+    const timer = window.setTimeout(() => {
+      setBoard((current) => (current ? applyClock(current, offset.current) : current));
+    }, Math.max(next - now, 0) + 10);
+    return () => window.clearTimeout(timer);
+  }, [board]);
 
   // Personal state: another tab of this browser changed my reservations/attendance, or this tab was hidden for a while.
   // (Seat counts come from the availability broadcast below; these are different concerns.)

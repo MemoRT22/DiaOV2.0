@@ -1,5 +1,6 @@
 import { Users } from 'lucide-react';
 import { formatDateTime, formatTime } from '../../lib/catalog';
+import { ENROLLMENT_CLOSED } from '../../lib/errors';
 import { durationMinutes, isSelectable, type BoardSession, type SessionState } from '../../lib/reservations';
 import { MapActionLink } from '../campus/mapLinks';
 import PlaceLine from '../campus/PlaceLine';
@@ -33,8 +34,8 @@ export default function SessionRow({
 }) {
   const { label, kind } = STATE_LABELS[state];
   const selectable = isSelectable(state);
-  const showCount = state !== 'cancelled' && state !== 'ended';
-  const dim = state === 'ended' || state === 'cancelled' || state === 'full';
+  const showCount = state !== 'cancelled' && state !== 'ended' && state !== 'enrollment_closed';
+  const dim = state === 'ended' || state === 'cancelled' || state === 'full' || state === 'enrollment_closed';
   const live = state === 'in_progress';
   const mine = state === 'reserved' || state === 'already_attended';
   const seats = session.remaining === 0 ? 'Sin lugares' : `${session.remaining} de ${session.capacity} lugares`;
@@ -63,6 +64,10 @@ export default function SessionRow({
           <p className="mt-1.5 text-xs text-ink-muted">
             {formatDateTime(session.starts_at)} · {durationMinutes(session)} min
           </p>
+          {state === 'enrollment_closed' && <p className="mt-1.5 text-xs font-semibold text-ink-muted">{ENROLLMENT_CLOSED}</p>}
+          {live && session.enrollment_closes_at && (
+            <p className="mt-1.5 text-xs font-semibold text-ink-muted">Puedes inscribirte hasta las {formatTime(session.enrollment_closes_at)}.</p>
+          )}
           {showCount && (
             <div className="mt-2">
               <div className="h-1.5 overflow-hidden rounded-full bg-line" aria-hidden>

@@ -15,5 +15,6 @@ export const STATE_LABELS: Record<SessionState, { label: string; kind: StatusKin
   reserved: { label: 'Reservada', kind: 'in_route' },
   not_open: { label: 'Aún no abre', kind: 'waiting' },
   closed: { label: 'Reservas cerradas', kind: 'waiting' },
+  enrollment_closed: { label: 'Inscripción cerrada', kind: 'ended' },
   already_attended: { label: 'Completada', kind: 'done' },
 };

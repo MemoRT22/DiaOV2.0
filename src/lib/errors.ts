@@ -1,3 +1,6 @@
+/** Shown when a session no longer accepts NEW reservations (also on the session row itself). */
+export const ENROLLMENT_CLOSED = 'Esta misión ya comenzó y terminó su periodo de inscripción. Explora otros horarios disponibles.';
+
 const MESSAGES: Record<string, string> = {
   NOT_AUTHORIZED: 'No tienes permiso para realizar esta acción.',
   INVALID_INPUT: 'Revisa que los datos estén completos.',
@@ -87,6 +90,7 @@ const MESSAGES: Record<string, string> = {
   SESSION_UNAVAILABLE: 'Este horario ya no está disponible. Elige otra sesión.',
   SESSION_CANCELLED: 'Este horario fue cancelado. Elige otra sesión.',
   SESSION_ENDED: 'Esta sesión ya terminó.',
+  ENROLLMENT_CLOSED,
   CURRENT_SESSION_ENDED: 'Tu sesión actual ya terminó; ya no puedes cambiarla.',
   ALREADY_ATTENDED: 'Ya registraste asistencia en este taller.',
   SESSION_FULL: 'Ese horario acaba de llenarse. Elige otra sesión.',
@@ -104,7 +108,8 @@ const MESSAGES: Record<string, string> = {
   INVALID_WINDOW: 'El cierre debe ser posterior a la apertura.',
   LOCATION_REQUIRED: 'Escribe la nueva ubicación.',
   INVALID_CREDENTIAL: 'El código o QR no es válido. Verifica con el facilitador.',
-  NO_RESERVATION: 'No tienes reservación para esta sesión.',
+  NO_RESERVATION:
+    'No tienes reservación para este taller. Para registrar tu asistencia primero debes inscribirte: busca la misión en Misiones y reserva tu lugar (solo es posible si aún está dentro del periodo de inscripción y quedan lugares). Después vuelve a escanear.',
   CHECKIN_NOT_OPEN: 'Todavía no abre el registro de asistencia de tu taller. Revisa el horario en Mi ruta y vuelve cuando sea el momento.',
   CHECKIN_CLOSED: 'El registro de asistencia de tu taller ya cerró. Pide apoyo al personal del evento.',
   ACTIVITY_EDUCATORS_ONLY: 'Este taller es exclusivo para personal educativo. Elige otra misión para tu ruta.',

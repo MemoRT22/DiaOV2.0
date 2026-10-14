@@ -28,6 +28,13 @@ export type BoardSession = {
   started: boolean;
   ended: boolean;
   in_progress: boolean;
+  /**
+   * Last instant a NEW reservation (or a change towards this session) is accepted: `starts_at` + duration / 3
+   * (15 min → 5, 30 → 10, 60 → 20). The server is the authority; absent on a backend that does not report it yet.
+   */
+  enrollment_closes_at?: string | null;
+  /** Server snapshot of «now ≤ enrollment_closes_at»; the screen re-derives it from the clock. Absent = not restricted. */
+  enrollment_open?: boolean;
   attended: boolean;
   my_reservation_id: string | null;
   /** Own reservations that REALLY overlap this session in time (blocks). */
@@ -86,6 +93,7 @@ export type SessionState =
   | 'in_progress'
   | 'not_open'
   | 'closed'
+  | 'enrollment_closed'
   | 'full'
   | 'same_workshop'
   | 'conflict'
@@ -103,6 +111,9 @@ const FEW_PLACES_RATIO = 0.15;
 export function belongsToDivision(s: Pick<BoardSession, 'division_id' | 'division_ids'>, divisionId: string): boolean {
   return !!s.division_ids?.includes(divisionId) || s.division_id === divisionId;
 }
+
+/** Whether the session still accepts NEW reservations by time. Existing reservations are never affected by this. */
+export const isEnrollmentOpen = (s: Pick<BoardSession, 'enrollment_open'>) => s.enrollment_open !== false;
 
 export function isFewPlaces(s: Pick<BoardSession, 'remaining' | 'capacity'>) {
   return s.remaining > 0 && s.remaining <= Math.max(3, Math.ceil(s.capacity * FEW_PLACES_RATIO));
@@ -127,7 +138,7 @@ export function holdsWorkshop(r: MyReservation): boolean {
 /**
  * Preview of the server rules so the screen can explain why a session is not selectable.
  * The server re-checks everything; this never authorizes anything.
- * A session in progress is still joinable until it ends.
+ * A session in progress is still joinable until its enrollment tolerance runs out (see `enrollment_closes_at`).
  */
 export function sessionState(board: Board, s: BoardSession, replacing?: MyReservation | null): SessionState {
   if (s.status === 'cancelada') return 'cancelled';
@@ -136,6 +147,7 @@ export function sessionState(board: Board, s: BoardSession, replacing?: MyReserv
   if (s.ended) return 'ended';
   if (board.window === 'not_open') return 'not_open';
   if (board.window === 'closed') return 'closed';
+  if (!isEnrollmentOpen(s)) return 'enrollment_closed';
   if (s.remaining <= 0) return 'full';
   const holding = board.reservations.filter((r) => holdsWorkshop(r) && r.id !== replacing?.id);
   if (holding.some((r) => r.activity_id === s.activity_id)) return 'same_workshop';

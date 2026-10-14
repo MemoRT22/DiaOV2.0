@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Alert, PageSkeleton } from '../components/ui';
 import { fetchDivisions, formatTime } from '../lib/catalog';
-import { durationMinutes, hasTightTransfer, isSelectable, sessionState, type BoardSession } from '../lib/reservations';
+import { durationMinutes, hasTightTransfer, isEnrollmentOpen, isSelectable, sessionState, type BoardSession } from '../lib/reservations';
 import { useLoad } from '../lib/useLoad';
 import { useReservationBoard } from '../lib/useReservationBoard';
 import { fetchWorkshopDetail } from '../lib/workshopDetailApi';
@@ -97,7 +97,7 @@ export default function StudentWorkshopDetail() {
   const headline = missionHeadline(board, sessions, replacing, status);
   const openCount = sessions.filter((s) => isSelectable(sessionState(board, s, replacing))).length;
   const pitch = metadata?.student_pitch || first.description;
-  const seatsLeft = sessions.filter((s) => !s.ended && s.status === 'activa').reduce((n, s) => n + Math.max(s.remaining, 0), 0);
+  const seatsLeft = sessions.filter((s) => !s.ended && isEnrollmentOpen(s) && s.status === 'activa').reduce((n, s) => n + Math.max(s.remaining, 0), 0);
   return (
     <div className="space-y-5">
       {back}

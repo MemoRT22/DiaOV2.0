@@ -335,3 +335,55 @@ test('sessions in different places: each schedule opens ITS own place, never the
   expect(screen.getByText('Edificio de Aulas')).toBeInTheDocument();
   expect(screen.getByText('Administración · Rectoría')).toBeInTheDocument();
 });
+
+const CLOSED_MESSAGE = 'Esta misión ya comenzó y terminó su periodo de inscripción. Explora otros horarios disponibles.';
+
+test('a session past its enrollment tolerance explains it and offers no reservation; one inside it shows its limit', async () => {
+  mount(detailPath, board([
+    slot('late', { started: true, in_progress: true, enrollment_open: false, enrollment_closes_at: '2026-10-15T15:10:00Z' }),
+    slot('inside', { starts_at: '2026-10-15T15:30:00Z', ends_at: '2026-10-15T16:00:00Z', started: true, in_progress: true, enrollment_open: true, enrollment_closes_at: '2026-10-15T15:40:00Z' }),
+  ]));
+  await screen.findByText('Inscripción cerrada');
+  expect(screen.getByText(CLOSED_MESSAGE)).toBeInTheDocument();
+  expect(screen.getByText('Puedes inscribirte hasta las 10:40.')).toBeInTheDocument();
+  // Only the open one can be reserved.
+  expect(screen.getAllByRole('button', { name: 'Reservar' })).toHaveLength(1);
+});
+
+test('the same screen drops the button when enrollment closes while it stays open (board updated by the clock)', async () => {
+  const open = board([slot('live', { started: true, in_progress: true, enrollment_open: true, enrollment_closes_at: '2026-10-15T15:10:00Z' })]);
+  const view = mount(detailPath, open);
+  await screen.findByRole('button', { name: 'Reservar' });
+  m.board = board([slot('live', { started: true, in_progress: true, enrollment_open: false, enrollment_closes_at: '2026-10-15T15:10:00Z' })]);
+  view.rerender(<MemoryRouter initialEntries={[detailPath]}><Routes>
+    <Route path="/misiones/:activityId" element={<StudentWorkshopDetail />} />
+  </Routes></MemoryRouter>);
+  expect(await screen.findByText('Inscripción cerrada')).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Reservar' })).not.toBeInTheDocument();
+});
+
+test('changing a reservation offers no switch towards a session past its tolerance, but keeps the open ones', async () => {
+  mount(`${detailPath}?cambiar=r1`, board([
+    slot('old', { activity_id: B, title: 'Otro', starts_at: '2026-10-15T17:00:00Z', ends_at: '2026-10-15T17:30:00Z', my_reservation_id: 'r1' }),
+    slot('late', { started: true, in_progress: true, enrollment_open: false }),
+    slot('later', { starts_at: '2026-10-15T16:00:00Z', ends_at: '2026-10-15T16:45:00Z', enrollment_open: true }),
+  ], { reservations: [reservation('r1', 'old')], active_reservation_count: 1 }));
+  await screen.findByText('Inscripción cerrada');
+  expect(screen.getAllByRole('button', { name: 'Cambiar aquí' })).toHaveLength(1);
+});
+
+test('a server rejection by tolerance (clock race) shows the clear message and keeps the screen usable', async () => {
+  m.reserve.mockRejectedValueOnce(new Error('ENROLLMENT_CLOSED'));
+  mount(detailPath, board([slot('edge', { started: true, in_progress: true, enrollment_open: true })]));
+  fireEvent.click(await screen.findByRole('button', { name: 'Reservar' }));
+  const dialog = await screen.findByRole('dialog', { name: 'Reservar lugar' });
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Reservar' }));
+  expect(await within(dialog).findByText(CLOSED_MESSAGE)).toBeInTheDocument();
+});
+
+test('the mission card does not promise «reserva y entra ahora» when every live session is past its tolerance', async () => {
+  mount('/misiones', board([slot('late', { started: true, in_progress: true, enrollment_open: false })]));
+  const card = (await screen.findByRole('heading', { name: 'Taller de prototipos' })).closest('li') as HTMLElement;
+  expect(within(card).queryByText('Puedes reservar y entrar ahora')).not.toBeInTheDocument();
+  expect(within(card).getByText('En curso ahora')).toBeInTheDocument();
+});
