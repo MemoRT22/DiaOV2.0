@@ -18,9 +18,9 @@ export type MyRaffleStatus = {
   raffle_category: string | null;
   raffle_category_name: string | null;
   has_won: boolean;
-  /** La encuesta de salida (requisito del sorteo) ya está completada. Con un servidor anterior a la encuesta se asume `true`. */
+  /** La encuesta de salida (voluntaria) ya está contestada. Solo informativo: no condiciona el sorteo. */
   survey_completed?: boolean;
-  /** Sellos de una categoría Y encuesta completada: de verdad participa en el sorteo. */
+  /** Participa en el sorteo: alcanzó una categoría por sellos (la encuesta no interviene). */
   raffle_eligible?: boolean;
   /** Active categories of the participant's mode, lowest first. */
   categories: RaffleTier[];
@@ -42,7 +42,8 @@ export function normalizeRaffleStatus(raw: Record<string, unknown> | null | unde
     raffle_category_name: (r.raffle_category_name as string | null) ?? null,
     has_won: r.has_won === true,
     survey_completed: r.survey_completed !== false,
-    raffle_eligible: r.raffle_eligible === true || (r.survey_completed === undefined && !!r.raffle_category && r.has_won !== true),
+    // Solo sellos: no se lee la encuesta (ni de un servidor anterior que aún la exigiera).
+    raffle_eligible: !!r.raffle_category && r.has_won !== true,
     categories: categories
       .map((c) => ({ ...c, rules: Array.isArray(c.rules) ? c.rules : [] }))
       .sort((a, b) => a.sort_order - b.sort_order),

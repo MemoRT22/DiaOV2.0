@@ -11,10 +11,8 @@ export type RaffleCategory = {
   required_academic: number; required_leadership: number;
   is_active: boolean; is_demo: boolean;
   visual_config: Record<string, unknown>;
-  /** Sorteables de verdad: sellos de la categoría Y encuesta de salida completada (el mismo conjunto del que sortea el servidor). */
+  /** Sorteables de verdad: sellos de la categoría (el mismo conjunto del que sortea el servidor; la encuesta no interviene). */
   pool_count?: number;
-  /** Con los sellos de esta categoría pero sin encuesta: todavía no entran al sorteo. */
-  survey_pending_count?: number;
 };
 
 /** The alternatives of a category, also when the backend still answers with the previous single condition. */

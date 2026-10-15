@@ -113,7 +113,7 @@ export default function ExitSurveyAdminPanel() {
           {data.custom && <Button type="button" variant="secondary" disabled={saving} onClick={() => void save(null)}>Restablecer a las 13:00</Button>}
         </form>
         {message && <Alert tone={message.tone}>{message.text}</Alert>}
-        <p className="es-note">Requisito del sorteo: solo entran quienes tienen los sellos de una categoría <strong>y</strong> completaron esta encuesta.</p>
+        <p className="es-note">La encuesta es voluntaria: <strong>no</strong> es requisito del sorteo (participan quienes tienen los sellos de una categoría).</p>
       </DataPanel>
       <Results title="Operación oficial" data={data.official} note={rehearsal ? 'Antes de la operación real no hay participantes oficiales con respuestas.' : undefined} />
       <Results title="Ensayo (cuentas de prueba)" data={data.rehearsal} note="Se borran con la limpieza de la preparación y nunca se mezclan con las oficiales." />

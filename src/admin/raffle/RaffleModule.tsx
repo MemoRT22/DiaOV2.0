@@ -20,7 +20,7 @@ const DESCRIPTIONS: Record<RaffleSection, string> = {
   vivo: 'Elige un premio, inicia el sorteo, revela al ganador y confírmalo.',
   premios: 'Los premios oficiales de Día OV 2026, con lo que ya se entregó y lo que falta por sortear.',
   ganadores: 'Quién ganó cada premio, si ya lo recibió y cuándo.',
-  encuesta: 'Hora de apertura de la encuesta de salida —requisito del sorteo— y sus resultados.',
+  encuesta: 'Hora de apertura de la encuesta de salida (voluntaria) y sus resultados.',
 };
 
 /** Links from before the simplification keep working. */

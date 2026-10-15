@@ -195,6 +195,8 @@ BEGIN
   PERFORM pg_temp.mk_participant('d');  PERFORM pg_temp.give('d', 3, 1, true);            -- 4. Universo por sellos (también cumple Galaxia y Sistema Solar)
   PERFORM pg_temp.mk_participant('e');  PERFORM pg_temp.stamp_ss('e');                    -- 5. ya ganó
   PERFORM pg_temp.mk_participant('real', false); PERFORM pg_temp.give('real', 1, 1, true); -- real: sellos de Sistema Solar
+  PERFORM pg_temp.mk_participant('g'); PERFORM pg_temp.give('g', 2, 1, true);              -- 4b. Galaxia por sellos, SIN encuesta
+  PERFORM pg_temp.mk_participant('u'); PERFORM pg_temp.give('u', 3, 1, true);              -- 4b. Universo por sellos, SIN encuesta
 
   -- ===== 0. Sin encuesta no hay nada guardado y la regla de sellos NO cambió ==========================================
   PERFORM pg_temp.expect_true('0: nadie ha contestado todavía', NOT pg_temp.surveyed('a') AND NOT pg_temp.surveyed('c') AND NOT pg_temp.surveyed('real'));
@@ -203,14 +205,14 @@ BEGIN
   PERFORM pg_temp.expect('0: reglas de sellos intactas (Universo)', (SELECT rules::text FROM raffle_categories WHERE id = un),
     '[{"academic": 3, "university_life": 1}, {"academic": 2, "university_life": 2}]');
 
-  -- ===== 1. Sellos suficientes + encuesta pendiente: NO entra al sorteo ===========================================
+  -- ===== 1. Sellos suficientes + encuesta pendiente: SÍ entra (la encuesta ya no es requisito, 2026-10-15) =========
   PERFORM pg_temp.expect('1: la categoría por sellos sí existe', (SELECT name FROM raffle_categories WHERE id = participant_stamp_category(pg_temp.id('p:a'))), 'Sistema Solar');
-  PERFORM pg_temp.expect_true('1: pero la categoría del sorteo es NULL', participant_raffle_category(pg_temp.id('p:a')) IS NULL);
-  PERFORM pg_temp.expect_true('1: no está en el conjunto sorteable', NOT pg_temp.in_pool('a', 'Sistema Solar'));
+  PERFORM pg_temp.expect('1: y la categoría del sorteo es esa misma (solo sellos)', (SELECT name FROM raffle_categories WHERE id = participant_raffle_category(pg_temp.id('p:a'))), 'Sistema Solar');
+  PERFORM pg_temp.expect_true('1: está en el conjunto sorteable aunque no haya contestado', pg_temp.in_pool('a', 'Sistema Solar'));
   rs := pg_temp.raffle('a');
   PERFORM pg_temp.expect('1: Bitácora sigue mostrando su categoría por sellos', rs->>'raffle_category_name', 'Sistema Solar');
   PERFORM pg_temp.expect('1: Bitácora: encuesta pendiente', rs->>'survey_completed', 'false');
-  PERFORM pg_temp.expect('1: Bitácora: todavía no es elegible', rs->>'raffle_eligible', 'false');
+  PERFORM pg_temp.expect('1: Bitácora: ya es elegible (sin encuesta)', rs->>'raffle_eligible', 'true');
 
   -- ===== 2. Encuesta completada sin sellos: tampoco entra ==========================================================
   PERFORM pg_temp.expect('2: B contesta (ensayo: cuenta DEMO abierta)', (pg_temp.submit('b'))::jsonb->>'saved', 'true');
@@ -234,6 +236,12 @@ BEGIN
   PERFORM pg_temp.expect_true('4: D no está en Galaxia ni en Sistema Solar',
     pg_temp.in_pool('d', 'Universo') AND NOT pg_temp.in_pool('d', 'Galaxia') AND NOT pg_temp.in_pool('d', 'Sistema Solar'));
 
+  -- ===== 4b. Galaxia y Universo por sellos, SIN encuesta: participan en SU categoría (la más alta que cumplen) =========
+  PERFORM pg_temp.expect_true('4b: G (Galaxia, sin encuesta) solo en Galaxia', NOT pg_temp.surveyed('g') AND pg_temp.in_pool('g', 'Galaxia') AND NOT pg_temp.in_pool('g', 'Sistema Solar') AND NOT pg_temp.in_pool('g', 'Universo'));
+  PERFORM pg_temp.expect_true('4b: U (Universo, sin encuesta) solo en Universo', NOT pg_temp.surveyed('u') AND pg_temp.in_pool('u', 'Universo') AND NOT pg_temp.in_pool('u', 'Galaxia') AND NOT pg_temp.in_pool('u', 'Sistema Solar'));
+  PERFORM pg_temp.expect('4b: Bitácora de G: elegible', (pg_temp.raffle('g'))->>'raffle_eligible', 'true');
+  PERFORM pg_temp.expect('4b: contestar no cambia la categoría de G', (SELECT count(*)::text FROM (SELECT pg_temp.submit('g')) x WHERE pg_temp.in_pool('g', 'Galaxia')), '1');
+
   -- ===== 5. Quien ya ganó no puede recibir un segundo premio =======================================================
   PERFORM pg_temp.submit('e');
   PERFORM pg_temp.expect_true('5: antes de ganar, E (sellos + encuesta) sí estaba en su conjunto', pg_temp.in_pool('e', 'Sistema Solar'));
@@ -245,7 +253,7 @@ BEGIN
   PERFORM pg_temp.expect_true('5: E tiene un solo resultado', (SELECT count(*) = 1 FROM raffle_winners WHERE participant_id = pg_temp.id('p:e')));
 
   -- ===== 6. Aislamiento ensayo / oficial ===========================================================================
-  PERFORM pg_temp.expect('6: el real sin encuesta no entra (su conjunto real)', pg_temp.in_pool('real', 'Sistema Solar', false)::text, 'false');
+  PERFORM pg_temp.expect('6: el real sin encuesta SÍ entra (su conjunto real)', pg_temp.in_pool('real', 'Sistema Solar', false)::text, 'true');
   PERFORM pg_temp.expect_true('6: nadie del ensayo aparece en el conjunto real',
     NOT EXISTS (SELECT 1 FROM raffle_eligible_pool(ss_real, NULL, false) t JOIN participants p ON p.id = t.participant_id WHERE p.is_demo));
   -- Hora de apertura: en el futuro, el alumno REAL no puede contestar; la cuenta DEMO del ensayo sí.
@@ -280,21 +288,23 @@ BEGIN
       pg_temp.as_user(sorteo, format('select raffle_pool_count(%L)', pg_temp.cat_id((ARRAY['Sistema Solar', 'Galaxia', 'Universo'])[n]))),
       (SELECT count(*)::text FROM raffle_eligible_pool(pg_temp.cat_id((ARRAY['Sistema Solar', 'Galaxia', 'Universo'])[n]), NULL, true)));
   END LOOP;
-  PERFORM pg_temp.expect('7: el panel explica quién falta: A tiene los sellos de Sistema Solar y no contesta',
-    (SELECT c->>'survey_pending_count' FROM jsonb_array_elements(admin_view->'categories') c WHERE c->>'name' = 'Sistema Solar' AND (c->>'is_demo')::boolean), '1');
-  -- El conjunto real del sorteo: solo C (A sin encuesta, E ya ganó). El tamaño informado por draw_winner es ese conjunto.
+  PERFORM pg_temp.expect_true('7: el panel ya no cuenta «sin encuesta» como pendiente de elegibilidad',
+    NOT EXISTS (SELECT 1 FROM jsonb_array_elements(admin_view->'categories') c WHERE c ? 'survey_pending_count'));
+  PERFORM pg_temp.expect('7: Sistema Solar cuenta a A (sin encuesta) y a C (con encuesta); E ya ganó',
+    (SELECT (c->>'pool_count') FROM jsonb_array_elements(admin_view->'categories') c WHERE c->>'name' = 'Sistema Solar' AND (c->>'is_demo')::boolean), '2');
+  -- El conjunto real del sorteo: A y C (E ya ganó). El tamaño informado por draw_winner es ese conjunto.
   draw := pg_temp.as_user(sorteo, format('select draw_winner(%L, %L)', prize_ss, 'es-consistency'))::jsonb;
   PERFORM pg_temp.expect_true('7: draw_winner sortea dentro del conjunto mostrado (tamaño y persona)',
-    (draw->>'pool_size')::int = 1 AND (draw->>'participant_id')::uuid = pg_temp.id('p:c'));
-  PERFORM pg_temp.expect_true('7: nunca salió A (sin encuesta)', NOT EXISTS (SELECT 1 FROM raffle_winners WHERE participant_id = pg_temp.id('p:a')));
+    (draw->>'pool_size')::int = 2 AND (draw->>'participant_id')::uuid IN (pg_temp.id('p:a'), pg_temp.id('p:c')));
 
   -- ===== 8. A contesta y entra de inmediato =======================================================================
-  -- C quedó «seleccionado» en prize_ss; A tiene los sellos pero no ha contestado: el conjunto sorteable del otro premio está vacío.
-  PERFORM pg_temp.expect('8: mientras A no conteste, no hay a quién sortear', pg_temp.as_user(sorteo, format('select draw_winner(%L, %L)', prize2_ss, 'es-empty')), 'ERR:POOL_EMPTY');
-  PERFORM pg_temp.expect('8: A contesta', (pg_temp.submit('a'))::jsonb->>'saved', 'true');
-  PERFORM pg_temp.expect('8: Bitácora de A se actualiza de inmediato: elegible', (pg_temp.raffle('a'))->>'raffle_eligible', 'true');
-  PERFORM pg_temp.expect_true('8: y entra al sorteo (único elegible)',
-    (pg_temp.as_user(sorteo, format('select draw_winner(%L, %L)', prize2_ss, 'es-a-in'))::jsonb->>'participant_id')::uuid = pg_temp.id('p:a'));
+  -- El primero quedó «seleccionado»: no puede salir en otro premio; el único elegible que queda en Sistema Solar es el otro (A o C).
+  PERFORM pg_temp.expect_true('8: el segundo premio sale para el otro participante (pool de 1), nunca el mismo',
+    (SELECT (r->>'pool_size')::int = 1 AND (r->>'participant_id')::uuid = CASE WHEN (draw->>'participant_id')::uuid = pg_temp.id('p:a') THEN pg_temp.id('p:c') ELSE pg_temp.id('p:a') END
+     FROM (SELECT pg_temp.as_user(sorteo, format('select draw_winner(%L, %L)', prize2_ss, 'es-second'))::jsonb AS r) q));
+  PERFORM pg_temp.expect('8: ya no queda a quién sortear en Sistema Solar (el conjunto quedó vacío)', pg_temp.as_user(sorteo, format('select raffle_pool_count(%L)', ss)), '0');
+  PERFORM pg_temp.expect('8: A contesta voluntariamente (se guarda)', (pg_temp.submit('a'))::jsonb->>'saved', 'true');
+  PERFORM pg_temp.expect_true('8: contestar no da un segundo premio ni boletos: A tiene un solo resultado', (SELECT count(*) = 1 FROM raffle_winners WHERE participant_id = pg_temp.id('p:a')));
 
   -- ===== 9. Validación de las respuestas ===========================================================================
   PERFORM pg_temp.mk_participant('v'); -- sin sellos: solo sirve para validar
@@ -375,9 +385,13 @@ BEGIN
 
   -- ===== 13. Defensa en profundidad: ningún resultado nuevo sin encuesta; los históricos no se tocan ===============
   PERFORM pg_temp.mk_participant('z'); PERFORM pg_temp.stamp_ss('z');
-  PERFORM pg_temp.expect('13: un INSERT directo de ganador sin encuesta se rechaza',
-    pg_temp.as_owner(format($q$INSERT INTO raffle_winners(edition_id,category_id,prize_id,participant_id,status,is_demo) VALUES (%L,%L,%L,%L,'seleccionado',true)$q$, ed, ss, prize_ss, pg_temp.id('p:z'))), 'ERR:SURVEY_REQUIRED');
-  PERFORM pg_temp.expect('13: ni como confirmado', pg_temp.as_owner(format($q$INSERT INTO raffle_winners(edition_id,category_id,prize_id,participant_id,status,is_demo,confirmed_at) VALUES (%L,%L,%L,%L,'confirmado',true,now())$q$, ed, ss, prize_ss, pg_temp.id('p:z'))), 'ERR:SURVEY_REQUIRED');
+  PERFORM pg_temp.expect_true('13: ya no existe la restricción de encuesta en raffle_winners, y los demás triggers siguen activos',
+    NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgrelid = 'public.raffle_winners'::regclass AND tgname = 'raffle_winners_require_survey')
+    AND NOT EXISTS (SELECT 1 FROM pg_proc WHERE proname = 'raffle_winners_require_survey' AND pronamespace = 'public'::regnamespace)
+    AND (SELECT count(*) FROM pg_trigger WHERE tgrelid = 'public.raffle_winners'::regclass AND NOT tgisinternal AND tgenabled <> 'D'
+         AND tgname IN ('raffle_winners_folio_immutable', 'raffle_winners_guard_is_demo')) = 2);
+  PERFORM pg_temp.expect('13: un ganador sin encuesta se puede registrar (el sorteo ya no la exige)',
+    pg_temp.as_owner(format($q$INSERT INTO raffle_winners(edition_id,category_id,prize_id,participant_id,status,is_demo) VALUES (%L,%L,%L,%L,'seleccionado',true)$q$, ed, ss, prize2_ss, pg_temp.id('p:z'))), 'ok');
   -- Un resultado histórico (de antes de la encuesta) sigue vivo y editable: se simula con el de C borrando su encuesta.
   DELETE FROM exit_survey_responses WHERE participant_id = pg_temp.id('p:c');
   PERFORM pg_temp.expect('13: un ganador histórico sin encuesta conserva su resultado y se puede confirmar/invalidar',
@@ -419,10 +433,8 @@ BEGIN
 
   -- ===== 14c. Ganador histórico de ensayo (de antes de la encuesta): su resultado no se toca ni se invalida ============
   PERFORM pg_temp.mk_participant('hist'); PERFORM pg_temp.stamp_ss('hist');
-  ALTER TABLE raffle_winners DISABLE TRIGGER raffle_winners_require_survey; -- solo para simular una fila anterior a la migración
   INSERT INTO raffle_winners (edition_id, category_id, prize_id, participant_id, status, is_demo, confirmed_at)
     VALUES (ed, ss, prize_ss, pg_temp.id('p:hist'), 'confirmado', true, now()) RETURNING id INTO winner_row;
-  ALTER TABLE raffle_winners ENABLE TRIGGER raffle_winners_require_survey;
   PERFORM pg_temp.expect_true('14c: sigue siendo ganador (sin encuesta, sin invalidarse)', participant_has_won(pg_temp.id('p:hist')) AND (SELECT status = 'confirmado' FROM raffle_winners WHERE id = winner_row));
   PERFORM pg_temp.expect_true('14c: su premio sigue visible para él', jsonb_array_length((pg_temp.as_user(pg_temp.id('u:hist'), 'select my_raffle_prizes()::text')::jsonb)->'prizes') = 1);
   PERFORM pg_temp.expect_true('14c: sin segundo premio: fuera de su categoría y de todos los conjuntos', participant_raffle_category(pg_temp.id('p:hist')) IS NULL AND NOT pg_temp.in_pool('hist', 'Sistema Solar'));
