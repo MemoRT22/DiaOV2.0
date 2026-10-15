@@ -1,5 +1,5 @@
 import { rpc } from './adminApi';
-import { functionsUrl, supabase, supabaseAnonKey } from './supabase';
+import { operationRequest } from './operationRequest';
 
 export type PasswordReset = { ok: true; generated: true; password: string } | { ok: true; generated: false };
 
@@ -8,24 +8,9 @@ export type PasswordReset = { ok: true; generated: true; password: string } | { 
  * servidor): el sistema no la guarda ni la audita, y esta capa tampoco la conserva ni la escribe en ningún registro.
  */
 async function call(body: Record<string, unknown>): Promise<Record<string, unknown>> {
-  const { data } = await supabase.auth.getSession();
-  const token = data.session?.access_token;
-  if (!token) throw new Error('NOT_AUTHORIZED');
-  let response: Response;
-  try {
-    response = await fetch(`${functionsUrl}/participant-admin`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, apikey: supabaseAnonKey, 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-  } catch {
-    throw new Error('NETWORK');
-  }
-  const result = await response.json().catch(() => null);
-  if (!response.ok || !result || typeof result !== 'object' || result.ok !== true) {
-    throw new Error(typeof result?.error === 'string' ? result.error : 'SERVER_ERROR');
-  }
-  return result as Record<string, unknown>;
+  const result = await operationRequest<Record<string, unknown>>('/functions/v1/participant-admin', body, 55_000);
+  if (result.ok !== true) throw new Error('TEMPORARILY_UNAVAILABLE');
+  return result;
 }
 
 export async function resetParticipantPassword(participantId: string, password?: string): Promise<PasswordReset> {

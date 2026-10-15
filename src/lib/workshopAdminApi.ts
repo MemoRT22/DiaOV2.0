@@ -1,4 +1,4 @@
-import { functionsUrl, supabase, supabaseAnonKey } from './supabase';
+import { operationRequest } from './operationRequest';
 import type { SubmissionPayload } from '../../supabase/functions/workshop-intake/validation.ts';
 
 export type ReviewStatus = 'submitted' | 'in_review' | 'changes_requested' | 'approved' | 'published' | 'archived';
@@ -60,22 +60,7 @@ export type WorkshopList = {
 };
 
 async function call<T>(body: Record<string, unknown>): Promise<T> {
-  const { data } = await supabase.auth.getSession();
-  const token = data.session?.access_token;
-  if (!token) throw new Error('NOT_AUTHORIZED');
-  let response: Response;
-  try {
-    response = await fetch(`${functionsUrl}/workshop-admin`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, apikey: supabaseAnonKey, 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-  } catch { throw new Error('NETWORK'); }
-  const result = await response.json().catch(() => null);
-  if (!response.ok || !result || typeof result !== 'object') {
-    throw new Error(typeof result?.error === 'string' ? result.error : 'SERVER_ERROR');
-  }
-  return result as T;
+  return operationRequest<T>('/functions/v1/workshop-admin', body, 30_000);
 }
 
 export const workshopAdminApi = {

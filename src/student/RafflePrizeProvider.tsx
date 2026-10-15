@@ -22,7 +22,7 @@ type PrizeState = {
   loaded: boolean;
   /** La última lectura salió bien y es reciente: solo entonces un premio pendiente puede presentarse como reclamable. */
   verified: boolean;
-  refresh: () => Promise<void>;
+  refresh: (options?: { afterAttendance?: boolean }) => Promise<void>;
 };
 
 const EMPTY: PrizeState = { prizes: [], loaded: false, verified: true, refresh: async () => undefined };
@@ -46,6 +46,7 @@ export function RafflePrizeProvider({ children, enabled = true }: { children: Re
   const expiry = useRef(0);
   const lastStart = useRef(0);
   const lastOk = useRef(0);
+  const attendanceTimer = useRef(0);
 
   const schedule = useCallback((refreshFn: () => Promise<void>) => {
     window.clearTimeout(timer.current);
@@ -57,9 +58,19 @@ export function RafflePrizeProvider({ children, enabled = true }: { children: Re
     arm();
   }, []);
 
-  const refresh = useCallback(async (): Promise<void> => {
+  const refresh = useCallback(async (options?: { afterAttendance?: boolean }): Promise<void> => {
+    if (options?.afterAttendance) {
+      window.clearTimeout(attendanceTimer.current);
+      attendanceTimer.current = window.setTimeout(async () => {
+        // A pre-attendance read may still be running. Only the next read can confirm the new state.
+        await inFlight.current;
+        if (alive.current) void refresh();
+      }, 500 + Math.random() * 1500);
+      return;
+    }
     // Nunca dos lecturas a la vez: quien llega durante una espera esa misma lectura.
     if (inFlight.current) return inFlight.current;
+    window.clearTimeout(attendanceTimer.current);
     const run = (async () => {
       lastStart.current = Date.now();
       try {
@@ -100,7 +111,7 @@ export function RafflePrizeProvider({ children, enabled = true }: { children: Re
     const onFocus = () => wake(false);
     const onOnline = () => wake(true);
     // Otra pestaña registró una asistencia o una reservación: cambió lo que el servidor sabe de esta persona.
-    const unsubscribe = subscribeParticipantChanges((kind) => { if (kind === 'attendance') wake(true); });
+    const unsubscribe = subscribeParticipantChanges((kind) => { if (kind === 'attendance') void refresh({ afterAttendance: true }); });
     void refresh();
     document.addEventListener('visibilitychange', onVisible);
     window.addEventListener('focus', onFocus);
@@ -109,6 +120,7 @@ export function RafflePrizeProvider({ children, enabled = true }: { children: Re
       alive.current = false;
       window.clearTimeout(timer.current);
       window.clearTimeout(expiry.current);
+      window.clearTimeout(attendanceTimer.current);
       unsubscribe();
       document.removeEventListener('visibilitychange', onVisible);
       window.removeEventListener('focus', onFocus);

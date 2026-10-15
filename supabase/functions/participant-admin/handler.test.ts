@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { classifyAuthLookup, generatePassword, handleRequest, type AuthResult, type Deps, type ParticipantRow, type AuthUserInfo } from './handler.ts';
+import { TemporaryFailure } from '../_shared/operations.ts';
 
 const url = 'https://example.test/functions/v1/participant-admin';
 const ACTOR = '11111111-1111-4111-8111-111111111111';
@@ -137,7 +138,7 @@ test('fails closed when the audit cannot be written, and reports collisions and 
 
   const broken = fixture({ link: { message: 'boom' } });
   assert.equal((await handleRequest(post({ action: 'reset_password', participant_id: PID }), broken.deps)).status, 500);
-  assert.ok(broken.calls.includes(`delete:${UID}`));
+  assert.ok(!broken.calls.includes(`delete:${UID}`)); // a lost link answer must never delete the identity
 });
 
 test('generated passwords come from the unambiguous alphabet and have no modulo bias on the cut-off bytes', () => {
@@ -178,6 +179,8 @@ function deleteFixture(opts: {
       if (opts.lookupFails) throw new Error('AUTH_LOOKUP_FAILED');
       return opts.identity === undefined ? { id: UID, email: 'ana@example.com', kind: 'participant' } : opts.identity;
     },
+    findUserByEmail: async () => null,
+    participantByAuthUser: async () => null,
     createUser: async () => { calls.push('create'); return {}; },
     updateUser: async () => { calls.push('update'); return { ok: true }; },
     deleteUser: async (id) => { calls.push(`delete:${id}`); if (opts.authDeleteFails) throw new Error('AUTH_ERROR'); },
@@ -437,4 +440,92 @@ test('ruta administrativa de corrección de correo: restablecer la contraseña a
   assert.equal(response.status, 200);
   assert.ok(f.calls.includes(`update:${UID}:ana@example.com`));
   assert.ok(f.calls.some((call) => call.startsWith('rpc:participant_link_auth_internal')));
+});
+
+test('temporary Auth failures retain 429/503 and Retry-After; neither create nor link failures delete an identity', async () => {
+  for (const status of [429, 503] as const) {
+    for (const step of ['authorize', 'getUser', 'createUser', 'updateUser', 'rpc'] as const) {
+      const f = fixture({ participant: { id: PID, email: 'ana@example.com', auth_user_id: step === 'getUser' || step === 'updateUser' ? UID : null },
+        existing: { id: UID, email: 'ana@example.com', kind: 'participant' } });
+      const originalRpc = f.deps.rpc;
+      if (step === 'rpc') f.deps.rpc = async (name, args) => {
+        if (name === 'participant_link_auth_internal') throw new TemporaryFailure(status, 19);
+        return originalRpc(name, args);
+      };
+      else Object.assign(f.deps, { [step]: async () => { throw new TemporaryFailure(status, 19); } });
+      const response = await handleRequest(post({ action: 'reset_password', participant_id: PID }), f.deps);
+      assert.equal(response.status, status, step);
+      assert.equal(response.headers.get('Retry-After'), '19');
+      assert.ok(!f.calls.some((c) => c.startsWith('delete:')));
+      assert.ok(f.logs.every((s) => !s.includes('ana@example.com')));
+    }
+  }
+});
+
+test('a committed link whose answer is lost leaves a valid account; the next audited reset completes on the same identity', async () => {
+  const f = fixture();
+  let linked = false;
+  const rpc = f.deps.rpc;
+  f.deps.rpc = async (name, args) => {
+    const result = await rpc(name, args);
+    if (name === 'participant_link_auth_internal' && !linked) { linked = true; throw new TemporaryFailure(); }
+    return result;
+  };
+  const first = await handleRequest(post({ action: 'reset_password', participant_id: PID, password: 'Fixture-password-1' }), f.deps);
+  assert.equal(first.status, 503);
+  assert.equal(linked, true);
+  assert.ok(!f.calls.includes(`delete:${UID}`));
+  f.deps.participant = async () => ({ id: PID, email: 'ana@example.com', auth_user_id: UID });
+  f.deps.getUser = async () => ({ id: UID, email: 'ana@example.com', kind: 'participant' });
+  const retry = await handleRequest(post({ action: 'reset_password', participant_id: PID, password: 'Fixture-password-1' }), f.deps);
+  assert.equal(retry.status, 200);
+  assert.equal(f.calls.filter((c) => c.startsWith('create:')).length, 1);
+  assert.equal(f.calls.filter((c) => c.startsWith('rpc:participant_password_audit')).length, 2);
+});
+
+test('created but unlinked account is claimed on a later audited retry after a definitive link failure', async () => {
+  const f = fixture({ link: { message: 'NOT_FOUND' } });
+  assert.equal((await handleRequest(post({ action: 'reset_password', participant_id: PID }), f.deps)).status, 500);
+  assert.ok(!f.calls.includes(`delete:${UID}`));
+  const g = fixture({ create: { code: 'EMAIL_TAKEN' }, byEmail: { id: UID, email: 'ana@example.com', kind: 'participant' } });
+  assert.equal((await handleRequest(post({ action: 'reset_password', participant_id: PID }), g.deps)).status, 200);
+  assert.ok(g.calls.includes(`update:${UID}:ana@example.com`));
+});
+
+test('concurrent resets in an isolate never race passwords or create two identities', async () => {
+  const f = fixture();
+  let release!: (value: { id: string }) => void;
+  let entered!: () => void;
+  const creating = new Promise<void>((resolve) => { entered = resolve; });
+  f.deps.createUser = async () => { f.calls.push('create'); entered(); return new Promise((resolve) => { release = resolve; }); };
+  const first = handleRequest(post({ action: 'reset_password', participant_id: PID }), f.deps);
+  await creating;
+  const second = await handleRequest(post({ action: 'reset_password', participant_id: PID }), f.deps);
+  assert.equal(second.status, 409);
+  assert.deepEqual(await second.json(), { error: 'OPERATION_IN_PROGRESS' });
+  release({ id: UID });
+  assert.equal((await first).status, 200);
+  assert.equal(f.calls.filter((c) => c === 'create').length, 1);
+});
+
+test('server deadline stops new steps after a late create, keeps the account and lock until that attempt settles', async () => {
+  const f = fixture();
+  f.deps.deadlineMs = 10;
+  let release!: (value: { id: string }) => void;
+  f.deps.createUser = () => new Promise((resolve) => { release = resolve; });
+  const first = await handleRequest(post({ action: 'reset_password', participant_id: PID }), f.deps);
+  assert.equal(first.status, 503);
+  const overlap = await handleRequest(post({ action: 'reset_password', participant_id: PID }), f.deps);
+  assert.equal(overlap.status, 409);
+  release({ id: UID });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.ok(!f.calls.some((c) => c.startsWith('delete:') || c.startsWith('rpc:participant_link')));
+});
+
+test('an uncertain audit never allows a password mutation', async () => {
+  const f = fixture();
+  f.deps.rpc = async () => { throw new TemporaryFailure(); };
+  const response = await handleRequest(post({ action: 'reset_password', participant_id: PID }), f.deps);
+  assert.equal(response.status, 503);
+  assert.equal(f.passwords.length, 0);
 });

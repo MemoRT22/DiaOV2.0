@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { TemporaryFailure } from '../_shared/operations.ts';
 import { test } from 'node:test';
 import { handleRequest, type Deps } from './handler.ts';
 
@@ -27,6 +28,20 @@ const payload = {
   building: 'Edificio A', room_space: 'Salón 1', requirements: null, notes: null,
   career_ids: ['33333333-3333-4333-8333-333333333333'],
 };
+
+test('temporary authorization and database errors preserve infrastructure status and never replay a write', async () => {
+  for (const status of [429, 503] as const) {
+    const unauthorized = fixture(async () => { throw new TemporaryFailure(status, 12); });
+    const denied = await handleRequest(post({ action: 'list' }), unauthorized.deps);
+    assert.equal(denied.status, status);
+    assert.equal(unauthorized.calls.length, 0);
+    const f = fixture(undefined, async () => { throw new TemporaryFailure(status, 12); });
+    const response = await handleRequest(post({ action: 'approve_publish', submission_id: ID }), f.deps);
+    assert.equal(response.status, status);
+    assert.equal(response.headers.get('Retry-After'), '12');
+    assert.equal(f.calls.length, 1);
+  }
+});
 
 test('only active Coordinación can read or mutate', async () => {
   for (const kind of ['unauthorized', 'forbidden'] as const) {

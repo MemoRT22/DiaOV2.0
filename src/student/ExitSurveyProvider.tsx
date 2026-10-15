@@ -22,7 +22,7 @@ type ExitSurveyState = {
   loaded: boolean;
   /** La última lectura falló y todavía no hay una buena. */
   failed: boolean;
-  refresh: () => Promise<void>;
+  refresh: (options?: { afterAttendance?: boolean }) => Promise<void>;
   /** Aplica un estado que el servidor acaba de devolver (p. ej. el del envío), sin otra consulta. */
   apply: (status: ExitSurveyStatus) => void;
   /**
@@ -48,6 +48,7 @@ export function ExitSurveyProvider({ children, enabled = true }: { children: Rea
   const timer = useRef(0);
   const lastStart = useRef(0);
   const current = useRef<ExitSurveyStatus | null>(null);
+  const attendanceTimer = useRef(0);
 
   const arm = useCallback((refreshFn: () => Promise<void>) => {
     window.clearTimeout(timer.current);
@@ -64,8 +65,18 @@ export function ExitSurveyProvider({ children, enabled = true }: { children: Rea
     setFailed(false);
   }, []);
 
-  const refresh = useCallback(async (): Promise<void> => {
+  const refresh = useCallback(async (options?: { afterAttendance?: boolean }): Promise<void> => {
+    if (options?.afterAttendance) {
+      if (current.current?.completed) return;
+      window.clearTimeout(attendanceTimer.current);
+      attendanceTimer.current = window.setTimeout(async () => {
+        await inFlight.current;
+        if (alive.current && !current.current?.completed) void refresh();
+      }, 500 + Math.random() * 1500);
+      return;
+    }
     if (inFlight.current) return inFlight.current; // nunca dos lecturas a la vez
+    window.clearTimeout(attendanceTimer.current);
     const run = (async () => {
       lastStart.current = Date.now();
       try {
@@ -107,7 +118,7 @@ export function ExitSurveyProvider({ children, enabled = true }: { children: Rea
     const onFocus = () => wake(false);
     const onOnline = () => wake(true);
     // Un sello nuevo cambia si ya alcanza una categoría: se pone al día lo que dice la Bitácora.
-    const unsubscribe = subscribeParticipantChanges((kind) => { if (kind === 'attendance') wake(true); });
+    const unsubscribe = subscribeParticipantChanges((kind) => { if (kind === 'attendance') void refresh({ afterAttendance: true }); });
     void refresh();
     document.addEventListener('visibilitychange', onVisible);
     window.addEventListener('focus', onFocus);
@@ -115,6 +126,7 @@ export function ExitSurveyProvider({ children, enabled = true }: { children: Rea
     return () => {
       alive.current = false;
       window.clearTimeout(timer.current);
+      window.clearTimeout(attendanceTimer.current);
       unsubscribe();
       document.removeEventListener('visibilitychange', onVisible);
       window.removeEventListener('focus', onFocus);

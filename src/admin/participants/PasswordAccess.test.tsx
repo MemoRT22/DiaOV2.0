@@ -1,8 +1,9 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { resetParticipantPassword } from '../../lib/participantAdminApi';
 import PasswordAccess from './PasswordAccess';
+import { AccessError } from '../../lib/accessErrors';
 
 vi.mock('../../lib/participantAdminApi', () => ({ resetParticipantPassword: vi.fn() }));
 
@@ -86,4 +87,22 @@ test('there is no recovery by email, code or link', () => {
   show();
   openModal();
   expect(screen.queryByText(/enlace|código de verificación|enviar correo|OTP/i)).not.toBeInTheDocument();
+});
+
+test('uncertain reset informs Staff, honors Retry-After, and never retries automatically or reveals a password', async () => {
+  vi.useFakeTimers();
+  try {
+    vi.mocked(resetParticipantPassword).mockRejectedValue(new AccessError('RATE_LIMITED', 19));
+    show(); openModal();
+    const form = screen.getByRole('dialog').querySelector('form')!;
+    fireEvent.submit(form); fireEvent.submit(form);
+    await act(async () => { await Promise.resolve(); });
+    expect(resetParticipantPassword).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('alert')).toHaveTextContent('La contraseña podría haberse cambiado');
+    expect(screen.getByRole('button', { name: 'Reintentar en 19 s' })).toBeDisabled();
+    fireEvent.submit(form);
+    await act(async () => { await vi.advanceTimersByTimeAsync(19_000); });
+    expect(resetParticipantPassword).toHaveBeenCalledTimes(1);
+    expect(screen.queryByLabelText('Contraseña generada')).not.toBeInTheDocument();
+  } finally { vi.useRealTimers(); }
 });

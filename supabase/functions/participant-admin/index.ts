@@ -1,10 +1,11 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.45.4';
 import { classifyAuthLookup, handleRequest, type Deps } from './handler.ts';
+import { operationalFetch, temporaryOf, unwrap } from '../_shared/operations.ts';
 
 const url = Deno.env.get('SUPABASE_URL');
 const key = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 // service_role solo existe aquí, en el servidor. El navegador nunca la recibe.
-const admin = url && key ? createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } }) : null;
+const admin = url && key ? createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false }, global: { fetch: operationalFetch } }) : null;
 
 const need = () => {
   if (!admin) throw new Error('CONFIG');
@@ -16,34 +17,35 @@ const emailTaken = (error: { code?: string; message: string }) =>
 const deps: Deps = {
   authorize: async (token) => {
     const { data, error } = await need().auth.getUser(token);
+    if (error && temporaryOf(error)) throw temporaryOf(error);
     if (error || !data.user) return { kind: 'unauthorized' };
-    const { data: staff, error: staffError } = await need().from('staff_members')
-      .select('is_active, staff_roles(role)').eq('user_id', data.user.id).maybeSingle();
-    if (staffError) throw staffError;
+    const staff = unwrap(await need().from('staff_members')
+      .select('is_active, staff_roles(role)').eq('user_id', data.user.id).maybeSingle());
     const roles = ((staff?.staff_roles ?? []) as { role: string }[]).map((r) => r.role);
     if (!staff?.is_active || !roles.some((role) => role === 'coordinacion' || role === 'staff')) return { kind: 'forbidden' };
     return { kind: 'ok', userId: data.user.id, coordinator: roles.includes('coordinacion') };
   },
   participant: async (id) => {
-    const { data: edition, error: editionError } = await need().from('editions').select('id').eq('is_active', true).maybeSingle();
-    if (editionError) throw editionError;
+    const edition = unwrap(await need().from('editions').select('id').eq('is_active', true).maybeSingle());
     if (!edition) return null;
-    const { data, error } = await need().from('participants').select('id, email, auth_user_id')
-      .eq('id', id).eq('edition_id', edition.id).maybeSingle();
-    if (error) throw error;
-    return data;
+    return unwrap(await need().from('participants').select('id, email, auth_user_id')
+      .eq('id', id).eq('edition_id', edition.id).maybeSingle());
   },
   rpc: async (name, args) => {
-    const { data, error } = await need().rpc(name, args);
+    const result = await need().rpc(name, args);
+    const temporary = result.error ? temporaryOf({ ...result.error, status: result.status }) : null;
+    if (temporary) throw temporary;
+    const { data, error } = result;
     return { data, error: error ? { code: error.code, message: error.message } : null };
   },
   getUser: async (id) => {
     const { data, error } = await need().auth.admin.getUserById(id);
+    if (error && temporaryOf(error)) throw temporaryOf(error);
     // «No existe» solo cuando Auth lo confirma (404). Cualquier otro fallo es «no se sabe» y se propaga: quien
     // llama no debe tratarlo como una cuenta inexistente.
     const outcome = classifyAuthLookup(data?.user, error ? { status: error.status, code: error.code } : null);
     if (outcome === 'missing') return null;
-    if (outcome !== 'found' || !data.user) throw new Error('AUTH_LOOKUP_FAILED');
+    if (outcome !== 'found' || !data.user) throw error ?? new Error('AUTH_LOOKUP_FAILED');
     return { id: data.user.id, email: data.user.email ?? null, kind: (data.user.app_metadata?.kind as string | undefined) ?? null };
   },
   // Solo para reclamar la cuenta que dejó a medias el registro del propio participante (lo hace personal autenticado y auditado).
@@ -58,14 +60,13 @@ const deps: Deps = {
     return null;
   },
   participantByAuthUser: async (authUserId) => {
-    const { data, error } = await need().from('participants').select('id').eq('auth_user_id', authUserId).limit(1).maybeSingle();
-    if (error) throw error;
-    return data;
+    return unwrap(await need().from('participants').select('id').eq('auth_user_id', authUserId).limit(1).maybeSingle());
   },
   createUser: async (email, password) => {
     const { data, error } = await need().auth.admin.createUser({
       email, password, email_confirm: true, app_metadata: { kind: 'participant' },
     });
+    if (error && temporaryOf(error)) throw temporaryOf(error);
     if (error || !data.user) return { code: error && emailTaken(error) ? 'EMAIL_TAKEN' : 'AUTH_ERROR' };
     return { id: data.user.id };
   },
@@ -74,11 +75,12 @@ const deps: Deps = {
       email, password, email_confirm: true, app_metadata: { kind: 'participant' },
     });
     if (!error) return { ok: true };
+    if (temporaryOf(error)) throw temporaryOf(error);
     return { ok: false, code: emailTaken(error) ? 'EMAIL_TAKEN' : 'AUTH_ERROR' };
   },
   deleteUser: async (id) => {
     const { error } = await need().auth.admin.deleteUser(id);
-    if (error) throw new Error('AUTH_ERROR');
+    if (error) throw temporaryOf(error) ?? error;
   },
   randomBytes: (length) => crypto.getRandomValues(new Uint8Array(length)),
   // Solo códigos de evento: nunca contraseñas ni datos personales.

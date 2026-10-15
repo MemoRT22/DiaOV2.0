@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom';
 import { Alert, Button, buttonClasses } from '../components/ui';
 import { fetchProgress, formatTime, type Progress } from '../lib/catalog';
 import { checkIn, type CheckInResult } from '../lib/checkin';
+import { isTemporaryAccessError, retryAfterOf } from '../lib/accessErrors';
 import { friendlyError } from '../lib/errors';
 import { announceParticipantChange } from '../lib/participantSync';
 import { fetchMyRaffleStatus } from '../lib/raffleApi';
@@ -12,6 +13,7 @@ import { nextTierHint, type MyRaffleStatus } from '../lib/raffleRules';
 import { fetchBoard } from '../lib/reservations';
 import { buildJourney, focusStop, type Stop } from '../lib/studentJourney';
 import { useRafflePrizes } from './RafflePrizeProvider';
+import { useExitSurvey } from './ExitSurveyProvider';
 import { usePublicTheme } from '../theme/PublicThemeProvider';
 import { NAV } from './copy';
 import { progressNextMessage } from './progressText';
@@ -31,6 +33,7 @@ export default function Scanner() {
   const decodedRef = useRef(false);
   const { theme, term, rankName } = usePublicTheme();
   const { refresh: refreshPrizes } = useRafflePrizes();
+  const { refresh: refreshSurvey } = useExitSurvey();
   const [phase, setPhase] = useState<Phase>('scanning');
   const [result, setResult] = useState<CheckInResult | null>(null);
   const [progress, setProgress] = useState<Progress | null>(null);
@@ -44,8 +47,16 @@ export default function Scanner() {
   // Bumped to request a fresh camera session. The <video> only exists on the scanning screen, so the camera must be
   // (re)started by an effect AFTER React has rendered it — never synchronously from an event handler.
   const [cameraRun, setCameraRun] = useState(0);
+  const alive = useRef(true);
+  const inFlight = useRef(false);
+  const request = useRef<AbortController | null>(null);
+  const recovery = useRef<string | null>(null); // memory only; discarded on success, a new scan, or leaving
+  const [recoverable, setRecoverable] = useState(false);
+  const retryAt = useRef(0);
+  const [retrySeconds, setRetrySeconds] = useState(0);
 
   const startCamera = async () => {
+    if (!alive.current || inFlight.current || Date.now() < retryAt.current) return;
     setPhase('scanning');
     setErrorMsg('');
     setCameraError(false);
@@ -66,40 +77,86 @@ export default function Scanner() {
       scannerRef.current = scanner;
       await scanner.start();
     } catch {
+      if (!alive.current) return;
       setCameraError(true);
       setPhase('manual');
     }
   };
 
   const validate = async (credential: string) => {
+    if (inFlight.current || Date.now() < retryAt.current || !alive.current) return;
+    inFlight.current = true;
+    const controller = new AbortController();
+    request.current = controller;
+    const wasUncertain = recovery.current !== null;
+    setRecoverable(false);
+    setNeedsReservation(false);
     setPhase('validating');
     try {
-      const res = await checkIn(credential);
+      const res = await checkIn(credential, controller.signal);
+      if (!alive.current || controller.signal.aborted) return;
+      recovery.current = null;
+      setResult(res);
+      setPhase('success');
       // A repeated check-in changes nothing, so only a new attendance is announced to the other tabs.
-      if (!res.already_registered) {
+      // A recovered lost response may have committed in the first attempt: synchronize those tabs too.
+      if (!res.already_registered || wasUncertain) {
         announceParticipantChange('attendance');
-        void refreshPrizes(); // el servidor ahora sabe que ya participa: que la cadencia y los avisos se pongan al día de inmediato
+        // The providers survive navigation; their delayed refresh is coalesced with any read already in flight.
+        void refreshPrizes({ afterAttendance: true });
+        void refreshSurvey({ afterAttendance: true });
         try {
           navigator.vibrate?.(40);
         } catch {
           /* vibration is optional */
         }
       }
-      setResult(res);
-      setPhase('success');
-      // What comes next (best effort: the check-in itself already succeeded).
-      void Promise.resolve(fetchProgress()).then((p) => setProgress(p ?? null)).catch(() => undefined);
-      void Promise.resolve(fetchBoard())
-        .then((board) => setNext(board ? (focusStop(buildJourney(board))?.stop ?? null) : null))
-        .catch(() => undefined);
-      void Promise.resolve(fetchMyRaffleStatus()).then((status) => setRaffle(status ?? null)).catch(() => undefined);
     } catch (cause) {
+      if (!alive.current || controller.signal.aborted) return;
+      const temporary = isTemporaryAccessError(cause);
+      recovery.current = temporary ? credential : null;
+      setRecoverable(temporary);
+      retryAt.current = temporary ? Date.now() + (retryAfterOf(cause) ?? (3 + Math.random() * 3)) * 1000 : 0;
+      setRetrySeconds(Math.ceil(Math.max(0, retryAt.current - Date.now()) / 1000));
       // Supabase reports RPC errors as plain objects with `message`, not as Error instances.
       setNeedsReservation((cause as { message?: unknown } | null)?.message === 'NO_RESERVATION');
       setErrorMsg(friendlyError(cause));
       setPhase('error');
+    } finally {
+      inFlight.current = false;
     }
   };
+
+  // Secondary hints never gate success. Each gets a bounded jitter, no retry, and cannot update an obsolete scan/screen.
+  useEffect(() => {
+    if (phase !== 'success' || !result) return;
+    const controller = new AbortController();
+    let freshProgress: Progress | null = null;
+    const later = <T,>(load: () => Promise<T>, apply: (value: T) => void, min: number, spread: number) => window.setTimeout(() => {
+      if (controller.signal.aborted) return;
+      void Promise.resolve().then(load).then((value) => { if (!controller.signal.aborted) apply(value); }).catch(() => undefined);
+    }, min + Math.random() * spread);
+    const timers = [
+      later(fetchProgress, (p) => { freshProgress = p ?? null; setProgress(freshProgress); }, 300, 900),
+      later(fetchMyRaffleStatus, (s) => setRaffle(s ?? null), 500, 1000),
+      // Direct reads of reservations/attendances are intentionally revoked. Keep the authorized RPC, once and deferred.
+      // my_progress uses active_reservation_count: zero already proves there is no next/current mission. Reuse that answer.
+      later(() => freshProgress?.reserved_workshops === 0 ? Promise.resolve(null) : fetchBoard(),
+        (board) => setNext(board ? (focusStop(buildJourney(board))?.stop ?? null) : null), 1000, 2000),
+    ];
+    return () => { controller.abort(); timers.forEach(window.clearTimeout); };
+  }, [phase, result]);
+
+  useEffect(() => {
+    if (!recoverable) return;
+    const timer = window.setInterval(() => setRetrySeconds(Math.ceil(Math.max(0, retryAt.current - Date.now()) / 1000)), 250);
+    return () => window.clearInterval(timer);
+  }, [recoverable]);
+
+  useEffect(() => {
+    alive.current = true;
+    return () => { alive.current = false; request.current?.abort(); recovery.current = null; };
+  }, []);
 
   const submitManual = (e: React.FormEvent) => {
     e.preventDefault();
@@ -109,6 +166,10 @@ export default function Scanner() {
   };
 
   const reset = () => {
+    recovery.current = null;
+    retryAt.current = 0;
+    setRecoverable(false);
+    setRetrySeconds(0);
     setResult(null);
     setProgress(null);
     setNext(null);
@@ -229,7 +290,7 @@ export default function Scanner() {
 
           {next && (
             <div className="mx-5 mb-5 rounded-theme border border-line bg-surface-raised p-3 text-left text-sm">
-              <p className="text-[11px] font-extrabold uppercase tracking-[0.16em] text-fg-brand">{focusLabel(next)}</p>
+              <p className="text-[11px] font-extrabold uppercase tracking-[0.16em] text-fg-brand">{next.reservation.derived_status === 'in_progress' ? 'Ahora' : 'Tu siguiente misión'}</p>
               <p className="mt-0.5 font-bold leading-snug">{next.session.title}</p>
               <p className="mt-0.5 flex items-center gap-1.5 text-ink-muted">
                 <Timer className="h-3.5 w-3.5 shrink-0" aria-hidden />
@@ -278,9 +339,9 @@ export default function Scanner() {
             maxLength={6}
             aria-label="Código de 6 letras"
             className="min-w-0 flex-1 rounded-theme border border-line bg-surface px-4 py-3 text-center font-display text-xl font-extrabold uppercase tracking-[0.2em] placeholder:text-ink-muted/40 focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-500/30"
-            disabled={phase === 'validating'}
+            disabled={phase === 'validating' || retrySeconds > 0}
           />
-          <Button type="submit" loading={phase === 'validating'}>
+          <Button type="submit" loading={phase === 'validating'} disabled={retrySeconds > 0}>
             Validar
           </Button>
         </form>
@@ -295,8 +356,14 @@ export default function Scanner() {
         <div role="alert" className="flex items-start gap-3 rounded-theme border border-error-500/50 bg-error-500/10 p-4 text-sm">
           <CircleAlert className="mt-0.5 h-5 w-5 shrink-0 text-fg-error" aria-hidden />
           <div className="min-w-0">
-            <p className="font-extrabold">No pudimos registrar tu asistencia</p>
+            <p className="font-extrabold">{recoverable ? 'No pudimos confirmar tu asistencia' : 'No pudimos registrar tu asistencia'}</p>
             <p className="mt-0.5 text-ink-muted">{errorMsg || 'No se pudo validar la asistencia.'}</p>
+            {recoverable && <>
+              <p className="mt-2 text-ink-muted">Tu asistencia podría haberse registrado. Conservamos este intento mientras estás aquí: puedes volver a confirmarlo con el mismo QR o código sin recibir sellos adicionales.</p>
+              <Button variant="secondary" className="mt-3" disabled={retrySeconds > 0} onClick={() => { if (recovery.current) void validate(recovery.current); }}>
+                {retrySeconds > 0 ? `Reintentar en ${retrySeconds} s` : 'Volver a confirmar'}
+              </Button>
+            </>}
             {needsReservation && (
               <Link to="/misiones" className="mt-2 inline-block font-extrabold text-fg-brand underline underline-offset-2">
                 Ver misiones y reservar
@@ -329,7 +396,7 @@ export default function Scanner() {
         {(phase === 'manual' || phase === 'error') && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/75 p-6 text-center text-white">
             <Camera className="h-10 w-10 opacity-80" aria-hidden />
-            <Button variant="secondary" onClick={() => void startCamera()}>
+            <Button variant="secondary" disabled={retrySeconds > 0} onClick={() => void startCamera()}>
               Abrir cámara
             </Button>
           </div>
@@ -345,8 +412,4 @@ export default function Scanner() {
       {!cameraError && manualEntry}
     </div>
   );
-}
-
-function focusLabel(stop: Stop) {
-  return stop.reservation.derived_status === 'in_progress' ? 'Ahora' : 'Tu siguiente misión';
 }

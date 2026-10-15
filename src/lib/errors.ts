@@ -49,6 +49,7 @@ const MESSAGES: Record<string, string> = {
   TIMEOUT: 'La conexión tardó demasiado. Tu información se conserva: inténtalo de nuevo.',
   RATE_LIMITED: 'Estamos recibiendo muchas solicitudes. Tu información se conserva. Intenta nuevamente en unos momentos.',
   TEMPORARILY_UNAVAILABLE: 'El servicio no está disponible por unos momentos. Tu información se conserva. Intenta nuevamente en unos momentos.',
+  OPERATION_IN_PROGRESS: 'Hay una operación en curso para esta persona. Espera a que termine y vuelve a consultar su acceso.',
   WEAK_PASSWORD: 'La contraseña debe tener al menos 10 caracteres.',
   PASSWORD_MISMATCH: 'Las contraseñas no coinciden.',
   INVALID_EMAIL: 'Escribe un correo válido.',
@@ -137,7 +138,7 @@ const MESSAGES: Record<string, string> = {
 const GENERIC = 'Algo salió mal. Inténtalo de nuevo.';
 
 export function friendlyError(cause: unknown): string {
-  console.error(cause);
+  // Errors from network clients may carry request bodies or personal data. Never log the raw object here.
   const raw =
     typeof cause === 'string'
       ? cause

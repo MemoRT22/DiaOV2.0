@@ -1,10 +1,11 @@
 import { CheckCircle2, Copy, KeyRound, ShieldAlert } from 'lucide-react';
-import { useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Alert, Badge, Button, Field, Modal } from '../../components/ui';
 import { formatDateTime } from '../../lib/catalog';
 import { friendlyError } from '../../lib/errors';
 import { resetParticipantPassword } from '../../lib/participantAdminApi';
 import { passwordProblem } from '../../lib/participantFields';
+import { isTemporaryAccessError, retryAfterOf } from '../../lib/accessErrors';
 
 type Props = {
   participantId: string;
@@ -23,13 +24,23 @@ function ResetModal({ participantId, accessConfigured, onClose, onDone }: {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const pending = useRef(false);
+  const retryAt = useRef(0);
+  const [retrySeconds, setRetrySeconds] = useState(0);
+  useEffect(() => {
+    if (!retrySeconds) return;
+    const timer = window.setInterval(() => setRetrySeconds(Math.ceil(Math.max(0, retryAt.current - Date.now()) / 1000)), 250);
+    return () => window.clearInterval(timer);
+  }, [retrySeconds]);
   // La contraseña generada vive solo en este estado mientras el operador la ve; al cerrar se descarta.
   const [shown, setShown] = useState<{ generated: boolean; password?: string } | null>(null);
   const [copied, setCopied] = useState(false);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
+    if (pending.current || Date.now() < retryAt.current) return;
     if (mode === 'define' && passwordProblem(password)) return setError(friendlyError(new Error('INVALID_PASSWORD')));
+    pending.current = true;
     setBusy(true);
     setError('');
     try {
@@ -38,8 +49,13 @@ function ResetModal({ participantId, accessConfigured, onClose, onDone }: {
       setShown(result.generated ? { generated: true, password: result.password } : { generated: false });
       onDone();
     } catch (cause) {
-      setError(friendlyError(cause));
+      if (isTemporaryAccessError(cause)) {
+        retryAt.current = Date.now() + (retryAfterOf(cause) ?? 5) * 1000;
+        setRetrySeconds(Math.ceil((retryAt.current - Date.now()) / 1000));
+        setError(`${friendlyError(cause)} La contraseña podría haberse cambiado aunque no recibimos confirmación. Verifica el acceso con la persona o restablécela nuevamente cuando termine la espera.`);
+      } else setError(friendlyError(cause));
     } finally {
+      pending.current = false;
       setBusy(false);
     }
   };
@@ -106,7 +122,7 @@ function ResetModal({ participantId, accessConfigured, onClose, onDone }: {
         {error && <Alert tone="error">{error}</Alert>}
         <div className="flex flex-wrap justify-end gap-3 pt-2">
           <Button type="button" variant="ghost" onClick={onClose}>Cancelar</Button>
-          <Button type="submit" loading={busy}>Restablecer contraseña</Button>
+          <Button type="submit" loading={busy} disabled={retrySeconds > 0}>{retrySeconds > 0 ? `Reintentar en ${retrySeconds} s` : 'Restablecer contraseña'}</Button>
         </div>
       </form>
     </Modal>
