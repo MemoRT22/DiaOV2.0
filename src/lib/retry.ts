@@ -6,6 +6,11 @@ export type RetryOptions = {
   baseMs?: number;
   /** Si el servidor pide esperar más que esto, no se espera en segundo plano: se avisa a la persona. */
   maxAutoWaitMs?: number;
+  /**
+   * Un intento que tardó más que esto antes de fallar indica un servicio saturado, no un tropiezo de red: repetirlo de inmediato solo
+   * suma carga y alarga la espera de la persona. No se reintenta solo; se le avisa para que decida (con cuenta atrás).
+   */
+  slowAttemptMs?: number;
   signal?: AbortSignal;
   random?: () => number;
   sleep?: (ms: number, signal?: AbortSignal) => Promise<void>;
@@ -34,14 +39,16 @@ export function backoffMs(attempt: number, retryAfterSeconds: number | undefined
  * seguras de repetir: lecturas e inicio de sesión. Las que crean cuentas se reintentan por decisión de la persona.
  */
 export async function retryTransient<T>(run: () => Promise<T>, options: RetryOptions = {}): Promise<T> {
-  const { retries = 2, baseMs = 1500, maxAutoWaitMs = 20_000, signal, random = Math.random, sleep: wait = sleep } = options;
+  const { retries = 1, baseMs = 1500, maxAutoWaitMs = 5_000, slowAttemptMs = 3_000, signal, random = Math.random, sleep: wait = sleep } = options;
   for (let attempt = 0; ; attempt += 1) {
     if (signal?.aborted) throw new RetryAborted();
+    const startedAt = Date.now();
     try {
       return await run();
     } catch (cause) {
       if (cause instanceof RetryAborted || signal?.aborted) throw cause instanceof RetryAborted ? cause : new RetryAborted();
       if (!isTemporaryAccessError(cause) || attempt >= retries) throw cause;
+      if (Date.now() - startedAt > slowAttemptMs) throw cause; // servicio saturado: no se le suma otra petición
       const delay = backoffMs(attempt, retryAfterOf(cause), baseMs, random);
       if (delay > maxAutoWaitMs) throw cause; // el servidor pidió esperar mucho: que lo decida la persona, con la cuenta atrás
       await wait(delay, signal);

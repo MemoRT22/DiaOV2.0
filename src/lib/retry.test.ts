@@ -51,6 +51,29 @@ describe('retryTransient', () => {
     expect(run).toHaveBeenCalledTimes(1);
     expect(slept).toEqual([]);
   });
+  test('por omisión hay UN solo reintento automático, y solo si el servidor pide esperar poco', async () => {
+    slept.length = 0;
+    const run = vi.fn().mockRejectedValue(new AccessError('TEMPORARILY_UNAVAILABLE'));
+    await expect(retryTransient(run, options)).rejects.toThrow('TEMPORARILY_UNAVAILABLE');
+    expect(run).toHaveBeenCalledTimes(2);
+    const asked = vi.fn().mockRejectedValue(new AccessError('RATE_LIMITED', 6));
+    await expect(retryTransient(asked, options)).rejects.toThrow('RATE_LIMITED');
+    expect(asked).toHaveBeenCalledTimes(1); // 6 s > 5 s: se avisa con cuenta atrás en vez de esperar a escondidas
+  });
+  test('un intento lento que falla no se repite solo: señal de saturación, no de red', async () => {
+    vi.useFakeTimers();
+    try {
+      const slow = vi.fn(async () => { await new Promise((resolve) => setTimeout(resolve, 11_000)); throw new AccessError('TIMEOUT'); });
+      const outcome = retryTransient(slow, options).catch((cause) => cause);
+      await vi.advanceTimersByTimeAsync(11_001);
+      expect((await outcome).message).toBe('TIMEOUT');
+      expect(slow).toHaveBeenCalledTimes(1);
+      const quick = vi.fn().mockRejectedValueOnce(new AccessError('NETWORK')).mockResolvedValue('ok');
+      await expect(retryTransient(quick, options)).resolves.toBe('ok'); // un tropiezo rápido sí se reintenta
+    } finally {
+      vi.useRealTimers();
+    }
+  });
   test('si la persona abandona la pantalla no queda nada corriendo en segundo plano', async () => {
     const controller = new AbortController();
     const run = vi.fn().mockRejectedValue(new AccessError('RATE_LIMITED'));

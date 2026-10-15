@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
-import { fetchWithTimeout, REQUEST_TIMEOUT_MS } from './fetchWithTimeout';
+import { fetchWithTimeout, REQUEST_TIMEOUT_MS, SIGN_IN_TIMEOUT_MS } from './fetchWithTimeout';
 
 const hangUntilAborted = vi.fn((_input: unknown, init?: RequestInit) =>
   new Promise<Response>((_resolve, reject) => init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')))));
@@ -47,4 +47,20 @@ test('a caller that aborts keeps working', async () => {
   const outcome = expect(pending).rejects.toThrow('aborted');
   caller.abort();
   await outcome;
+});
+
+test('signing in with a password fails at 15 s, not 45: a saturated Auth must not leave the student on a spinner for minutes', async () => {
+  expect(SIGN_IN_TIMEOUT_MS).toBeLessThan(REQUEST_TIMEOUT_MS);
+  const pending = fetchWithTimeout('https://x.supabase.co/auth/v1/token?grant_type=password', { method: 'POST' });
+  const outcome = expect(pending).rejects.toThrow('aborted');
+  await vi.advanceTimersByTimeAsync(SIGN_IN_TIMEOUT_MS - 1);
+  expect(hangUntilAborted.mock.calls[0][1]?.signal?.aborted).toBe(false);
+  await vi.advanceTimersByTimeAsync(2);
+  await outcome;
+});
+
+test('other auth calls (session refresh) keep the longer limit', async () => {
+  void fetchWithTimeout('https://x.supabase.co/auth/v1/user');
+  await vi.advanceTimersByTimeAsync(SIGN_IN_TIMEOUT_MS + 1);
+  expect(hangUntilAborted.mock.calls[0][1]?.signal?.aborted).toBe(false);
 });

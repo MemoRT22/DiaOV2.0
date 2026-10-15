@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
-import { test } from 'node:test';
-import { handleRequest, TemporaryError, unwrapQuery, upstreamTemporary, type Deps, type ParticipantRow } from './handler.ts';
+import { mock, test } from 'node:test';
+import { CATALOG_TTL_MS, handleRequest, READ_DEADLINE_MS, SYNC_TTL_MS, TemporaryError, WRITE_DEADLINE_MS, unwrapQuery, upstreamTemporary, type Deps, type ParticipantRow } from './handler.ts';
 
 const url = 'https://example.test/functions/v1/student-access';
 const post = (body: unknown) => new Request(url, {
@@ -660,4 +660,137 @@ test('unwrapQuery keeps the HTTP status of a PostgREST result: 429, 5xx and a lo
   assert.throws(failure(dataError, 403), (cause) => cause === dataError);
   assert.deepEqual(unwrapQuery({ data: [{ id: 'h1' }], error: null, status: 200 }), [{ id: 'h1' }]);
   assert.deepEqual(unwrapQuery({ data: null, error: null, status: 200 }), []);
+});
+
+
+// =====================================================================================================================
+// Hotfix de latencia (incidente 2026-10-15): plazos, nada accesorio en la ruta crítica y sin repetir trabajo
+// =====================================================================================================================
+
+const loginFixture = (extra: Parameters<typeof fixture>[0] = {}) => fixture({
+  state: 'password_login',
+  participant: { id: PID, auth_user_id: UID, password_configured_at: '2026-10-06T00:00:00Z' },
+  existing: { id: UID, email: 'ana@example.com', kind: 'participant' },
+  ...extra,
+});
+const identifyBody = { action: 'identify', email: 'ana@example.com' };
+/** Deja correr las promesas pendientes (el cuerpo de la petición se lee de forma asíncrona antes de armar el plazo). */
+const flush = () => new Promise<void>((resolve) => setImmediate(resolve));
+
+test('identify answers right away: the Auth email alignment runs after the response, never in front of the person', async () => {
+  const f = loginFixture();
+  const background: Promise<unknown>[] = [];
+  f.deps.background = (task) => { background.push(task); };
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  const original = f.deps.getUser;
+  f.deps.getUser = async (id) => { await gate; return original(id); }; // Auth lento: no debe retener la respuesta
+  const response = await handleRequest(post(identifyBody), f.deps);
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { state: 'password_login' });
+  assert.equal(background.length, 1);
+  release();
+  await Promise.all(background);
+});
+
+test('identify keeps aligning a corrected email, now in the background', async () => {
+  const f = loginFixture({ existing: { id: UID, email: 'correo.anterior@example.com', kind: 'participant' } });
+  const background: Promise<unknown>[] = [];
+  f.deps.background = (task) => { background.push(task); };
+  await handleRequest(post(identifyBody), f.deps);
+  await Promise.all(background);
+  assert.ok(f.calls.includes(`updateUser:${UID}:ana@example.com`));
+});
+
+test('a repeated identify of an already aligned email does not touch Auth again (no multiplying load on retries)', async () => {
+  const f = loginFixture();
+  let getUsers = 0;
+  const original = f.deps.getUser;
+  f.deps.getUser = async (id) => { getUsers += 1; return original(id); };
+  let clock = 1_000;
+  f.deps.now = () => clock;
+  for (let i = 0; i < 5; i += 1) assert.equal((await handleRequest(post(identifyBody), f.deps)).status, 200);
+  assert.equal(getUsers, 1);
+  clock += SYNC_TTL_MS + 1;
+  await handleRequest(post(identifyBody), f.deps);
+  assert.equal(getUsers, 2); // pasado el tiempo, se vuelve a comprobar
+});
+
+test('a failed alignment is not remembered and never blocks or fails the identify', async () => {
+  const f = loginFixture();
+  let getUsers = 0;
+  f.deps.getUser = async () => { getUsers += 1; throw new TemporaryError(503); };
+  for (let i = 0; i < 2; i += 1) {
+    const response = await handleRequest(post(identifyBody), f.deps);
+    assert.deepEqual(await response.json(), { state: 'password_login' });
+  }
+  assert.equal(getUsers, 2);
+  assert.ok(f.logs.includes('email_sync_failed:'));
+});
+
+test('a dependency that never answers becomes a 503 with Retry-After at the read deadline, not minutes later', async () => {
+  mock.timers.enable({ apis: ['setTimeout'] });
+  try {
+    const f = fixture({ state: 'password_login' });
+    f.deps.rpc = () => new Promise(() => undefined);
+    const pending = handleRequest(post(identifyBody), f.deps);
+    await flush();
+    mock.timers.tick(READ_DEADLINE_MS - 1);
+    let settled = false;
+    void pending.then(() => { settled = true; });
+    await flush();
+    assert.equal(settled, false);
+    mock.timers.tick(2);
+    const response = await pending;
+    assert.equal(response.status, 503);
+    assert.ok(Number(response.headers.get('Retry-After')) >= 5);
+    assert.deepEqual(Object.keys(await response.json()).sort(), ['error', 'retry_after']);
+    assert.ok(f.logs.includes('temporary_failure:503'));
+  } finally {
+    mock.timers.reset();
+  }
+});
+
+test('writes get a longer deadline than reads, still below the browser timeout', async () => {
+  assert.ok(READ_DEADLINE_MS < WRITE_DEADLINE_MS && WRITE_DEADLINE_MS < 25_000);
+  mock.timers.enable({ apis: ['setTimeout'] });
+  try {
+    const f = fixture({ participant: { id: PID, auth_user_id: null, password_configured_at: null } });
+    f.deps.createUser = () => new Promise(() => undefined);
+    const pending = handleRequest(post({ action: 'setup_password', email: 'ana@example.com', password: SECRET }), f.deps);
+    await flush();
+    mock.timers.tick(READ_DEADLINE_MS + 1);
+    let settled = false;
+    void pending.then(() => { settled = true; });
+    await flush();
+    assert.equal(settled, false, 'una escritura sigue esperando más que una lectura');
+    mock.timers.tick(WRITE_DEADLINE_MS);
+    assert.equal((await pending).status, 503);
+  } finally {
+    mock.timers.reset();
+  }
+});
+
+test('catalog is served from memory for a minute and, if the database degrades, the last good list is still served', async () => {
+  const f = fixture();
+  let queries = 0;
+  const careers = f.deps.careers;
+  f.deps.careers = async () => { queries += 1; return careers(); };
+  let clock = 5_000;
+  f.deps.now = () => clock;
+  const first = await (await handleRequest(post({ action: 'catalog' }), f.deps)).json();
+  await handleRequest(post({ action: 'catalog' }), f.deps);
+  assert.equal(queries, 1);
+  clock += CATALOG_TTL_MS + 1;
+  f.deps.careers = async () => { throw new TemporaryError(503); };
+  const stale = await handleRequest(post({ action: 'catalog' }), f.deps);
+  assert.equal(stale.status, 200);
+  assert.deepEqual(await stale.json(), first);
+  assert.ok(f.logs.includes('catalog_served_stale:'));
+});
+
+test('without any good catalog yet, a degraded database is still a retryable 503 (unchanged)', async () => {
+  const f = fixture();
+  f.deps.careers = async () => { throw new TemporaryError(503); };
+  assert.equal((await handleRequest(post({ action: 'catalog' }), f.deps)).status, 503);
 });

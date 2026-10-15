@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { AuthProvider, useAuth } from './auth';
 import { AccessError, MAX_RETRY_AFTER_SECONDS } from './accessErrors';
-import { ACCESS_TIMEOUT_MS, studentAccess } from './studentAccess';
+import { ACCESS_READ_TIMEOUT_MS, ACCESS_TIMEOUT_MS, studentAccess } from './studentAccess';
 import { supabase } from './supabase';
 
 vi.mock('./supabase', () => ({
@@ -150,7 +150,7 @@ test('a 500 is NEVER repeated by itself on writes (one send per decision) but re
   const read = studentAccess.identify('a@b.co').catch((cause) => cause);
   await vi.advanceTimersByTimeAsync(60_000);
   expect((await read).message).toBe('TEMPORARILY_UNAVAILABLE');
-  expect(fetchMock).toHaveBeenCalledTimes(3); // 1 + 2 reintentos
+  expect(fetchMock).toHaveBeenCalledTimes(2); // 1 + un solo reintento
   vi.useRealTimers();
 });
 
@@ -193,23 +193,23 @@ test('a lost connection is NETWORK and a request that never answers is TIMEOUT (
   vi.useRealTimers();
 });
 
-test('identify (read-only) retries by itself on a limit, with progressive waits, and then succeeds', async () => {
+test('identify (read-only) retries once by itself after a quick stumble, and then succeeds', async () => {
   vi.useFakeTimers();
-  fetchMock.mockResolvedValueOnce(http(429, { error: 'RATE_LIMITED' })).mockResolvedValueOnce(http(503, undefined)).mockResolvedValue(http(200, { state: 'password_login' }));
+  fetchMock.mockResolvedValueOnce(http(503, undefined)).mockResolvedValue(http(200, { state: 'password_login' }));
   const result = studentAccess.identify('a@b.co');
   await vi.advanceTimersByTimeAsync(20_000);
   await expect(result).resolves.toBe('password_login');
-  expect(fetchMock).toHaveBeenCalledTimes(3);
+  expect(fetchMock).toHaveBeenCalledTimes(2);
   vi.useRealTimers();
 });
 
-test('identify gives up after a bounded number of tries and reports the temporary error', async () => {
+test('identify gives up after a single automatic retry and reports the temporary error', async () => {
   vi.useFakeTimers();
   fetchMock.mockResolvedValue(http(429, { error: 'RATE_LIMITED' }));
   const result = studentAccess.identify('a@b.co').catch((cause) => cause);
   await vi.advanceTimersByTimeAsync(60_000);
   expect((await result).message).toBe('RATE_LIMITED');
-  expect(fetchMock).toHaveBeenCalledTimes(3); // 1 + 2 reintentos, ni uno más
+  expect(fetchMock).toHaveBeenCalledTimes(2); // 1 + 1 reintento, ni uno más
   vi.useRealTimers();
 });
 
@@ -283,7 +283,7 @@ test('a wrong password is INVALID_CREDENTIALS; a 429 on the very same request is
   const error = await limited;
   expect(error.message).toBe('RATE_LIMITED');
   expect(error.message).not.toBe('INVALID_CREDENTIALS');
-  expect(signIn).toHaveBeenCalledTimes(3); // 1 + 2 reintentos, acotados
+  expect(signIn).toHaveBeenCalledTimes(2); // 1 + un reintento, acotados
   vi.useRealTimers();
 });
 
@@ -397,14 +397,14 @@ test('catalog: a 429/503 keeps its status and Retry-After, retries are bounded, 
   const error = await limitedCatalog;
   expect(error).toBeInstanceOf(AccessError);
   expect(error).toMatchObject({ message: 'RATE_LIMITED', retryAfterSeconds: 6 });
-  expect(fetchMock).toHaveBeenCalledTimes(3); // 1 + 2 reintentos, ni uno más
+  expect(fetchMock).toHaveBeenCalledTimes(1); // el servidor pidió 6 s: no se espera en segundo plano, lo decide la persona con la cuenta atrás
 
   fetchMock.mockClear();
   fetchMock.mockResolvedValue(http(503, { error: 'TEMPORARILY_UNAVAILABLE', retry_after: 5 }, { 'Retry-After': '5' }));
   const down = studentAccess.catalog().catch((cause) => cause);
   await vi.advanceTimersByTimeAsync(60_000);
   expect(await down).toMatchObject({ message: 'TEMPORARILY_UNAVAILABLE', retryAfterSeconds: 5 });
-  expect(fetchMock).toHaveBeenCalledTimes(3);
+  expect(fetchMock.mock.calls.length).toBeLessThanOrEqual(2); // nunca más de un reintento automático
 
   fetchMock.mockClear();
   fetchMock.mockResolvedValue(http(500, { error: 'SERVER_ERROR' }));
@@ -412,4 +412,25 @@ test('catalog: a 429/503 keeps its status and Retry-After, retries are bounded, 
   await vi.advanceTimersByTimeAsync(60_000);
   expect(await internal).toMatchObject({ message: 'TEMPORARILY_UNAVAILABLE' }); // ya no es un SERVER_ERROR genérico
   vi.useRealTimers();
+});
+
+test('identify that never answers ends in TIMEOUT at 12 s, with ONE request: the student sees a retryable notice, not a spinner for minutes', async () => {
+  vi.useFakeTimers();
+  fetchMock.mockImplementation((_url: string, init: { signal: AbortSignal }) => new Promise((_resolve, reject) => {
+    init.signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
+  }));
+  let finishedAt = -1;
+  const startedAt = Date.now();
+  const pending = studentAccess.identify('a@b.co').catch((cause) => { finishedAt = Date.now() - startedAt; return cause; });
+  await vi.advanceTimersByTimeAsync(ACCESS_TIMEOUT_MS * 4);
+  expect((await pending).message).toBe('TIMEOUT');
+  expect(fetchMock).toHaveBeenCalledTimes(1); // un intento lento no se multiplica
+  expect(finishedAt).toBeGreaterThanOrEqual(ACCESS_READ_TIMEOUT_MS);
+  expect(finishedAt).toBeLessThan(ACCESS_READ_TIMEOUT_MS + 500);
+  vi.useRealTimers();
+});
+
+test('reads wait less than writes, and both are shorter than before (30 s × 3 tries)', () => {
+  expect(ACCESS_READ_TIMEOUT_MS).toBeLessThan(ACCESS_TIMEOUT_MS);
+  expect(ACCESS_TIMEOUT_MS).toBeLessThanOrEqual(25_000);
 });

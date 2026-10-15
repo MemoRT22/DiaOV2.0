@@ -4,7 +4,14 @@ import { handleRequest, unwrapQuery, upstreamTemporary, type Deps } from './hand
 const url = Deno.env.get('SUPABASE_URL');
 const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 const anonKey = Deno.env.get('SUPABASE_ANON_KEY');
-const authOptions = { auth: { persistSession: false, autoRefreshToken: false } };
+// Cada llamada a PostgREST/Auth tiene plazo propio (el gateway de Auth corta a ~11 s: esperar más no sirve de nada). Un fallo por plazo
+// llega como status 0 / AuthRetryableFetchError y `upstreamTemporary` lo convierte en 503 con Retry-After, no en 150 s de espera.
+const UPSTREAM_TIMEOUT_MS = 8_000;
+const timedFetch: typeof fetch = (input, init) => {
+  const limit = AbortSignal.timeout(UPSTREAM_TIMEOUT_MS);
+  return fetch(input, { ...init, signal: init?.signal ? AbortSignal.any([init.signal, limit]) : limit });
+};
+const authOptions = { auth: { persistSession: false, autoRefreshToken: false }, global: { fetch: timedFetch } };
 // service_role solo existe aquí, en el servidor. El navegador nunca la recibe.
 const admin = url && serviceKey ? createClient(url, serviceKey, authOptions) : null;
 
@@ -112,6 +119,11 @@ const deps: Deps = {
   },
   // Solo códigos de evento: nunca correo, contraseña ni datos personales.
   log: (event, code) => console.error(`[student-access] ${event}`, code ?? ''),
+  // Trabajo accesorio (alinear el correo en Auth) después de responder, sin retener a la persona.
+  background: (task) => {
+    const runtime = (globalThis as { EdgeRuntime?: { waitUntil?: (p: Promise<unknown>) => void } }).EdgeRuntime;
+    if (runtime?.waitUntil) runtime.waitUntil(task);
+  },
 };
 
 Deno.serve((req: Request) => handleRequest(req, deps));

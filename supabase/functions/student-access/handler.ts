@@ -27,6 +27,30 @@ export type Deps = {
    */
   verifyPassword: (email: string, password: string) => Promise<'valid' | 'invalid'>;
   log: (event: string, code?: string) => void;
+  /** Ejecuta trabajo accesorio DESPUÉS de responder (`EdgeRuntime.waitUntil`). Sin esto, se espera en línea como antes. */
+  background?: (task: Promise<unknown>) => void;
+  /** Reloj inyectable para las pruebas. */
+  now?: () => number;
+};
+
+/**
+ * Plazos del servidor. Cuando Auth o la base se degradan, una llamada sin plazo se queda esperando hasta que la plataforma corta la
+ * función (≈150 s) y mientras tanto el navegador ya se rindió y reintentó: la carga se multiplica. Con plazo, el servidor responde un
+ * 503 con `Retry-After` a tiempo y libera su lugar. Lectura (identify/catalog): el navegador espera 12 s; escritura: 25 s.
+ */
+export const READ_DEADLINE_MS = 9_000;
+export const WRITE_DEADLINE_MS = 20_000;
+/** Una consulta repetida del mismo correo no vuelve a tocar Auth durante este tiempo, y el catálogo se sirve de memoria. */
+export const SYNC_TTL_MS = 10 * 60_000;
+export const CATALOG_TTL_MS = 60_000;
+const CACHE_MAX = 500;
+
+type AccessCache = { synced: Map<string, number>; catalog?: { at: number; value: { careers: CareerRow[]; high_schools: HighSchoolRow[] } } };
+const caches = new WeakMap<Deps, AccessCache>();
+const cacheOf = (deps: Deps): AccessCache => {
+  let cache = caches.get(deps);
+  if (!cache) caches.set(deps, (cache = { synced: new Map() }));
+  return cache;
 };
 
 /**
@@ -210,7 +234,22 @@ async function identify(deps: Deps, body: Record<string, unknown>) {
   }
   // Si Staff corrigió el correo del participante, la identidad de Auth sigue con el correo anterior: se alinea antes de
   // que el navegador intente iniciar sesión. Es un ajuste silencioso; un fallo no impide continuar.
-  if (state.data === 'password_login') await syncAuthEmail(deps, email).catch(() => deps.log('email_sync_failed'));
+  // Es una red de seguridad rara (en producción ningún participante la necesita hoy) y cuesta 3 llamadas a servicios compartidos:
+  // no se hace esperar a la persona por ella, se acota con el plazo de lectura y no se repite para un correo ya alineado.
+  if (state.data === 'password_login') {
+    const cache = cacheOf(deps);
+    const now = (deps.now ?? Date.now)();
+    const syncedAt = cache.synced.get(email);
+    if (syncedAt === undefined || now - syncedAt > SYNC_TTL_MS) {
+      const sync = withDeadline(syncAuthEmail(deps, email), READ_DEADLINE_MS)
+        .then(() => {
+          if (cache.synced.size >= CACHE_MAX) cache.synced.delete(cache.synced.keys().next().value as string);
+          cache.synced.set(email, now);
+        })
+        .catch(() => deps.log('email_sync_failed'));
+      if (deps.background) deps.background(sync); else await sync;
+    }
+  }
   return json({ state: state.data });
 }
 
@@ -290,11 +329,30 @@ async function register(deps: Deps, body: Record<string, unknown>) {
 }
 
 async function catalog(deps: Deps) {
+  const cache = cacheOf(deps);
+  const now = (deps.now ?? Date.now)();
+  if (cache.catalog && now - cache.catalog.at <= CATALOG_TTL_MS) return json(cache.catalog.value);
   const [careers, high_schools] = await Promise.allSettled([deps.careers(), deps.highSchools()]);
-  if (careers.status === 'fulfilled' && high_schools.status === 'fulfilled') return json({ careers: careers.value, high_schools: high_schools.value });
+  if (careers.status === 'fulfilled' && high_schools.status === 'fulfilled') {
+    cache.catalog = { at: now, value: { careers: careers.value, high_schools: high_schools.value } };
+    return json(cache.catalog.value);
+  }
+  // Una degradación no deja a la persona sin formulario: se sirve la última lista buena (cambia una vez al año).
+  if (cache.catalog) {
+    deps.log('catalog_served_stale');
+    return json(cache.catalog.value);
+  }
   // Si una consulta falló por un límite o una caída y la otra por otra cosa, manda lo temporal: es lo que el navegador sabe reintentar.
   const failures = [careers, high_schools].flatMap((result) => (result.status === 'rejected' ? [result.reason] : []));
   throw failures.find((failure) => asTemporary(failure)) ?? failures[0];
+}
+
+/** Rechaza con un error temporal (503 + Retry-After) si `task` no termina a tiempo; la tarea no se cancela, pero ya no retiene la respuesta. */
+function withDeadline<T>(task: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>;
+  const late = new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new TemporaryError(503)), ms); });
+  task.catch(() => undefined); // si pierde la carrera, su error tardío no queda sin atender
+  return Promise.race([task, late]).finally(() => clearTimeout(timer));
 }
 
 export async function handleRequest(req: Request, deps: Deps): Promise<Response> {
@@ -304,10 +362,10 @@ export async function handleRequest(req: Request, deps: Deps): Promise<Response>
   if (!body || typeof body !== 'object' || Array.isArray(body)) return fail('INVALID_INPUT');
   const input = body as Record<string, unknown>;
   try {
-    if (input.action === 'identify') return await identify(deps, input);
-    if (input.action === 'catalog') return await catalog(deps);
-    if (input.action === 'setup_password') return await setupPassword(deps, input);
-    if (input.action === 'register') return await register(deps, input);
+    if (input.action === 'identify') return await withDeadline(identify(deps, input), READ_DEADLINE_MS);
+    if (input.action === 'catalog') return await withDeadline(catalog(deps), READ_DEADLINE_MS);
+    if (input.action === 'setup_password') return await withDeadline(setupPassword(deps, input), WRITE_DEADLINE_MS);
+    if (input.action === 'register') return await withDeadline(register(deps, input), WRITE_DEADLINE_MS);
     return fail('INVALID_INPUT');
   } catch (error) {
     const temp = asTemporary(error);

@@ -51,6 +51,8 @@ async function identifyAs(state: 'password_login' | 'password_setup' | 'self_reg
 }
 const retryButton = () => screen.getByRole('button', { name: 'Volver a intentar' });
 const notice = () => screen.getByRole('alert');
+/** Tras un tiempo agotado el aviso pide una breve espera (4–8 s con variación) para no sumar carga: se deja correr la cuenta atrás. */
+const afterCountdown = () => act(async () => { await vi.advanceTimersByTimeAsync(9_000); });
 const neverWrongPassword = () => expect(document.body).not.toHaveTextContent(/incorrectos?|contraseña incorrecta/i);
 
 describe('identificar el correo', () => {
@@ -101,6 +103,26 @@ describe('identificar el correo', () => {
       view.unmount();
     }
     expect(seen.size).toBeGreaterThan(2);
+  });
+
+  test('un tiempo agotado (servicio saturado) avisa a tiempo, conserva el correo, pide una breve espera y luego deja reintentar', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.mocked(studentAccess.identify).mockRejectedValueOnce(new Error('TIMEOUT')).mockResolvedValue('password_login');
+    show();
+    await userEvent.type(email(), 'ana@ejemplo.com');
+    fireEvent.click(screen.getByRole('button', { name: 'Continuar' }));
+    await waitFor(() => expect(notice()).toHaveTextContent('La conexión tardó demasiado'));
+    expect(email().value).toBe('ana@ejemplo.com');
+    const wait = Number(/en (\d+) segundos?\./.exec(notice().textContent ?? '')![1]);
+    expect(wait).toBeGreaterThanOrEqual(4);
+    expect(wait).toBeLessThanOrEqual(8);
+    expect(retryButton()).toBeDisabled(); // no se invita a martillar el servicio saturado
+    neverWrongPassword();
+    await afterCountdown();
+    expect(retryButton()).toBeEnabled();
+    fireEvent.click(retryButton());
+    expect(await screen.findByRole('heading', { name: 'Ingresa tu contraseña' })).toBeInTheDocument();
+    expect(studentAccess.identify).toHaveBeenCalledTimes(2);
   });
 
   test('un fallo de red usa su propio aviso y también conserva el correo', async () => {
@@ -205,11 +227,13 @@ describe('prerregistrado que crea su contraseña', () => {
   });
 
   test('respuesta perdida con la cuenta ya creada: al reintentar el servidor dice «ya configurada» y se entra con la misma contraseña', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
     vi.mocked(studentAccess.setupPassword).mockRejectedValueOnce(new Error('TIMEOUT')).mockRejectedValueOnce(new Error('ACCESS_ALREADY_CONFIGURED'));
     await identifyAs('password_setup');
     await fillSetup();
     create();
     await waitFor(() => expect(notice()).toHaveTextContent('La conexión tardó demasiado'));
+    await afterCountdown();
     fireEvent.click(retryButton());
     await waitFor(() => expect(signIn).toHaveBeenCalledWith('ana@ejemplo.com', 'mi-clave-segura', expect.anything()));
     expect(screen.queryByText(/ya tiene una contraseña/)).toBeNull();
@@ -292,11 +316,13 @@ describe('autorregistro', () => {
   });
 
   test('respuesta perdida con el registro ya hecho: el reintento (correo ya existe) entra con la contraseña escrita', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
     registered().mockRejectedValueOnce(new Error('TIMEOUT')).mockRejectedValueOnce(new Error('EMAIL_EXISTS'));
     await identifyAs('self_registration', 'nueva@ejemplo.com');
     await fillRegistration();
     register();
     await waitFor(() => expect(notice()).toHaveTextContent('La conexión tardó demasiado'));
+    await afterCountdown();
     fireEvent.click(retryButton());
     await waitFor(() => expect(signIn).toHaveBeenCalledWith('nueva@ejemplo.com', 'mi-clave-segura', expect.anything()));
   });
@@ -373,11 +399,13 @@ describe('esperas largas del servidor (Retry-After > 2 minutos)', () => {
 
 describe('recuperación que exige demostrar que es la misma persona', () => {
   test('autorregistro: «ACCOUNT_RECOVERY_REQUIRED» explica la ruta segura, conserva los campos y permite escribir la contraseña original', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
     registered().mockRejectedValueOnce(new Error('TIMEOUT')).mockRejectedValueOnce(new Error('ACCOUNT_RECOVERY_REQUIRED')).mockResolvedValue(undefined);
     await identifyAs('self_registration', 'nueva@ejemplo.com');
     await fillRegistration();
     register();
     await waitFor(() => expect(notice()).toHaveTextContent('La conexión tardó demasiado'));
+    await afterCountdown();
     fireEvent.click(retryButton());
     const alert = await screen.findByText(/no podemos continuarlo sin verificar que eres tú/);
     expect(alert).toHaveTextContent('misma contraseña que usaste en tu primer intento');
