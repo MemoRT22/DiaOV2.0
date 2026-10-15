@@ -234,3 +234,10 @@ test('school picker filters partial names and offers Otra escuela without free t
   expect(screen.getByRole('option', { name: 'Cecyte Plantel Uno' })).toBeInTheDocument();
   expect(screen.getByRole('option', { name: 'Cecyte Plantel Dos' })).toBeInTheDocument();
 });
+
+test('the email last used on this device is already filled in, so a lost session only costs the password', () => {
+  window.localStorage.setItem('diaov-last-email', 'ana@example.com');
+  vi.mocked(useAuth).mockReturnValue({ ready: true, profile: null, signInParticipant } as unknown as ReturnType<typeof useAuth>);
+  show();
+  expect(screen.getByLabelText('Correo electrónico')).toHaveValue('ana@example.com');
+});

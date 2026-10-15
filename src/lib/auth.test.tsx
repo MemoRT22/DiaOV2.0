@@ -181,3 +181,14 @@ test('a real sign-out clears the remembered identities; a server that answers «
   expect(await screen.findByText('anónimo')).toBeInTheDocument();
   expect(localStorage.getItem('diaov-identity:u1')).toBeNull();
 });
+
+test('an explicit sign-out forgets the remembered email; a lost session does not', async () => {
+  const { supabase } = await import('./supabase');
+  vi.spyOn(supabase.auth, 'signOut').mockResolvedValue({ error: null } as never);
+  localStorage.setItem('diaov-last-email', 'ana@example.com');
+  render(<AuthProvider><Out /></AuthProvider>);
+  await emit('INITIAL_SESSION', null); // session lost / first visit: the email stays for the next sign-in
+  expect(localStorage.getItem('diaov-last-email')).toBe('ana@example.com');
+  await press();
+  expect(localStorage.getItem('diaov-last-email')).toBeNull();
+});

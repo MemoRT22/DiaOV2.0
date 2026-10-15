@@ -14,3 +14,6 @@ export function clearLocalSession(storageKey: string, storage: Pick<Storage, 'ge
     return false;
   }
 }
+
+/** The last email used to sign in on this device (kept until an explicit sign-out): a lost session then only costs typing the password. */
+export const LAST_EMAIL_KEY = 'diaov-last-email';

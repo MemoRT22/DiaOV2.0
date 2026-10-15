@@ -16,6 +16,9 @@ if ((nav.hardwareConcurrency ?? 8) <= 4 || (nav.deviceMemory ?? 8) <= 4 || nav.c
   document.documentElement.classList.add('lite');
 }
 
+// Ask the browser not to evict this site's storage (where the signed-in session lives) under storage pressure or after days of inactivity.
+void navigator.storage?.persist?.().catch(() => undefined);
+
 // A tab left open across a deploy asks for chunks that no longer exist: reload the same URL once instead of leaving a blank screen.
 installChunkRecovery();
 

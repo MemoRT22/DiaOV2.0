@@ -3,7 +3,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { AccessError, classifyAuthError } from './accessErrors';
 import { invalidateBoard } from './boardCache';
 import { friendlyError } from './errors';
-import { authStorageKey, clearLocalSession } from './localSession';
+import { authStorageKey, clearLocalSession, LAST_EMAIL_KEY } from './localSession';
 import { retryTransient, RetryAborted } from './retry';
 import { supabase, supabaseUrl } from './supabase';
 
@@ -201,6 +201,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await supabase.auth.signOut();
       throw new Error('INVALID_CREDENTIALS');
     }
+    // If the session is ever lost (cleared storage, another phone), only the password has to be typed again.
+    try { window.localStorage.setItem(LAST_EMAIL_KEY, email.trim().toLowerCase()); } catch { /* optional */ }
   }, [passwordSignIn]);
 
   const signInStaff = useCallback(async (email: string, password: string, options: SignInOptions = {}) => {
@@ -213,6 +215,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = useCallback(async () => {
     setSignOutError(null);
+    try { window.localStorage.removeItem(LAST_EMAIL_KEY); } catch { /* optional */ }
     // The server logout can fail (no network, saturation, timeout) and then supabase-js keeps the session: the button would do nothing.
     // Leaving must work on THIS device, but only once it is PROVEN that the stored session is gone; otherwise the person is told.
     const result = await supabase.auth.signOut().catch((error: unknown) => ({ error }));

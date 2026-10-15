@@ -4,6 +4,7 @@ import { Link, Navigate } from 'react-router-dom';
 import { Backdrop, BrandFooter, Tagline, ThemedTitle } from '../components/themed';
 import { BootSpinner } from '../components/BootSpinner';
 import { useAuth } from '../lib/auth';
+import { LAST_EMAIL_KEY } from '../lib/localSession';
 import { formatEventDate } from '../lib/catalog';
 import { friendlyError } from '../lib/errors';
 import { studentAccess, type AccessState } from '../lib/studentAccess';
@@ -15,6 +16,11 @@ import { PlanetHorizon } from './ui/SpaceDecor';
 /** `notice`: un aviso informativo para el paso (p. ej. «este correo ya tiene contraseña»). */
 type Step = { kind: 'email' | AccessState; email: string; notice?: string };
 
+/** The last email used on this device (kept until an explicit sign-out), so a lost session only costs typing the password. */
+function rememberedEmail(): string {
+  try { return window.localStorage.getItem(LAST_EMAIL_KEY) ?? ''; } catch { return ''; }
+}
+
 /**
  * Acceso de participantes: correo → el sistema decide → contraseña.
  * La pantalla solo conoce uno de tres estados (iniciar sesión, crear contraseña, registrarse); nunca datos personales.
@@ -23,7 +29,7 @@ export default function StudentLogin() {
   const { theme, text } = usePublicTheme();
   const { edition } = useEdition();
   const { ready, profile, signInParticipant } = useAuth();
-  const [step, setStep] = useState<Step>({ kind: 'email', email: '' });
+  const [step, setStep] = useState<Step>(() => ({ kind: 'email', email: rememberedEmail() }));
 
   if (!ready) return <BootSpinner />;
   if (profile) return <Navigate to="/bitacora" replace />;
