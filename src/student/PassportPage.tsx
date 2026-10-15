@@ -9,6 +9,8 @@ import { useLocation } from 'react-router-dom';
 import { useRafflePrizes } from './RafflePrizeProvider';
 import { useLoad } from '../lib/useLoad';
 import { useParticipantSync } from '../lib/useParticipantSync';
+import { useInterestOpeningRefresh } from '../lib/useInterestOpeningRefresh';
+import { useEdition } from '../edition/EditionProvider';
 import { usePublicTheme } from '../theme/PublicThemeProvider';
 import { LOGBOOK, MISSION } from './copy';
 import ExitSurveyCard from './ExitSurveyCard';
@@ -29,11 +31,16 @@ const initials = (name: string | undefined) =>
 export default function PassportPage() {
   const { theme, term, text, rankName } = usePublicTheme();
   const { profile, signOut } = useAuth();
+  const { edition } = useEdition();
   const { data, error, loading, reload } = useLoad(
     () => Promise.all([fetchProgress(), fetchDivisions(), fetchMyRaffleStatus().catch(() => null)]),
     [],
   );
   useParticipantSync(reload);
+  useInterestOpeningRefresh(reload, {
+    opensAt: edition?.interests_prompt_at,
+    available: data?.[0].post_event_interests_prompt ?? false,
+  });
   // Al completar la encuesta (con la Bitácora ya abierta, p. ej. desde otra pestaña) el estado del sorteo cambia en el servidor: se vuelve a leer.
   const survey = useExitSurvey();
   const surveyDone = survey.status?.completed ?? null;
@@ -137,6 +144,7 @@ export default function PassportPage() {
             <h2 className="text-base font-extrabold">{term('interests', true)}</h2>
           </div>
           <p className="mt-0.5 text-xs font-semibold uppercase tracking-wide text-ink-muted">Paso 1 de 2 · opcional</p>
+          <p className="mt-1 text-sm font-semibold">Intereses después del Día OV</p>
           <p className="mt-1 text-sm text-ink-muted">
             {progress.post_event_interests_completed ? 'Ya guardaste tus carreras. Puedes revisarlas.' : text('interestsPromptBody')}
           </p>

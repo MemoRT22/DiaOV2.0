@@ -9,6 +9,7 @@ import { fetchMyRaffleStatus } from '../lib/raffleApi';
 import { buildJourney, firstName, heroAction, latestPending, type Journey } from '../lib/studentJourney';
 import { useLoad } from '../lib/useLoad';
 import { useNow } from '../lib/useNow';
+import { useInterestOpeningRefresh } from '../lib/useInterestOpeningRefresh';
 import { useParticipantSync } from '../lib/useParticipantSync';
 import { belongsToDivision, type Board } from '../lib/reservations';
 import { isUniversityLife } from '../lib/universityLife';
@@ -45,6 +46,10 @@ export default function Home() {
   const [dismissed, setDismissed] = useState(() => sessionStorage.getItem(DISMISS_KEY) === '1');
   // Other tabs of this browser (reserve, cancel, change, check-in) or a long time hidden → quietly re-query, keeping what is on screen.
   useParticipantSync(reload);
+  useInterestOpeningRefresh(reload, {
+    opensAt: edition?.interests_prompt_at,
+    available: data?.[0].post_event_interests_prompt ?? false,
+  });
 
   if (loading && !data) return <PageSkeleton />;
   if (!data) return <ErrorState error={error} onRetry={reload} />;
@@ -126,8 +131,10 @@ export default function Home() {
           {guideInHero ? (
             <div className="pr-8">
               <Compass className="h-6 w-6 text-fg-brand" aria-hidden />
-              <h2 className="mt-2 text-lg font-extrabold">{text('interestsPromptTitle')}</h2>
+              <p className="mt-2 text-xs font-bold uppercase tracking-wide text-ink-muted">Intereses después del Día OV</p>
+              <h2 className="mt-1 text-lg font-extrabold">{text('interestsPromptTitle')}</h2>
               <p className="mt-1 text-sm text-ink-muted">{text('interestsPromptBody')}</p>
+              <p className="mt-2 text-xs text-ink-muted">Esta respuesta es opcional y no modifica tu prerregistro.</p>
               <Link to="/destinos" className={buttonClasses('primary', 'mt-4 w-full')}>
                 Elegir carreras
               </Link>
@@ -143,7 +150,9 @@ export default function Home() {
               }
               className="pr-8"
             >
-              {text('interestsPromptBody')}
+              <span className="block text-xs font-bold uppercase tracking-wide">Intereses después del Día OV</span>
+              <span className="mt-1 block">{text('interestsPromptBody')}</span>
+              <span className="mt-2 block text-xs">Esta respuesta es opcional y no modifica tu prerregistro.</span>
             </GuideTip>
           )}
         </section>

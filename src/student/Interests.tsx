@@ -59,6 +59,7 @@ export default function Interests() {
   const notYet = !interests.post_event_interests_prompt && !interests.post_event_interests_completed;
   const editable = interests.post_event_interests_can_edit;
   const dirty = selected.join() !== saved.join();
+  const hasResponse = saved.length > 0;
 
   const toggle = (id: string) => {
     setStatus(null);
@@ -77,14 +78,17 @@ export default function Interests() {
 
   const onSave = async () => {
     // An empty list means "not answered yet", never a completed vocational response.
-    if (saving || selected.length === 0) return;
+    if (saving || (selected.length === 0 && !hasResponse)) return;
     setSaving(true);
     setStatus(null);
     try {
       const { error: rpcError } = await supabase.rpc('save_post_event_interests', { p_career_ids: selected });
       if (rpcError) throw rpcError;
       setSaved(selected);
-      setStatus({ tone: 'success', msg: text('interestsSaved') });
+      setStatus({
+        tone: 'success',
+        msg: selected.length > 0 ? text('interestsSaved') : 'Retiramos tus elecciones. Esta etapa vuelve a quedar pendiente.',
+      });
     } catch (cause) {
       setStatus({ tone: 'error', msg: friendlyError(cause) });
     } finally {
@@ -181,12 +185,15 @@ export default function Interests() {
           </Alert>
         )}
         {editable && (
-          <Button className="mt-4 w-full" onClick={onSave} loading={saving} disabled={!dirty || selected.length === 0}>
-            Guardar mis intereses
+          <Button className="mt-4 w-full" onClick={onSave} loading={saving} disabled={!dirty || (selected.length === 0 && !hasResponse)}>
+            {selected.length === 0 && hasResponse ? 'Retirar todas mis elecciones' : 'Guardar mis intereses'}
           </Button>
         )}
-        {editable && selected.length === 0 && (
+        {editable && selected.length === 0 && !hasResponse && (
           <p className="mt-2 text-center text-xs text-ink-muted">Si aún no quieres responder, puedes volver más tarde. No guardaremos una selección vacía.</p>
+        )}
+        {editable && selected.length === 0 && hasResponse && (
+          <p className="mt-2 text-center text-xs text-ink-muted">Al retirar todas, no quedará una respuesta vocacional completada.</p>
         )}
       </section>
       )}
@@ -250,7 +257,7 @@ export default function Interests() {
         </>
       )}
 
-      {interests.post_event_interests_completed && survey.enabled && survey.status?.isOpen && !survey.status.completed && (
+      {hasResponse && survey.enabled && survey.status?.isOpen && !survey.status.completed && (
         <section className="space-card border-secondary-400/40 p-4" aria-label="Siguiente paso del cierre">
           <div className="flex items-start gap-3">
             <ClipboardList className="mt-0.5 h-5 w-5 shrink-0 text-fg-brand" aria-hidden />

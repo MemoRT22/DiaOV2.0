@@ -16,6 +16,7 @@ const m = vi.hoisted(() => ({
   fetchMyRaffleStatus: vi.fn(),
   fetchBoard: vi.fn(),
   fetchPrizes: vi.fn(),
+  edition: { interests_prompt_at: null } as { interests_prompt_at: string | null },
   listeners: [] as Array<(kind: string) => void>,
 }));
 
@@ -40,6 +41,7 @@ vi.mock('../lib/reservations', async (importOriginal) => ({
 vi.mock('../lib/raffleApi', () => ({ fetchMyRaffleStatus: m.fetchMyRaffleStatus }));
 vi.mock('../lib/raffleWinner', async (importOriginal) => ({ ...(await importOriginal<typeof import('../lib/raffleWinner')>()), fetchMyRafflePrizes: m.fetchPrizes }));
 vi.mock('../lib/auth', () => ({ useAuth: () => ({ profile: { display_name: 'Alumno E2E' }, signOut: vi.fn() }) }));
+vi.mock('../edition/EditionProvider', () => ({ useEdition: () => ({ edition: m.edition }) }));
 vi.mock('../theme/PublicThemeProvider', () => ({
   usePublicTheme: () => ({
     theme: neutralTheme,
@@ -75,6 +77,7 @@ const raffle = (academic: number, universityLife: number, category: string | nul
 beforeEach(() => {
   vi.clearAllMocks();
   m.listeners = [];
+  m.edition = { interests_prompt_at: null };
   m.fetchDivisions.mockResolvedValue([]);
   m.fetchBoard.mockResolvedValue(null);
   m.fetchMyRaffleStatus.mockResolvedValue(raffle(1, 0));
@@ -254,6 +257,28 @@ test('E: a change announced by another tab re-queries the Passport and updates i
   expect(screen.queryByText(/^7 sellos ·/)).not.toBeInTheDocument();
   // reloading never announces (no loop)
   expect(m.announce).not.toHaveBeenCalled();
+});
+
+test('la Bitácora abierta antes de las 12:30 descubre los intereses al llegar la hora', async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date('2026-10-15T17:29:00Z'));
+  vi.spyOn(Math, 'random').mockReturnValue(0);
+  m.edition = { interests_prompt_at: '2026-10-15T12:30:00-05:00' };
+  m.fetchProgress
+    .mockResolvedValueOnce(progress({ attended_workshops: 0 }))
+    .mockResolvedValue(progress({
+      attended_workshops: 0,
+      post_event_interests_prompt: true,
+      post_event_interests_open: true,
+    }));
+  render(<MemoryRouter><PassportPage /></MemoryRouter>);
+  await act(async () => { await Promise.resolve(); });
+  expect(screen.queryByRole('link', { name: 'Elegir carreras' })).not.toBeInTheDocument();
+  await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+  await act(async () => { await Promise.resolve(); });
+  expect(m.fetchProgress).toHaveBeenCalledTimes(2);
+  expect(screen.getByRole('link', { name: 'Elegir carreras' })).toHaveAttribute('href', '/destinos');
+  vi.useRealTimers();
 });
 
 test('a failed quiet refresh keeps the data already on screen', async () => {

@@ -18,6 +18,7 @@ vi.mock('../lib/adminApi', async (importOriginal) => ({ ...await importOriginal<
 vi.mock('../lib/catalog', async (importOriginal) => ({ ...(await importOriginal<typeof import('../lib/catalog')>()), fetchProgress: m.fetchProgress, fetchDivisions: m.fetchDivisions }));
 vi.mock('../lib/raffleApi', () => ({ fetchMyRaffleStatus: m.fetchMyRaffleStatus }));
 vi.mock('../lib/auth', () => ({ useAuth: () => ({ profile: { display_name: 'Valeria Méndez Castillo' }, signOut: vi.fn() }) }));
+vi.mock('../edition/EditionProvider', () => ({ useEdition: () => ({ edition: { interests_prompt_at: null } }) }));
 vi.mock('../theme/PublicThemeProvider', () => ({
   usePublicTheme: () => ({
     theme: neutralTheme,

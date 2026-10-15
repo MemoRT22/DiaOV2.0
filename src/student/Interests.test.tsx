@@ -12,6 +12,9 @@ vi.mock('../lib/catalog', async (importOriginal) => ({
   fetchPostEventInterests: m.fetchInterests,
 }));
 vi.mock('../lib/supabase', () => ({ supabase: { rpc: m.rpc } }));
+vi.mock('./ExitSurveyProvider', () => ({
+  useExitSurvey: () => ({ enabled: true, status: { isOpen: true, completed: false } }),
+}));
 vi.mock('../theme/PublicThemeProvider', () => ({
   usePublicTheme: () => ({
     theme: neutralTheme,
@@ -70,6 +73,28 @@ test('permite conservar la carrera inicial, sumar otras y guarda el orden elegid
     p_career_ids: ['other', 'initial'],
   }));
   expect(await screen.findByText('Gracias. Guardamos tus intereses posteriores al evento.')).toBeInTheDocument();
+  expect(screen.getByRole('link', { name: /Responder encuesta/ })).toHaveAttribute('href', '/encuesta');
+});
+
+test('una respuesta guardada puede retirarse por completo sin dejar una selección vacía como completada', async () => {
+  m.fetchInterests.mockResolvedValue(openInterests(['initial']));
+  show();
+  fireEvent.click(await screen.findByRole('button', { name: 'Quitar Medicina' }));
+  expect(screen.getByRole('button', { name: 'Retirar todas mis elecciones' })).toBeEnabled();
+  fireEvent.click(screen.getByRole('button', { name: 'Retirar todas mis elecciones' }));
+  await waitFor(() => expect(m.rpc).toHaveBeenCalledWith('save_post_event_interests', { p_career_ids: [] }));
+  expect(await screen.findByText(/Esta etapa vuelve a quedar pendiente/)).toBeInTheDocument();
+  expect(screen.queryByRole('link', { name: /Responder encuesta/ })).not.toBeInTheDocument();
+  expect(screen.getByText(/No guardaremos una selección vacía/)).toBeInTheDocument();
+});
+
+test('un fallo de Supabase conserva el estado pendiente y nunca muestra éxito', async () => {
+  m.rpc.mockResolvedValue({ error: new Error('NETWORK') });
+  show();
+  fireEvent.click(await screen.findByRole('button', { name: 'Medicina' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Guardar mis intereses' }));
+  expect(await screen.findByRole('alert')).not.toHaveTextContent(/Guardamos|Retiramos/);
+  expect(screen.queryByRole('link', { name: /Responder encuesta/ })).not.toBeInTheDocument();
 });
 
 test('antes de habilitarse no presenta una selección ni permite guardar', async () => {
