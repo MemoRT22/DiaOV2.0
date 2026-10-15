@@ -4,7 +4,19 @@ import { handleRequest, unwrapQuery, upstreamTemporary, type Deps } from './hand
 const url = Deno.env.get('SUPABASE_URL');
 const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 const anonKey = Deno.env.get('SUPABASE_ANON_KEY');
-const authOptions = { auth: { persistSession: false, autoRefreshToken: false } };
+// Cada llamada a PostgREST/Auth tiene plazo propio: sin él, una llamada colgada retiene la función hasta que la plataforma la corta
+// (~150 s). Un fallo por plazo llega como status 0 / AuthRetryableFetchError y `upstreamTemporary` lo convierte en 503 con Retry-After.
+// PostgREST (consultas y RPC, milisegundos en operación normal): 8 s. Auth: 15 s. Crear/cambiar una cuenta cifra la contraseña y,
+// medido en el incidente, llegó a tardar hasta ~12 s con el servicio saturado; su puerta de enlace corta a ~11–16 s, así que un plazo
+// menor interrumpiría operaciones que sí habrían terminado (y dejaría la cuenta a medias). Auth ya no se consulta en `identify`.
+const POSTGREST_TIMEOUT_MS = 8_000;
+const AUTH_TIMEOUT_MS = 15_000;
+const timedFetch: typeof fetch = (input, init) => {
+  const target = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+  const limit = AbortSignal.timeout(target.includes('/auth/v1/') ? AUTH_TIMEOUT_MS : POSTGREST_TIMEOUT_MS);
+  return fetch(input, { ...init, signal: init?.signal ? AbortSignal.any([init.signal, limit]) : limit });
+};
+const authOptions = { auth: { persistSession: false, autoRefreshToken: false }, global: { fetch: timedFetch } };
 // service_role solo existe aquí, en el servidor. El navegador nunca la recibe.
 const admin = url && serviceKey ? createClient(url, serviceKey, authOptions) : null;
 

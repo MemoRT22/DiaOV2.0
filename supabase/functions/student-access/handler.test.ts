@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
-import { test } from 'node:test';
-import { handleRequest, TemporaryError, unwrapQuery, upstreamTemporary, type Deps, type ParticipantRow } from './handler.ts';
+import { mock, test } from 'node:test';
+import { CATALOG_STALE_MAX_MS, CATALOG_TTL_MS, handleRequest, READ_DEADLINE_MS, TemporaryError, WRITE_DEADLINE_MS, unwrapQuery, upstreamTemporary, type Deps, type ParticipantRow } from './handler.ts';
 
 const url = 'https://example.test/functions/v1/student-access';
 const post = (body: unknown) => new Request(url, {
@@ -227,23 +227,17 @@ test('logs never contain the password or the email', async () => {
   assert.ok(!all.includes(SECRET) && !all.includes('ana@example.com'));
 });
 
-test('identify aligns the Auth email when Staff corrected the participant email', async () => {
+test('identify does not call Auth Admin during concurrent access', async () => {
   const f = fixture({
     state: 'password_login',
     participant: { id: PID, auth_user_id: UID, password_configured_at: '2026-10-06T00:00:00Z' },
-    existing: { id: UID, email: 'correo.anterior@example.com', kind: 'participant' },
+    existing: { id: UID, email: 'ana@example.com', kind: 'participant' },
+    getUserThrows: new Error('Auth Admin is unavailable'),
   });
   const response = await handleRequest(post({ action: 'identify', email: 'ana@example.com' }), f.deps);
+  assert.equal(response.status, 200);
   assert.deepEqual(await response.json(), { state: 'password_login' });
-  assert.ok(f.calls.includes(`updateUser:${UID}:ana@example.com`));
-
-  const staff = fixture({
-    state: 'password_login',
-    participant: { id: PID, auth_user_id: UID, password_configured_at: '2026-10-06T00:00:00Z' },
-    existing: { id: UID, email: 'staff@anahuac.mx', kind: null },
-  });
-  await handleRequest(post({ action: 'identify', email: 'ana@example.com' }), staff.deps);
-  assert.ok(!staff.calls.some((call) => call.startsWith('updateUser')));
+  assert.ok(!f.calls.some((call) => call.startsWith('updateUser')));
 });
 
 test('birth date is ignored by the new actions', async () => {
@@ -660,4 +654,326 @@ test('unwrapQuery keeps the HTTP status of a PostgREST result: 429, 5xx and a lo
   assert.throws(failure(dataError, 403), (cause) => cause === dataError);
   assert.deepEqual(unwrapQuery({ data: [{ id: 'h1' }], error: null, status: 200 }), [{ id: 'h1' }]);
   assert.deepEqual(unwrapQuery({ data: null, error: null, status: 200 }), []);
+});
+
+
+// =====================================================================================================================
+// Hotfix de latencia (incidente 2026-10-15): plazos, Auth fuera de `identify`, escrituras que no se abandonan a medias
+// =====================================================================================================================
+
+const flush = () => new Promise<void>((resolve) => setImmediate(resolve));
+const identifyBody = { action: 'identify', email: 'ana@example.com' };
+
+test('identify concurrente: solo el RPC de estado; ninguna llamada a Auth Admin ni a otras consultas, ni siquiera en segundo plano', async () => {
+  const f = fixture({ state: 'password_login' });
+  const forbidden = (name: string) => async () => { throw new Error(`no debe llamarse: ${name}`); };
+  Object.assign(f.deps, {
+    getUser: forbidden('getUser'), findUserByEmail: forbidden('findUserByEmail'), participantByEmail: forbidden('participantByEmail'),
+    participantByAuthUser: forbidden('participantByAuthUser'), createUser: forbidden('createUser'), updateUser: forbidden('updateUser'),
+    deleteUser: forbidden('deleteUser'), verifyPassword: forbidden('verifyPassword'),
+  });
+  const responses = await Promise.all(Array.from({ length: 50 }, () => handleRequest(post(identifyBody), f.deps)));
+  await flush();
+  assert.ok(responses.every((response) => response.status === 200));
+  assert.deepEqual(await responses[0].json(), { state: 'password_login' });
+  assert.equal(f.calls.length, 50);
+  assert.ok(f.calls.every((call) => call === 'rpc:participant_access_state_internal'));
+});
+
+test('a dependency that never answers becomes a 503 with Retry-After at the read deadline, not minutes later', async () => {
+  mock.timers.enable({ apis: ['setTimeout'] });
+  try {
+    const f = fixture({ state: 'password_login' });
+    f.deps.rpc = () => new Promise(() => undefined);
+    const pending = handleRequest(post(identifyBody), f.deps);
+    await flush();
+    mock.timers.tick(READ_DEADLINE_MS - 1);
+    let settled = false;
+    void pending.then(() => { settled = true; });
+    await flush();
+    assert.equal(settled, false);
+    mock.timers.tick(2);
+    const response = await pending;
+    assert.equal(response.status, 503);
+    assert.ok(Number(response.headers.get('Retry-After')) >= 5);
+    assert.deepEqual(Object.keys(await response.json()).sort(), ['error', 'retry_after']);
+    assert.ok(f.logs.includes('temporary_failure:503'));
+  } finally {
+    mock.timers.reset();
+  }
+});
+
+test('catalog: served from memory for a minute; if the database degrades, the last good list is served only while it is recent', async () => {
+  const f = fixture();
+  let queries = 0;
+  const careers = f.deps.careers;
+  f.deps.careers = async () => { queries += 1; return careers(); };
+  let clock = 5_000;
+  f.deps.now = () => clock;
+  const first = await (await handleRequest(post({ action: 'catalog' }), f.deps)).json();
+  await handleRequest(post({ action: 'catalog' }), f.deps);
+  assert.equal(queries, 1);
+  clock += CATALOG_TTL_MS + 1;
+  f.deps.careers = async () => { throw new TemporaryError(503); };
+  const stale = await handleRequest(post({ action: 'catalog' }), f.deps);
+  assert.equal(stale.status, 200);
+  assert.deepEqual(await stale.json(), first);
+  assert.ok(f.logs.includes('catalog_served_stale:'));
+  clock += CATALOG_STALE_MAX_MS; // una lista demasiado vieja ya no se sirve: mejor un 503 reintentable
+  assert.equal((await handleRequest(post({ action: 'catalog' }), f.deps)).status, 503);
+});
+
+test('catalog: a change made by Staff is visible within a minute (a fresh read once the memory expires)', async () => {
+  const f = fixture();
+  let clock = 1;
+  f.deps.now = () => clock;
+  await handleRequest(post({ action: 'catalog' }), f.deps);
+  f.deps.careers = async () => [{ id: 'c2', name: 'Medicina', division: 'Ciencias de la Salud' }];
+  clock += CATALOG_TTL_MS + 1;
+  const body = await (await handleRequest(post({ action: 'catalog' }), f.deps)).json() as { careers: { id: string }[] };
+  assert.deepEqual(body.careers.map((career) => career.id), ['c2']);
+});
+
+test('without any good catalog yet, a degraded database is still a retryable 503 (unchanged)', async () => {
+  const f = fixture();
+  f.deps.careers = async () => { throw new TemporaryError(503); };
+  assert.equal((await handleRequest(post({ action: 'catalog' }), f.deps)).status, 503);
+});
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Mundo con estado (Auth + participantes) para probar convergencia: creación, recuperación y concurrencia
+// ---------------------------------------------------------------------------------------------------------------------
+type AuthAccount = { id: string; email: string; password: string; kind: string };
+type Person = { id: string; email: string; auth_user_id: string | null; password_configured_at: string | null; origin: string };
+function world(seed: { people?: Person[]; accounts?: AuthAccount[] } = {}) {
+  const accounts = new Map<string, AuthAccount>((seed.accounts ?? []).map((a) => [a.id, a]));
+  const people = new Map<string, Person>((seed.people ?? []).map((p) => [p.id, p]));
+  const calls: string[] = [];
+  const hooks: { afterCreate?: () => void; beforeLink?: () => Promise<unknown>; createGate?: Promise<unknown> } = {};
+  let counter = 0;
+  const byEmail = (email: string) => [...accounts.values()].find((a) => a.email === email) ?? null;
+  const info = (a: AuthAccount | null) => (a ? { id: a.id, email: a.email, kind: a.kind } : null);
+  const deps: Deps = {
+    rpc: async (name, args) => {
+      calls.push(`rpc:${name}`);
+      if (name === 'participant_link_auth_internal') {
+        if (hooks.beforeLink) await hooks.beforeLink();
+        const person = people.get(String(args.p_participant));
+        if (!person) return { data: null, error: { message: 'NOT_FOUND' } };
+        person.auth_user_id = String(args.p_auth_user);
+        person.password_configured_at ??= 'now';
+        return { data: null, error: null };
+      }
+      if (name === 'register_self_service_internal') {
+        const email = String((args.p as { email: string }).email);
+        if ([...people.values()].some((p) => p.email === email)) return { data: null, error: { message: 'EMAIL_EXISTS' } };
+        counter += 1;
+        const id = `p-${counter}`;
+        people.set(id, { id, email, auth_user_id: null, password_configured_at: null, origin: 'self_service' });
+        return { data: id, error: null };
+      }
+      if (name === 'discard_self_service_registration_internal') {
+        const person = people.get(String(args.p_participant));
+        const gone = !!person && person.origin === 'self_service' && !person.password_configured_at && !person.auth_user_id;
+        if (gone) people.delete(person!.id);
+        return { data: gone, error: null };
+      }
+      return { data: null, error: null };
+    },
+    participantByEmail: async (email) => { const p = [...people.values()].find((x) => x.email === email); return p ? { ...p } : null; },
+    careers: async () => [], highSchools: async () => [],
+    getUser: async (id) => info(accounts.get(id) ?? null),
+    findUserByEmail: async (email) => { calls.push('findUserByEmail'); await flush(); return info(byEmail(email)); },
+    participantByAuthUser: async (id) => { const p = [...people.values()].find((x) => x.auth_user_id === id); return p ? { id: p.id } : null; },
+    createUser: async (email, password) => {
+      calls.push('createUser');
+      if (hooks.createGate) await hooks.createGate;
+      await flush();
+      if (byEmail(email)) return { code: 'EMAIL_TAKEN' };
+      counter += 1;
+      const account = { id: `u-${counter}`, email, password, kind: 'participant' };
+      accounts.set(account.id, account);
+      hooks.afterCreate?.();
+      return { id: account.id };
+    },
+    updateUser: async (id, email, password) => { calls.push('updateUser'); const a = accounts.get(id)!; a.email = email; if (password) a.password = password; return { ok: true }; },
+    deleteUser: async (id) => { calls.push('deleteUser'); accounts.delete(id); },
+    verifyPassword: async (email, password) => { calls.push('verifyPassword'); await flush(); return byEmail(email)?.password === password ? 'valid' : 'invalid'; },
+    log: () => undefined,
+  };
+  return { deps, accounts, people, calls, hooks };
+}
+const PRE: Person = { id: 'pre-1', email: 'ana@example.com', auth_user_id: null, password_configured_at: null, origin: 'forms' };
+const setupBody = (password = SECRET) => ({ action: 'setup_password', email: 'ana@example.com', password });
+
+test('prerregistrada que crea su contraseña: una sola cuenta, vinculada, sin borrar nada', async () => {
+  const w = world({ people: [{ ...PRE }] });
+  const response = await handleRequest(post(setupBody()), w.deps);
+  assert.equal(response.status, 200);
+  assert.equal(w.accounts.size, 1);
+  assert.equal(w.people.get('pre-1')!.auth_user_id, [...w.accounts.keys()][0]);
+  assert.ok(w.people.get('pre-1')!.password_configured_at);
+  assert.ok(!w.calls.includes('deleteUser'));
+});
+
+test('autorregistro: crea participante y cuenta, vinculados; un segundo envío no duplica nada', async () => {
+  const w = world();
+  assert.equal((await handleRequest(post(registerBody()), w.deps)).status, 200);
+  assert.equal(w.accounts.size, 1);
+  assert.equal(w.people.size, 1);
+  const [person] = [...w.people.values()];
+  assert.equal(person.auth_user_id, [...w.accounts.keys()][0]);
+  const again = await handleRequest(post(registerBody()), w.deps);
+  assert.equal(again.status, 409); // ya configurado: se informa, no se duplica
+  assert.equal(w.accounts.size, 1);
+  assert.equal(w.people.size, 1);
+});
+
+test('red perdida DESPUÉS de crear la cuenta: no se borra nada y el reintento la recupera con la misma contraseña', async () => {
+  const w = world({ people: [{ ...PRE }] });
+  w.hooks.beforeLink = async () => { throw new TemporaryError(503); }; // la cuenta ya existe, pero el vínculo se perdió
+  const lost = await handleRequest(post(setupBody()), w.deps);
+  assert.equal(lost.status, 503);
+  assert.equal(w.accounts.size, 1);
+  assert.equal(w.people.get('pre-1')!.auth_user_id, null);
+  assert.ok(!w.calls.includes('deleteUser'), 'un resultado incierto nunca borra una cuenta legítima');
+
+  w.hooks.beforeLink = undefined;
+  const retry = await handleRequest(post(setupBody()), w.deps);
+  assert.equal(retry.status, 200);
+  assert.equal(w.accounts.size, 1, 'se adopta la cuenta que quedó a medias, no se crea otra');
+  assert.equal(w.people.get('pre-1')!.auth_user_id, [...w.accounts.keys()][0]);
+  assert.ok(w.calls.includes('verifyPassword'), 'la comprobación de propiedad se conserva');
+});
+
+test('recuperación con OTRA contraseña: no se toca la cuenta existente (ACCOUNT_RECOVERY_REQUIRED) y sigue siendo una sola', async () => {
+  const w = world({ people: [{ ...PRE }] });
+  w.hooks.beforeLink = async () => { throw new TemporaryError(503); };
+  await handleRequest(post(setupBody()), w.deps);
+  w.hooks.beforeLink = undefined;
+  const other = await handleRequest(post(setupBody('Otra-contraseña-77')), w.deps);
+  assert.equal(other.status, 409);
+  assert.deepEqual(await other.json(), { error: 'ACCOUNT_RECOVERY_REQUIRED' });
+  assert.equal(w.accounts.size, 1);
+  assert.equal([...w.accounts.values()][0].password, SECRET);
+  assert.equal(w.people.get('pre-1')!.auth_user_id, null);
+  assert.ok(!w.calls.includes('updateUser') && !w.calls.includes('deleteUser'));
+});
+
+test('dos intentos SIMULTÁNEOS del mismo correo y contraseña convergen en una sola cuenta vinculada, sin borrar nada', async () => {
+  const w = world({ people: [{ ...PRE }] });
+  const [a, b] = await Promise.all([handleRequest(post(setupBody()), w.deps), handleRequest(post(setupBody()), w.deps)]);
+  assert.deepEqual([a.status, b.status], [200, 200]);
+  assert.equal(w.accounts.size, 1);
+  assert.equal(w.people.get('pre-1')!.auth_user_id, [...w.accounts.keys()][0]);
+  assert.ok(!w.calls.includes('deleteUser'));
+});
+
+test('dos autorregistros SIMULTÁNEOS del mismo correo: un participante, una cuenta, vinculados', async () => {
+  const w = world();
+  const results = await Promise.all([handleRequest(post(registerBody()), w.deps), handleRequest(post(registerBody()), w.deps)]);
+  assert.ok(results.every((response) => response.status === 200 || response.status === 409));
+  assert.equal(w.accounts.size, 1);
+  assert.equal(w.people.size, 1);
+  assert.equal([...w.people.values()][0].auth_user_id, [...w.accounts.keys()][0]);
+  assert.ok(!w.calls.includes('deleteUser'));
+});
+
+test('dos intentos simultáneos con contraseñas DISTINTAS: gana uno, el otro no cambia ni roba la cuenta', async () => {
+  const w = world({ people: [{ ...PRE }] });
+  const [a, b] = await Promise.all([handleRequest(post(setupBody('Primera-clave-11')), w.deps), handleRequest(post(setupBody('Segunda-clave-22')), w.deps)]);
+  assert.deepEqual([a.status, b.status].sort(), [200, 409]);
+  assert.equal(w.accounts.size, 1);
+  assert.ok(!w.calls.includes('updateUser') && !w.calls.includes('deleteUser'));
+});
+
+test('timeout durante una escritura: 503 a tiempo, resultado incierto y NINGÚN paso nuevo después del plazo; el reintento converge', async () => {
+  mock.timers.enable({ apis: ['setTimeout'] });
+  try {
+    // La cuenta ya existía de un intento anterior (se perdió la respuesta): crear devuelve «correo ya tiene cuenta» y tarda.
+    const w = world({ people: [{ ...PRE }], accounts: [{ id: 'u-0', email: 'ana@example.com', password: SECRET, kind: 'participant' }] });
+    let releaseCreate!: () => void;
+    w.hooks.createGate = new Promise<void>((resolve) => { releaseCreate = resolve; });
+    const pending = handleRequest(post(setupBody()), w.deps);
+    await flush();
+    mock.timers.tick(WRITE_DEADLINE_MS + 1);
+    const response = await pending;
+    assert.equal(response.status, 503);
+    assert.ok(Number(response.headers.get('Retry-After')) >= 5);
+
+    // La llamada que seguía en vuelo termina DESPUÉS del plazo: el flujo tardío no inicia pasos nuevos (ni buscar, ni probar la
+    // contraseña, ni cambiar o borrar cuentas) y la persona queda en un estado incierto pero intacto.
+    releaseCreate();
+    await flush(); await flush(); await flush();
+    assert.deepEqual(w.calls, ['createUser']);
+    assert.equal(w.accounts.size, 1);
+    assert.equal(w.people.get('pre-1')!.auth_user_id, null);
+
+    // Reintento con la misma contraseña: adopta la cuenta existente demostrando que la conoce; una sola cuenta, vinculada.
+    w.hooks.createGate = undefined;
+    const retry = await handleRequest(post(setupBody()), w.deps);
+    assert.equal(retry.status, 200);
+    assert.equal(w.accounts.size, 1);
+    assert.equal(w.people.get('pre-1')!.auth_user_id, 'u-0');
+    assert.ok(w.calls.includes('verifyPassword'));
+    assert.ok(!w.calls.includes('deleteUser') && !w.calls.includes('updateUser'));
+  } finally {
+    mock.timers.reset();
+  }
+});
+
+test('timeout tras CREAR la cuenta: el vínculo (idempotente) sí puede completarse, y el reintento encuentra «ya configurada»', async () => {
+  mock.timers.enable({ apis: ['setTimeout'] });
+  try {
+    const w = world({ people: [{ ...PRE }] });
+    let releaseCreate!: () => void;
+    w.hooks.createGate = new Promise<void>((resolve) => { releaseCreate = resolve; });
+    const pending = handleRequest(post(setupBody()), w.deps);
+    await flush();
+    mock.timers.tick(WRITE_DEADLINE_MS + 1);
+    assert.equal((await pending).status, 503);
+    releaseCreate();
+    await flush(); await flush(); await flush();
+    assert.equal(w.accounts.size, 1);
+    assert.equal(w.people.get('pre-1')!.auth_user_id, [...w.accounts.keys()][0]); // la cuenta no queda huérfana
+    const retry = await handleRequest(post(setupBody()), w.deps);
+    assert.equal(retry.status, 409);
+    assert.deepEqual(await retry.json(), { error: 'ACCESS_ALREADY_CONFIGURED' }); // el navegador entra con la contraseña escrita
+    assert.equal(w.accounts.size, 1);
+  } finally {
+    mock.timers.reset();
+  }
+});
+
+test('timeout en un registro nuevo: si lo tardío falla de forma definitiva NO se deshace el registro ni se borra la cuenta', async () => {
+  mock.timers.enable({ apis: ['setTimeout'] });
+  try {
+    const w = world();
+    let releaseLink!: () => void;
+    const gate = new Promise<void>((resolve) => { releaseLink = resolve; });
+    w.hooks.beforeLink = async () => { await gate; throw new Error('fallo definitivo tardío'); };
+    const pending = handleRequest(post(registerBody()), w.deps);
+    await flush(); await flush(); await flush();
+    mock.timers.tick(WRITE_DEADLINE_MS + 1);
+    assert.equal((await pending).status, 503);
+    releaseLink();
+    await flush(); await flush(); await flush();
+    assert.equal(w.people.size, 1, 'el registro guardado se conserva');
+    assert.equal(w.accounts.size, 1, 'la cuenta creada se conserva');
+    assert.ok(!w.calls.includes('deleteUser'));
+    assert.ok(!w.calls.includes('rpc:discard_self_service_registration_internal'));
+    // El reintento (misma contraseña) lo completa sin duplicar.
+    w.hooks.beforeLink = undefined;
+    const retry = await handleRequest(post(registerBody()), w.deps);
+    assert.equal(retry.status, 200);
+    assert.equal(w.people.size, 1);
+    assert.equal(w.accounts.size, 1);
+    assert.equal([...w.people.values()][0].auth_user_id, [...w.accounts.keys()][0]);
+  } finally {
+    mock.timers.reset();
+  }
+});
+
+test('reads have a shorter deadline than writes, and writes stay below the browser timeout', () => {
+  assert.ok(READ_DEADLINE_MS < WRITE_DEADLINE_MS && WRITE_DEADLINE_MS < 25_000);
 });

@@ -27,6 +27,34 @@ export type Deps = {
    */
   verifyPassword: (email: string, password: string) => Promise<'valid' | 'invalid'>;
   log: (event: string, code?: string) => void;
+  /** Reloj inyectable para las pruebas. */
+  now?: () => number;
+};
+
+/**
+ * Plazos del servidor. Cuando Auth o la base se degradan, una llamada sin plazo se queda esperando hasta que la plataforma corta la
+ * función (≈150 s) y mientras tanto el navegador ya se rindió y reintentó: la carga se multiplica. Con plazo, el servidor responde un
+ * 503 con `Retry-After` a tiempo y libera su lugar. Lectura (identify/catalog): el navegador espera 12 s; escritura: 25 s.
+ *
+ * Una ESCRITURA (crear contraseña, registrarse) no se puede «abandonar» sin más: al vencer el plazo el servidor responde 503, pero lo
+ * que ya estaba en vuelo termina solo. Por eso, al vencer, la petición se marca como cancelada (`guarded`): no se inicia ningún paso
+ * nuevo (ni buscar, ni crear, ni cambiar, ni borrar cuentas, ni deshacer un registro). Lo único que sí puede completarse es el vínculo
+ * participante↔cuenta (idempotente y nunca destructivo). El resultado queda INCIERTO, que es un estado ya previsto y recuperable:
+ * el reintento con la misma contraseña adopta la cuenta que quedó a medias demostrando que la conoce (`adoptInterruptedIdentity`).
+ */
+export const READ_DEADLINE_MS = 9_000;
+export const WRITE_DEADLINE_MS = 20_000;
+/** El catálogo (licenciaturas y escuelas) se sirve de memoria este tiempo. */
+export const CATALOG_TTL_MS = 60_000;
+/** Si la base falla, se sirve la última lista buena, pero no una más vieja que esto (el servidor igualmente valida cada elección). */
+export const CATALOG_STALE_MAX_MS = 10 * 60_000;
+
+type AccessCache = { catalog?: { at: number; value: { careers: CareerRow[]; high_schools: HighSchoolRow[] } } };
+const caches = new WeakMap<Deps, AccessCache>();
+const cacheOf = (deps: Deps): AccessCache => {
+  let cache = caches.get(deps);
+  if (!cache) caches.set(deps, (cache = {}));
+  return cache;
 };
 
 /**
@@ -208,19 +236,13 @@ async function identify(deps: Deps, body: Record<string, unknown>) {
     if (temp) throw temp;
     return fail(rpcErrorCode(state.error));
   }
-  // Si Staff corrigió el correo del participante, la identidad de Auth sigue con el correo anterior: se alinea antes de
-  // que el navegador intente iniciar sesión. Es un ajuste silencioso; un fallo no impide continuar.
-  if (state.data === 'password_login') await syncAuthEmail(deps, email).catch(() => deps.log('email_sync_failed'));
+  // Hotfix: identificar el paso de acceso SOLO requiere la lectura de Postgres.
+  // Consultar Auth Admin en cada intento multiplicaba las dependencias bajo alta carga
+  // y podía retener este request hasta agotar su timeout. La creación y recuperación
+  // de cuentas mantienen sus comprobaciones de propiedad en rutas separadas.
+  // Una corrección excepcional de correo debe sincronizarse de forma administrativa,
+  // no durante el ingreso concurrente de estudiantes.
   return json({ state: state.data });
-}
-
-async function syncAuthEmail(deps: Deps, email: string) {
-  const participant = await deps.participantByEmail(email);
-  if (!participant?.auth_user_id) return;
-  const user = await deps.getUser(participant.auth_user_id);
-  if (user && isParticipantIdentity(user) && (user.email ?? '').toLowerCase() !== email) {
-    await deps.updateUser(user.id, email);
-  }
 }
 
 async function setupPassword(deps: Deps, body: Record<string, unknown>) {
@@ -290,12 +312,60 @@ async function register(deps: Deps, body: Record<string, unknown>) {
 }
 
 async function catalog(deps: Deps) {
+  const cache = cacheOf(deps);
+  const now = (deps.now ?? Date.now)();
+  if (cache.catalog && now - cache.catalog.at <= CATALOG_TTL_MS) return json(cache.catalog.value);
   const [careers, high_schools] = await Promise.allSettled([deps.careers(), deps.highSchools()]);
-  if (careers.status === 'fulfilled' && high_schools.status === 'fulfilled') return json({ careers: careers.value, high_schools: high_schools.value });
+  if (careers.status === 'fulfilled' && high_schools.status === 'fulfilled') {
+    cache.catalog = { at: now, value: { careers: careers.value, high_schools: high_schools.value } };
+    return json(cache.catalog.value);
+  }
+  // Una degradación no deja a la persona sin formulario: se sirve la última lista buena y reciente. Registrarse valida de nuevo la
+  // licenciatura y la escuela en la base (INVALID_CAREER / INVALID_HIGH_SCHOOL), así que una opción desactivada hace un momento nunca se cuela.
+  if (cache.catalog && now - cache.catalog.at <= CATALOG_STALE_MAX_MS) {
+    deps.log('catalog_served_stale');
+    return json(cache.catalog.value);
+  }
   // Si una consulta falló por un límite o una caída y la otra por otra cosa, manda lo temporal: es lo que el navegador sabe reintentar.
   const failures = [careers, high_schools].flatMap((result) => (result.status === 'rejected' ? [result.reason] : []));
   throw failures.find((failure) => asTemporary(failure)) ?? failures[0];
 }
+
+/**
+ * Rechaza con un error temporal (503 + Retry-After) si `task` no termina a tiempo. La tarea no se interrumpe por la fuerza: `onLate`
+ * avisa que venció el plazo para que deje de iniciar pasos nuevos.
+ */
+function withDeadline<T>(task: Promise<T>, ms: number, onLate?: () => void): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>;
+  const late = new Promise<never>((_, reject) => { timer = setTimeout(() => { onLate?.(); reject(new TemporaryError(503)); }, ms); });
+  task.catch(() => undefined); // si pierde la carrera, su error tardío no queda sin atender
+  return Promise.race([task, late]).finally(() => clearTimeout(timer));
+}
+
+/**
+ * Las dependencias de UNA escritura: vencido el plazo, cada paso nuevo falla como temporal en lugar de ejecutarse. Solo el vínculo
+ * participante↔cuenta sigue permitido: es idempotente y, si la cuenta ya se creó, completarlo es exactamente lo que haría el reintento.
+ */
+function guarded(deps: Deps, ctx: { cancelled: boolean }): Deps {
+  const stop = () => { if (ctx.cancelled) throw new TemporaryError(503); };
+  return {
+    ...deps,
+    rpc: async (name, args) => { if (name !== 'participant_link_auth_internal') stop(); return deps.rpc(name, args); },
+    participantByEmail: async (email) => { stop(); return deps.participantByEmail(email); },
+    getUser: async (id) => { stop(); return deps.getUser(id); },
+    findUserByEmail: async (email) => { stop(); return deps.findUserByEmail(email); },
+    participantByAuthUser: async (id) => { stop(); return deps.participantByAuthUser(id); },
+    createUser: async (email, password) => { stop(); return deps.createUser(email, password); },
+    updateUser: async (id, email, password) => { stop(); return deps.updateUser(id, email, password); },
+    deleteUser: async (id) => { stop(); return deps.deleteUser(id); },
+    verifyPassword: async (email, password) => { stop(); return deps.verifyPassword(email, password); },
+  };
+}
+
+const write = (deps: Deps, task: (guard: Deps) => Promise<Response>) => {
+  const ctx = { cancelled: false };
+  return withDeadline(task(guarded(deps, ctx)), WRITE_DEADLINE_MS, () => { ctx.cancelled = true; });
+};
 
 export async function handleRequest(req: Request, deps: Deps): Promise<Response> {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers });
@@ -304,10 +374,10 @@ export async function handleRequest(req: Request, deps: Deps): Promise<Response>
   if (!body || typeof body !== 'object' || Array.isArray(body)) return fail('INVALID_INPUT');
   const input = body as Record<string, unknown>;
   try {
-    if (input.action === 'identify') return await identify(deps, input);
-    if (input.action === 'catalog') return await catalog(deps);
-    if (input.action === 'setup_password') return await setupPassword(deps, input);
-    if (input.action === 'register') return await register(deps, input);
+    if (input.action === 'identify') return await withDeadline(identify(deps, input), READ_DEADLINE_MS);
+    if (input.action === 'catalog') return await withDeadline(catalog(deps), READ_DEADLINE_MS);
+    if (input.action === 'setup_password') return await write(deps, (guard) => setupPassword(guard, input));
+    if (input.action === 'register') return await write(deps, (guard) => register(guard, input));
     return fail('INVALID_INPUT');
   } catch (error) {
     const temp = asTemporary(error);

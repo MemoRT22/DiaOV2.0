@@ -10,6 +10,8 @@ export function defaultWait(code: TemporaryCode, retryAfterSeconds?: number, ran
   if (retryAfterSeconds !== undefined) return retryAfterSeconds;
   if (code === 'RATE_LIMITED') return 8 + Math.floor(random() * 8);
   if (code === 'TEMPORARILY_UNAVAILABLE') return 5 + Math.floor(random() * 6);
+  // Un tiempo agotado es señal de saturación: una breve espera (con variación) evita que cientos de teléfonos reintenten a la vez.
+  if (code === 'TIMEOUT') return 4 + Math.floor(random() * 5);
   return 0;
 }
 

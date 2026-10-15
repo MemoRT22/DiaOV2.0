@@ -1,4 +1,5 @@
 import { AccessError, parseRetryAfter } from './accessErrors';
+import { abortable } from './fetchWithTimeout';
 import { retryTransient } from './retry';
 import { functionsUrl, supabaseAnonKey } from './supabase';
 
@@ -21,23 +22,34 @@ export type SelfRegistration = {
   consent_accepted: boolean;
 };
 
-/** La Edge Function responde rápido; si no lo hace en este tiempo se trata como tiempo agotado (el resultado queda incierto). */
-export const ACCESS_TIMEOUT_MS = 30_000;
+/**
+ * La Edge Function responde en menos de 2 s en operación normal. Las lecturas (identificar, catálogo) esperan poco: el servidor
+ * ya responde un 503 con «vuelve a intentar» a los 9 s, así que pasados 12 s algo no responde y la persona debe verlo, no seguir
+ * mirando un spinner. Crear una cuenta puede tardar más (cifrado de la contraseña) y su resultado queda incierto si se agota.
+ */
+export const ACCESS_READ_TIMEOUT_MS = 12_000;
+export const ACCESS_TIMEOUT_MS = 25_000;
 type CallOptions = { signal?: AbortSignal };
 /** Estados de negocio que el servidor emite con 5xx y que NO son una falla de infraestructura. */
 const DEFINITIVE_5XX = ['NO_ACTIVE_EDITION'];
 
-async function call<T>(body: Record<string, unknown>, options: CallOptions = {}): Promise<T> {
+async function call<T>(body: Record<string, unknown>, options: CallOptions = {}, timeoutMs: number = ACCESS_TIMEOUT_MS): Promise<T> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), ACCESS_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   options.signal?.addEventListener('abort', () => controller.abort(), { once: true });
   let response: Response;
+  let result: { error?: unknown; retry_after?: unknown } | null;
   try {
     response = await fetch(`${functionsUrl}/student-access`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${supabaseAnonKey}`, apikey: supabaseAnonKey, 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
       signal: controller.signal,
+    });
+    // El plazo cubre también la lectura del cuerpo: cabeceras a tiempo con el cuerpo detenido no deja un spinner indefinido.
+    result = await abortable(response.json(), controller.signal).catch((cause) => {
+      if (controller.signal.aborted) throw cause;
+      return null; // cuerpo ilegible (no JSON): se trata como respuesta sin datos
     });
   } catch (cause) {
     // Abandonó la pantalla: no es un error. Si fue nuestro propio plazo, el resultado es incierto.
@@ -46,8 +58,7 @@ async function call<T>(body: Record<string, unknown>, options: CallOptions = {})
   } finally {
     clearTimeout(timer);
   }
-  const result = await response.json().catch(() => null);
-  const retryAfter = () => parseRetryAfter(response.headers?.get?.('Retry-After')) ?? parseRetryAfter(result?.retry_after);
+  const retryAfter = () => parseRetryAfter(response.headers?.get?.('Retry-After')) ?? parseRetryAfter(result?.retry_after as string | number | undefined);
   if (!response.ok || !result || typeof result !== 'object') {
     const code = typeof result?.error === 'string' ? result.error : null;
     // El estado HTTP manda: un 429/5xx nunca se convierte en un error de datos ni de contraseña, tenga o no cuerpo.
@@ -66,14 +77,14 @@ async function call<T>(body: Record<string, unknown>, options: CallOptions = {})
 }
 
 export const studentAccess = {
-  /** Solo lectura: se reintenta sola, con espera progresiva, ante un límite o una caída pasajera. */
+  /** Solo lectura: un único reintento automático y solo ante un tropiezo rápido; si el servicio está saturado se avisa, no se insiste. */
   async identify(email: string, options: CallOptions = {}): Promise<AccessState> {
-    const { state } = await retryTransient(() => call<{ state: AccessState }>({ action: 'identify', email: email.trim().toLowerCase() }, options), { signal: options.signal });
+    const { state } = await retryTransient(() => call<{ state: AccessState }>({ action: 'identify', email: email.trim().toLowerCase() }, options, ACCESS_READ_TIMEOUT_MS), { signal: options.signal });
     if (state !== 'password_login' && state !== 'password_setup' && state !== 'self_registration') throw new AccessError('TEMPORARILY_UNAVAILABLE'); // respuesta ilegible: no es un dato de la persona
     return state;
   },
   async catalog(options: CallOptions = {}): Promise<AccessCatalog> {
-    const result = await retryTransient(() => call<AccessCatalog>({ action: 'catalog' }, options), { signal: options.signal });
+    const result = await retryTransient(() => call<AccessCatalog>({ action: 'catalog' }, options, ACCESS_READ_TIMEOUT_MS), { signal: options.signal });
     return { careers: Array.isArray(result.careers) ? result.careers : [], high_schools: Array.isArray(result.high_schools) ? result.high_schools : [] };
   },
   /**
