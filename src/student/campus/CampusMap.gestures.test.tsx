@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import CampusMap from './CampusMap';
 import { CAMPUS_ZONES } from './campusZones';
+import { screenToMap } from './mapView';
 
 const zone = CAMPUS_ZONES.find((z) => z.shapes.length > 0)!;
 const FRAME = { left: 0, top: 0, width: 420, height: 584, right: 420, bottom: 584, x: 0, y: 0, toJSON: () => ({}) };
@@ -18,6 +19,10 @@ const building = () => screen.getAllByRole('button', { name: zone.name })[0];
 const svg = () => document.querySelector('svg.campus-map') as SVGSVGElement;
 const plan = () => (document.querySelector('.campus-plan') as SVGGElement).style.transform;
 const scaleOf = () => Number(/scale\(([\d.]+)\)/.exec(plan())?.[1]);
+const viewOf = () => {
+  const match = /translate\(([-\d.]+)px, ([-\d.]+)px\) scale\(([\d.]+)\)/.exec(plan())!;
+  return { tx: Number(match[1]), ty: Number(match[2]), s: Number(match[3]) };
+};
 const touch = (type: 'pointerdown' | 'pointermove' | 'pointerup', id: number, x: number, y: number) => {
   const event = new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y, button: 0 });
   Object.defineProperty(event, 'pointerId', { value: id });
@@ -58,6 +63,21 @@ describe('the plan handles its own pinch and drag', () => {
     touch('pointermove', 1, 200, 300);
     touch('pointermove', 2, 210, 300);
     expect(scaleOf()).toBeLessThanOrEqual(4);
+  });
+
+  test('moving both fingers during a pinch pans and zooms as one coordinated gesture', () => {
+    render(<CampusMap selected={null} onSelect={() => undefined} />);
+    touch('pointerdown', 1, 150, 260);
+    touch('pointerdown', 2, 270, 260); // centre (210, 260), distance 120
+    touch('pointermove', 1, 200, 290);
+    touch('pointermove', 2, 440, 290); // centre (320, 290), distance 240: 2× plus a joint translation
+    const moved = viewOf();
+    expect(moved.s).toBeCloseTo(2, 5);
+    const start = screenToMap(210, 260, FRAME);
+    const current = screenToMap(320, 290, FRAME);
+    // The map point initially under the centroid follows the centroid while the distance doubles.
+    expect(moved.s * start.x + moved.tx).toBeCloseTo(current.x, 5);
+    expect(moved.s * start.y + moved.ty).toBeCloseTo(current.y, 5);
   });
 
   test('a drag moves a zoomed plan, and ending the drag is NOT a tap on the building under the finger', () => {

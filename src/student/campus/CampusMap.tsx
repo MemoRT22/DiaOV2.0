@@ -1,7 +1,7 @@
 import { Minus, Plus, RotateCcw } from 'lucide-react';
 import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { CAMPUS_ZONES, footprintOf, MAP_VIEWBOX as VB, SCENERY, ZONE_BY_ID, type CampusZone, type CampusZoneId, type Shape } from './campusZones';
-import { clamp, IDENTITY, isZoomed, MAX_ZOOM, panView, sameView, screenToMap, twoFingers, zoomAbout, ZOOM_STEP, type MapView } from './mapView';
+import { clamp, IDENTITY, isZoomed, MAX_ZOOM, panView, pinchView, sameView, screenToMap, twoFingers, zoomAbout, ZOOM_STEP, type MapView } from './mapView';
 
 export type MapMarker = {
   zoneId: CampusZoneId;
@@ -85,7 +85,7 @@ export default function CampusMap({
   const { s, tx, ty } = view;
   const svgRef = useRef<SVGSVGElement>(null);
   const pointers = useRef(new Map<number, { x: number; y: number }>());
-  const pinchStart = useRef<{ distance: number; view: MapView } | null>(null);
+  const pinchStart = useRef<{ distance: number; centre: { x: number; y: number }; view: MapView } | null>(null);
   const dragged = useRef(0);
   const swallowClick = useRef(false);
 
@@ -100,7 +100,10 @@ export default function CampusMap({
     dragged.current = 0;
     if (pointers.current.size === 2) {
       const [a, b] = [...pointers.current.values()];
-      pinchStart.current = { distance: twoFingers(a, b).distance || 1, view };
+      const fingers = twoFingers(a, b);
+      const box = rect();
+      const centre = screenToMap(fingers.cx, fingers.cy, box);
+      pinchStart.current = { distance: fingers.distance || 1, centre, view };
       setGesturing(true);
       for (const id of pointers.current.keys()) capture(e.currentTarget, id);
     }
@@ -117,9 +120,14 @@ export default function CampusMap({
     if (pointers.current.size >= 2 && pinchStart.current) {
       const [a, b] = [...pointers.current.values()];
       const { cx, cy, distance } = twoFingers(a, b);
-      const f = screenToMap(cx, cy, box);
+      const current = screenToMap(cx, cy, box);
       dragged.current = 99;
-      setView(zoomAbout(pinchStart.current.view, pinchStart.current.view.s * (distance / pinchStart.current.distance), f.x, f.y));
+      setView(pinchView(
+        pinchStart.current.view,
+        pinchStart.current.view.s * (distance / pinchStart.current.distance),
+        pinchStart.current.centre,
+        current,
+      ));
       return;
     }
     dragged.current += Math.hypot(now.x - last.x, now.y - last.y);

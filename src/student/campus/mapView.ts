@@ -35,6 +35,20 @@ export function panView(view: MapView, dx: number, dy: number): MapView {
   return clampView({ ...view, tx: view.tx + dx, ty: view.ty + dy });
 }
 
+/**
+ * Zoom + desplazamiento de un pellizco. El punto del plano que estaba bajo `start` queda bajo `current`: si los dos dedos se mueven
+ * juntos mientras cambia su separación, el mapa acompaña ambos movimientos como una sola transformación continua.
+ */
+export function pinchView(view: MapView, s: number, start: { x: number; y: number }, current: { x: number; y: number }): MapView {
+  const next = clamp(s, 1, MAX_ZOOM);
+  const k = next / view.s;
+  return clampView({
+    s: next,
+    tx: current.x - (start.x - view.tx) * k,
+    ty: current.y - (start.y - view.ty) * k,
+  });
+}
+
 export const isZoomed = (view: MapView) => view.s > 1.001;
 export const sameView = (a: MapView, b: MapView) => Math.abs(a.s - b.s) < 1e-3 && Math.abs(a.tx - b.tx) < 0.5 && Math.abs(a.ty - b.ty) < 0.5;
 

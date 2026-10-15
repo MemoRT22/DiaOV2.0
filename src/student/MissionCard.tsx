@@ -125,6 +125,7 @@ export default function MissionCard({
             </div>
             <Link
               to={href}
+              state={{ fromCatalogue: true }}
               className={`inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-colors after:absolute after:inset-0 after:content-[''] ${
                 done ? 'border border-line bg-surface text-ink' : 'bg-primary-500 text-on-primary group-hover:bg-primary-400'
               }`}
@@ -184,6 +185,7 @@ export default function MissionCard({
           <span className={`min-w-0 text-xs font-semibold ${FOOTER_TONE[footer.tone]}`}>{footer.text}</span>
           <Link
             to={href}
+            state={{ fromCatalogue: true }}
             className={`inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-full px-4 text-sm font-bold transition-colors after:absolute after:inset-0 after:content-[''] ${
               done ? 'border border-line bg-surface text-ink' : 'bg-primary-500 text-on-primary group-hover:bg-primary-400'
             }`}

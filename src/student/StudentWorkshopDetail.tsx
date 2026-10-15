@@ -1,6 +1,6 @@
 import { ArrowLeft, ArrowLeftRight, Backpack, CalendarClock, Clock3, Compass, MapPin, Sparkles, Users } from 'lucide-react';
 import { useRef, useState } from 'react';
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Alert, PageSkeleton } from '../components/ui';
 import { fetchDivisions, formatTime } from '../lib/catalog';
 import { durationMinutes, hasTightTransfer, isSelectable, sessionState, type Board, type BoardSession } from '../lib/reservations';
@@ -45,9 +45,19 @@ export default function StudentWorkshopDetail() {
   const divisions = useLoad(fetchDivisions, []);
   const [confirm, setConfirm] = useState<ConfirmRequest | null>(null);
   const navigate = useNavigate();
+  const routeLocation = useLocation();
 
   const { theme, term } = usePublicTheme();
-  const back = <Link to={backPath} className="inline-flex min-h-11 items-center gap-2 text-sm font-semibold text-fg-brand"><ArrowLeft className="h-4 w-4" aria-hidden />Volver a {MISSION.many}</Link>;
+  const fromCatalogue = (routeLocation.state as { fromCatalogue?: boolean } | null)?.fromCatalogue === true;
+  const back = (
+    <button
+      type="button"
+      onClick={() => { if (fromCatalogue) navigate(-1); else navigate(backPath); }}
+      className="inline-flex min-h-11 items-center gap-2 text-sm font-semibold text-fg-brand"
+    >
+      <ArrowLeft className="h-4 w-4" aria-hidden />Volver a {MISSION.many}
+    </button>
+  );
   if (loading && !board) return <div className="space-y-4">{back}<PageSkeleton blocks={3} /></div>;
   if (error || !board) return <div className="space-y-4">{back}<ErrorState error={error} onRetry={reload} /></div>;
 

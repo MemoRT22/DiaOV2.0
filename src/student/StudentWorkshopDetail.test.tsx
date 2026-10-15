@@ -113,14 +113,19 @@ test('catalogue preserves division and change context on the way to the detail a
   const card = (await screen.findByRole('heading', { name: 'Taller de prototipos' })).closest('li') as HTMLElement;
   expect(screen.queryByRole('heading', { name: 'Otro' })).not.toBeInTheDocument();
   fireEvent.click(within(card).getByRole('link', { name: 'Ver misión' }));
-  const back = await screen.findByRole('link', { name: 'Volver a Misiones' });
-  expect(back).toHaveAttribute('href', '/misiones?f=division&d=d2&cambiar=r1');
+  const back = await screen.findByRole('button', { name: 'Volver a Misiones' });
   expect(screen.getByRole('button', { name: 'Cambiar aquí' })).toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: 'Cambiar aquí' }));
+  fireEvent.click(back);
+  expect(await screen.findByRole('heading', { name: 'Misiones' })).toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: 'Otro' })).not.toBeInTheDocument();
+  // The original catalogue entry is recovered (not reconstructed): its division and change-flow query still filter the same content.
+  expect(screen.getByText(/Elige el nuevo horario para/)).toHaveTextContent('Otro');
+  fireEvent.click(within((await screen.findByRole('heading', { name: 'Taller de prototipos' })).closest('li') as HTMLElement).getByRole('link', { name: 'Ver misión' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Cambiar aquí' }));
   const dialog = await screen.findByRole('dialog', { name: 'Cambiar horario' });
   expect(within(dialog).getByText('10:00–10:15 · 15 min')).toBeInTheDocument();
   fireEvent.click(within(dialog).getByRole('button', { name: 'Volver' }));
-  fireEvent.click(back);
+  fireEvent.click(screen.getByRole('button', { name: 'Volver a Misiones' }));
   expect(await screen.findByRole('button', { name: 'Negocios' })).toHaveAttribute('aria-pressed', 'true');
 });
 
@@ -235,7 +240,8 @@ test('a fresh detail read reflects post-publication edits from the activity and 
 test('missing activity shows a useful return path', async () => {
   mount(`/misiones/${B}`, board([slot('one')]));
   expect(screen.getByText('Esta misión no está disponible.')).toBeInTheDocument();
-  expect(screen.getByRole('link', { name: 'Volver a Misiones' })).toHaveAttribute('href', '/misiones');
+  fireEvent.click(screen.getByRole('button', { name: 'Volver a Misiones' }));
+  expect(await screen.findByRole('heading', { name: 'Misiones' })).toBeInTheDocument();
 });
 
 test('board loading and failure provide a retry path', async () => {
@@ -304,7 +310,7 @@ test('successful change navigates to Mi ruta; failed change keeps old reservatio
   fireEvent.click(within(dialog).getByRole('button', { name: 'Confirmar cambio' }));
   expect(await within(dialog).findByText(/acaba de llenarse/)).toBeInTheDocument();
   expect(data.reservations[0]).toMatchObject({ id: 'r1', session_id: 'old', status: 'vigente' });
-  expect(screen.getByRole('link', { name: 'Volver a Misiones' })).toHaveAttribute('href', '/misiones?cambiar=r1');
+  expect(screen.getByRole('button', { name: 'Volver a Misiones' })).toBeInTheDocument();
   fireEvent.click(within(dialog).getByRole('button', { name: 'Cerrar' }));
   fireEvent.click(screen.getByRole('button', { name: 'Cambiar aquí' }));
   fireEvent.click(within(await screen.findByRole('dialog', { name: 'Cambiar horario' })).getByRole('button', { name: 'Confirmar cambio' }));

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { MAP_VIEWBOX as VB } from './campusZones';
-import { clampView, IDENTITY, isZoomed, MAX_ZOOM, panView, sameView, screenToMap, twoFingers, zoomAbout } from './mapView';
+import { clampView, IDENTITY, isZoomed, MAX_ZOOM, panView, pinchView, sameView, screenToMap, twoFingers, zoomAbout } from './mapView';
 
 const centre = { x: VB.x + VB.w / 2, y: VB.y + VB.h / 2 };
 
@@ -22,6 +22,16 @@ describe('map view math', () => {
     const mapped = { x: v.s * f.x + v.tx, y: v.s * f.y + v.ty };
     expect(mapped.x).toBeCloseTo(f.x, 5);
     expect(mapped.y).toBeCloseTo(f.y, 5);
+  });
+
+  test('a moving pinch keeps the original point of interest under the moving centre while it zooms', () => {
+    const start = { x: centre.x - 80, y: centre.y - 60 };
+    const current = { x: start.x + 120, y: start.y + 90 };
+    const v = pinchView(IDENTITY, 2, start, current);
+    expect(v.s).toBe(2);
+    // At 1× the content point under the initial finger centre is `start`; after the combined gesture it must be under `current`.
+    expect(v.s * start.x + v.tx).toBeCloseTo(current.x, 5);
+    expect(v.s * start.y + v.ty).toBeCloseTo(current.y, 5);
   });
 
   test('zoom out to 1× returns exactly to the whole campus', () => {
