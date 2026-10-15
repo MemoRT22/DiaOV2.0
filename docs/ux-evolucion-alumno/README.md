@@ -93,7 +93,7 @@ Mediciones en la propia página (Chrome Android, vía DevTools): `antes/zoom-med
 
 ## 5. Pruebas
 
-- Vitest: 105 archivos, 1,346 pruebas, todas pasan. Nuevas: `useVisualViewportAnchor` (matemática y hook, incluida la geometría medida en Safari),
+- Vitest: 106 archivos, 1,348 pruebas (en corridas aisladas todas pasan; ver nota sobre `WinnerFlow` en el PR). Nuevas: `useVisualViewportAnchor` (matemática y hook, incluida la geometría medida en Safari),
   `useKeyboardOpen`, `useDismissOnBack` (con el historial real de jsdom, incluida la carrera de cerrar y abrir), `ScrollManager`,
   `mapView`, gestos del mapa (pellizco, arrastre, toque, botones, límites, Ctrl+rueda), `ClampedText`, detalle (orden, datos, carreras,
   requisitos, Atrás), landing de Misiones («Y también…» con conteos reales) y encabezado.
@@ -118,6 +118,40 @@ Limitaciones conocidas:
 - El arranque tras una recarga sigue mostrando «Cargando» sin marco mientras se restaura la sesión (se evita la causa más común, el arrastre accidental, no el tiempo de arranque).
 - El modal del aviso de ganador y la invitación a la encuesta no entran al historial (son diálogos bloqueantes).
 - Zoom por debajo de 1× en iOS (la página se encoge): no se toca, es del navegador.
+
+## 6b. Hojas y diálogos bloqueantes con zoom (revisión del PR)
+
+**Hallazgo.** Las hojas (reservación) y los diálogos (ganador, encuesta) están en un portal al `body` con `position: fixed; inset: 0`, es decir,
+con el tamaño y la posición del viewport de **diseño**. Con zoom 2.2× en Chrome Android la hoja medía 427 px de ancho frente a 194 px
+visibles, y solo se veía completa por casualidad (cuando el área visible coincidía con el fondo del viewport); en otra posición quedaba fuera de pantalla.
+
+**Corrección** (sin lógica de negocio): el contenedor de cada una de las cuatro superficies usa el mismo `useVisualViewportAnchor('bottom')`
+que la barra. Un contenedor `inset-0` contraescalado por 1/zoom mide exactamente el área visible (medido: contenedor
+`[116,460,310,844]` = área visible `[116,460,310,844]`), así que la hoja se ve del tamaño normal, completa y anclada al borde inferior visible.
+Sin zoom no hace nada. Se añade el ref a `ConfirmSheet` (`BottomSheet`), `WinnerNotice` y `ExitSurveyInvite`; el `Modal` de `components/ui` solo lo usa el panel de administración.
+
+**Prueba en Chrome 149 (emulador Android), zoom ≈2.2× por pellizco, misión «Electronic Music Lab»:**
+
+| Paso | Resultado |
+|---|---|
+| Reservar con zoom | Antes: hoja de 427 px, recortada a los lados y arriba. Después: completa dentro del área visible |
+| Atrás (botón del sistema) | Cierra la hoja; sigue en la misión, zoom 2.2×, barra en el borde visible |
+| Cierre manual («Volver») | Cierra; la entrada de historial queda limpia; zoom intacto |
+| Error de reservación (respuesta `SESSION_FULL` simulada en la página) | Mensaje dentro de la hoja, botón «Cerrar» alcanzable |
+| Reservación exitosa | «¡Listo!» con sellos y «Ver mi ruta / Seguir explorando» completos |
+| Tras cerrar | `body.style.overflow` restaurado, zoom 2.2×, barra inferior y encabezado re-anclados al área visible |
+| Aviso de ganador (mock local con un premio «seleccionado») | Completo y accesible, con zoom previo o aplicado con el diálogo abierto; «Cerrar» recupera la pantalla |
+| Invitación a la encuesta (mock local) | Completa; «Ahora no» recupera la pantalla |
+
+Capturas: `comparativas/hoja-zoom-antes-despues.jpg` (izquierda: antes · derecha: después) y `comparativas/hoja-zoom-estados.jpg`
+(error · éxito · ganador · encuesta). Originales en `antes/zoom-hoja-reservar.jpg` y `despues/zoom-hojas/`.
+
+Observación del emulador: el emulador pinta con GPU por software; justo después del pellizco, el primer fotograma con el desenfoque del fondo del diálogo
+tarda unos segundos en repintarse y puede capturarse a medias. Pasado ese lapso el pintado es correcto (con y sin desenfoque). No se vio en la hoja de reservación.
+No verificado: lo mismo en iOS Safari ni en dispositivos físicos. Pruebas automatizadas nuevas: `BottomSheetZoom.test.tsx` (con mutación comprobada).
+
+![](comparativas/hoja-zoom-antes-despues.jpg)
+![](comparativas/hoja-zoom-estados.jpg)
 
 ## 7. Lógica de negocio
 

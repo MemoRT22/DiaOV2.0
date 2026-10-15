@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { buttonClasses } from '../components/ui';
+import { useVisualViewportAnchor } from '../lib/useVisualViewportAnchor';
 import { markSeen, pendingNotice, readSeen, SEEN_STORAGE_KEY } from '../lib/raffleWinner';
 import { usePublicTheme } from '../theme/PublicThemeProvider';
 import { useBackgroundLocked } from './backgroundLock';
@@ -22,6 +23,7 @@ export default function WinnerNotice() {
   const navigate = useNavigate();
   const [seen, setSeen] = useState(() => readSeen());
   const panel = useRef<HTMLDivElement | null>(null);
+  const overlayRef = useVisualViewportAnchor<HTMLDivElement>('bottom');
   const primary = useRef<HTMLButtonElement | null>(null);
   const returnFocus = useRef<HTMLElement | null>(null);
 
@@ -82,7 +84,7 @@ export default function WinnerNotice() {
   const event = [theme.meta.eventName, theme.meta.editionLabel].filter(Boolean).join(' ') || 'Día OV 2026';
 
   return createPortal(
-    <div className="wn-overlay" role="presentation" onKeyDown={onKeyDown}>
+    <div ref={overlayRef} className="wn-overlay" role="presentation" onKeyDown={onKeyDown}>
       <div ref={panel} className="wn-panel" role="alertdialog" aria-modal="true" aria-labelledby="wn-title" aria-describedby="wn-body">
         {STARS.map(([left, top], index) => <i key={index} className="wn-star" style={{ left: `${left}%`, top: `${top}%`, animationDelay: `${index * 0.35}s` }} aria-hidden />)}
         <div className="wn-halo" aria-hidden><Trophy size={44} /></div>

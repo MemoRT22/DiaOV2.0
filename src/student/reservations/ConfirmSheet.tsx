@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom';
 import { Link, useNavigate } from 'react-router-dom';
 import { Alert, Button, buttonClasses } from '../../components/ui';
 import { friendlyError } from '../../lib/errors';
+import { useVisualViewportAnchor } from '../../lib/useVisualViewportAnchor';
 import { StampPlan, type StampPlanView } from '../ui/StampPlan';
 import { sheetEntryActive, useDismissOnBack } from '../useDismissOnBack';
 
@@ -34,6 +35,7 @@ export type ConfirmRequest = {
 /** Bottom sheet on phones (thumb reach), centred card on larger screens. Rendered on <body>; locks page scroll. */
 export function BottomSheet({ title, onClose, locked = false, children }: { title: string; onClose: () => void; /** Hay una acción en curso: Atrás no la cierra. */ locked?: boolean; children: ReactNode }) {
   const panelRef = useRef<HTMLDivElement>(null);
+  const overlayRef = useVisualViewportAnchor<HTMLDivElement>('bottom'); // with pinch-zoom, the sheet fills what is visible instead of the (larger) layout viewport
   // El botón Atrás del navegador cierra la hoja (no saca de la pantalla), salvo que haya una acción en curso.
   useDismissOnBack(() => { if (locked) return false; onClose(); });
 
@@ -50,7 +52,7 @@ export function BottomSheet({ title, onClose, locked = false, children }: { titl
   }, [onClose]);
 
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div ref={overlayRef} className="fixed inset-0 z-50 flex items-end justify-center sm:items-center" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="absolute inset-0 bg-black/65 backdrop-blur-[2px]" aria-hidden />
       <div
         ref={panelRef}
