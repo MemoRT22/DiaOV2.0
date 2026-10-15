@@ -227,23 +227,17 @@ test('logs never contain the password or the email', async () => {
   assert.ok(!all.includes(SECRET) && !all.includes('ana@example.com'));
 });
 
-test('identify aligns the Auth email when Staff corrected the participant email', async () => {
+test('identify does not call Auth Admin during concurrent access', async () => {
   const f = fixture({
     state: 'password_login',
     participant: { id: PID, auth_user_id: UID, password_configured_at: '2026-10-06T00:00:00Z' },
-    existing: { id: UID, email: 'correo.anterior@example.com', kind: 'participant' },
+    existing: { id: UID, email: 'ana@example.com', kind: 'participant' },
+    getUserThrows: new Error('Auth Admin is unavailable'),
   });
   const response = await handleRequest(post({ action: 'identify', email: 'ana@example.com' }), f.deps);
+  assert.equal(response.status, 200);
   assert.deepEqual(await response.json(), { state: 'password_login' });
-  assert.ok(f.calls.includes(`updateUser:${UID}:ana@example.com`));
-
-  const staff = fixture({
-    state: 'password_login',
-    participant: { id: PID, auth_user_id: UID, password_configured_at: '2026-10-06T00:00:00Z' },
-    existing: { id: UID, email: 'staff@anahuac.mx', kind: null },
-  });
-  await handleRequest(post({ action: 'identify', email: 'ana@example.com' }), staff.deps);
-  assert.ok(!staff.calls.some((call) => call.startsWith('updateUser')));
+  assert.ok(!f.calls.some((call) => call.startsWith('updateUser')));
 });
 
 test('birth date is ignored by the new actions', async () => {
