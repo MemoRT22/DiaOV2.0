@@ -12,8 +12,9 @@ const m = vi.hoisted(() => ({ board: null as unknown, boardError: null as unknow
 vi.mock('../edition/EditionProvider', () => ({ useEdition: () => ({ edition: { id: 'edition' } }) }));
 vi.mock('../theme/PublicThemeProvider', () => ({ usePublicTheme: () => ({
   theme: { colors: { secondary: '#888' }, divisions: {} },
-  term: (key: string) => key === 'activity' ? 'Talleres' : key === 'route' ? 'Mi ruta' : key,
+  term: (key: string, plural?: boolean) => key === 'activity' ? 'Talleres' : key === 'route' ? 'Mi ruta' : key === 'stamp' ? (plural ? 'Sellos' : 'Sello') : key,
   text: () => '',
+  rankName: (level: number) => ['Explorador', 'Piloto', 'Navegante', 'Comandante', 'Capitán'][level - 1],
 }) }));
 vi.mock('../lib/useReservationBoard', () => ({ useReservationBoard: () => ({
   board: m.board, error: m.boardError, loading: m.boardLoading, reload: m.reload, reserve: m.reserve, change: m.change,
@@ -434,4 +435,33 @@ test('an ended schedule next to a live one does not mark the mission as finished
   const fact = within(screen.getByText('Lugares').parentElement as HTMLElement);
   expect(fact.getByText('Llena')).toBeInTheDocument();
   expect(fact.queryByText('Finalizada')).not.toBeInTheDocument();
+});
+
+test('after booking, the confirmation shows reservations AND potential stamps: 1 + 1 + 2 credits = 4 possible, 0 won', async () => {
+  const mine = [
+    slot('s1', { activity_id: 'act-1', credits: 1, my_reservation_id: 'r-s1' }),
+    slot('s2', { activity_id: 'act-2', credits: 1, my_reservation_id: 'r-s2' }),
+  ];
+  const before = board([...mine, slot('free', { credits: 2, ends_at: '2026-10-15T16:00:00Z' })], {
+    active_reservation_count: 2, reservations: [reservation('r-s1', 's1', 'act-1'), reservation('r-s2', 's2', 'act-2')],
+  });
+  // what the screen holds AFTER the server accepted and the board was refreshed: three reservations, the new one worth 2 credits
+  const refreshed = board([...mine, slot('free', { credits: 2, ends_at: '2026-10-15T16:00:00Z', my_reservation_id: 'r-new' })], {
+    active_reservation_count: 3,
+    reservations: [reservation('r-s1', 's1', 'act-1'), reservation('r-s2', 's2', 'act-2'), reservation('r-new', 'free', A)],
+  });
+  const view = mount(detailPath, before);
+  const again = () => view.rerender(<MemoryRouter initialEntries={[detailPath]}><Routes><Route path="/misiones/:activityId" element={<StudentWorkshopDetail />} /></Routes></MemoryRouter>);
+  m.reserve.mockImplementation(async () => { m.board = refreshed; again(); });
+  fireEvent.click(await screen.findByRole('button', { name: 'Reservar' }));
+  const dialog = await screen.findByRole('dialog', { name: 'Reservar lugar' });
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Reservar' }));
+  expect(await screen.findByText('¡Listo! Misión agregada a tu ruta')).toBeInTheDocument();
+  expect(screen.getByRole('img', { name: 'Tu ruta: 3 de 4 misiones reservadas' })).toBeInTheDocument();
+  const plan = screen.getByRole('img', { name: /0 sellos obtenidos, 4 sellos posibles si asistes/ });
+  expect(plan.querySelectorAll('[data-stamp="planned"]')).toHaveLength(4);
+  expect(plan.querySelectorAll('[data-stamp="earned"]')).toHaveLength(0);
+  expect(screen.getByText(/Si asistes, podrías llegar a Capitán/)).toBeInTheDocument();
+  expect(screen.getByText(/Los sellos se ganan al confirmar tu asistencia/)).toBeInTheDocument();
+  expect(screen.queryByText(/desbloque|ganaste|conseguiste/i)).not.toBeInTheDocument();
 });

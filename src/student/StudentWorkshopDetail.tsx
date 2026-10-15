@@ -4,6 +4,7 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { Alert, PageSkeleton } from '../components/ui';
 import { fetchDivisions, formatTime } from '../lib/catalog';
 import { durationMinutes, hasTightTransfer, isSelectable, sessionState, type Board, type BoardSession } from '../lib/reservations';
+import { projectStamps } from '../lib/stampProjection';
 import { useLoad } from '../lib/useLoad';
 import { useReservationBoard } from '../lib/useReservationBoard';
 import { fetchWorkshopDetail } from '../lib/workshopDetailApi';
@@ -12,6 +13,7 @@ import { useEdition } from '../edition/EditionProvider';
 import { usePublicTheme } from '../theme/PublicThemeProvider';
 import { MISSION } from './copy';
 import { missionHeadline } from './MissionCard';
+import { MAX_RANK_STAMPS } from './progressText';
 import ConfirmSheet, { type ConfirmRequest } from './reservations/ConfirmSheet';
 import { mapForSession, MapActionLink } from './campus/mapLinks';
 import PlaceLine from './campus/PlaceLine';
@@ -43,7 +45,7 @@ export default function StudentWorkshopDetail() {
   const [confirm, setConfirm] = useState<ConfirmRequest | null>(null);
   const navigate = useNavigate();
 
-  const { theme } = usePublicTheme();
+  const { theme, term, rankName } = usePublicTheme();
   const back = <Link to={backPath} className="inline-flex min-h-11 items-center gap-2 text-sm font-semibold text-fg-brand"><ArrowLeft className="h-4 w-4" aria-hidden />Volver a {MISSION.many}</Link>;
   if (loading && !board) return <div className="space-y-4">{back}<PageSkeleton blocks={3} /></div>;
   if (error || !board) return <div className="space-y-4">{back}<ErrorState error={error} onRetry={reload} /></div>;
@@ -66,6 +68,18 @@ export default function StudentWorkshopDetail() {
   const changing = !!changeId;
   const canChange = !!(replacing && replacingSession);
 
+  /** Read AFTER the server accepted the action and the board was refreshed: reservations (the limit) and the potential stamps of the route. */
+  const routeProgress = (current: Board | null) => {
+    const stamps = current ? projectStamps(current) : null;
+    // One stamp, one rank: reaching the last rank takes 4 stamps. Only ever offered as «podrías», never as an unlocked rank.
+    const potentialRank = stamps ? rankName(Math.min(stamps.total, MAX_RANK_STAMPS) + 1) : undefined;
+    return {
+      active: current?.active_reservation_count ?? 0,
+      max: current?.max_reservations ?? 4,
+      stamps: stamps ? { ...stamps, noun: (n: number) => term('stamp', n !== 1).toLowerCase(), potentialRank } : undefined,
+    };
+  };
+
   const ask = (s: BoardSession) => {
     const when = `${formatTime(s.starts_at)}–${formatTime(s.ends_at)}`;
     const whenWithDuration = `${when} · ${durationMinutes(s)} min`;
@@ -84,7 +98,7 @@ export default function StudentWorkshopDetail() {
       setConfirm({
         title: 'Reservar lugar', body: s.in_progress ? 'Ya está en curso: puedes entrar ahora.' : '',
         confirmLabel: 'Reservar', summary, warning,
-        success: { title: '¡Listo! Misión agregada a tu ruta', body: `${s.title} · ${whenWithDuration}`, link: { to: '/ruta', label: 'Ver mi ruta' }, progress: () => ({ active: latestBoard.current?.active_reservation_count ?? 0, max: latestBoard.current?.max_reservations ?? 4 }) },
+        success: { title: '¡Listo! Misión agregada a tu ruta', body: `${s.title} · ${whenWithDuration}`, link: { to: '/ruta', label: 'Ver mi ruta' }, progress: () => routeProgress(latestBoard.current) },
         action: async () => { await reserve(s.id); },
       });
     }

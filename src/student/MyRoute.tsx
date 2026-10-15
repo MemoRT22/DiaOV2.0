@@ -5,6 +5,7 @@ import { buttonClasses, PageSkeleton } from '../components/ui';
 import { fetchDivisions, formatTime, type Division } from '../lib/catalog';
 import { canModify, hasTightTransfer, isActiveReservation, type Board } from '../lib/reservations';
 import { buildJourney, timingLabel, type Stop } from '../lib/studentJourney';
+import { projectStamps } from '../lib/stampProjection';
 import { useLoad } from '../lib/useLoad';
 import { useNow } from '../lib/useNow';
 import { useReservationBoard } from '../lib/useReservationBoard';
@@ -19,6 +20,7 @@ import { divisionColor, tintVars } from './ui/divisionVisuals';
 import { GuideTip } from './ui/Guide';
 import { PageHeader } from './ui/PageHeader';
 import { Stations } from './ui/RouteMeter';
+import { StampPlan } from './ui/StampPlan';
 import { EmptyState, ErrorState } from './ui/States';
 import { StatusPill, type StatusKind } from './ui/StatusPill';
 
@@ -39,6 +41,7 @@ type Variant = 'now' | 'next' | 'later' | 'pending' | 'done' | 'closed';
  */
 export default function MyRoute() {
   const { edition } = useEdition();
+  const { term } = usePublicTheme();
   const { board, error, loading, reload, cancel } = useReservationBoard(edition?.id);
   const divisions = useLoad(fetchDivisions, []);
   const [confirm, setConfirm] = useState<ConfirmRequest | null>(null);
@@ -51,6 +54,7 @@ export default function MyRoute() {
   const divisionById = new Map(divisions.data.map((d) => [d.id, d]));
   const sessionOfReservation = new Map(board.reservations.map((r) => [r.id, board.sessions.find((s) => s.id === r.session_id)]));
   const journey = buildJourney(board);
+  const stamps = projectStamps(board);
   const activeCount = board.active_reservation_count;
   const total = journey.now.length + journey.upcoming.length + journey.pending.length + journey.done.length + journey.closed.length;
   const routeComplete = journey.done.length > 0 && journey.now.length + journey.upcoming.length + journey.pending.length === 0;
@@ -81,6 +85,11 @@ export default function MyRoute() {
       <div className="px-1">
         <Stations active={activeCount} max={board.max_reservations} wide />
       </div>
+      {stamps.total > 0 && (
+        <section aria-label={`${term('stamp', true)} de tu ruta`} className="rounded-theme border border-line bg-surface-sunken/50 px-3 py-3">
+          <StampPlan compact plan={{ ...stamps, noun: (n) => term('stamp', n !== 1).toLowerCase() }} />
+        </section>
+      )}
 
       <WindowNotice board={board} hideOpen />
 
