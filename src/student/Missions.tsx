@@ -162,7 +162,7 @@ export default function Missions() {
     return `/misiones?${updated.toString()}`;
   };
 
-  const renderCard = (sessions: BoardSession[], i: number) => {
+  const renderCard = (sessions: BoardSession[], i: number, compact = false) => {
     const first = sessions[0];
     const ids = workshopDivisionIds(first);
     const divisionNames = ids.map((id) => divisionById.get(id)?.name).filter((name): name is string => !!name);
@@ -188,6 +188,7 @@ export default function Missions() {
         reserved={rec?.already_reserved}
         href={`/misiones/${first.activity_id}${params.toString() ? `?${params.toString()}` : ''}`}
         index={i}
+        compact={compact}
       />
     );
   };
@@ -198,9 +199,13 @@ export default function Missions() {
 
   return (
     <div className="space-y-4">
-      <PageHeader eyebrow={MISSION.descriptor} title={MISSION.many} subtitle={exploring ? 'Elige las que quieras vivir y agrégalas a tu ruta.' : undefined} />
+      <PageHeader
+        eyebrow={MISSION.descriptor}
+        title={MISSION.many}
+        subtitle={exploring ? `${workshops.length} ${workshops.length === 1 ? 'misión por descubrir' : 'misiones por descubrir'}` : undefined}
+        aside={!replacing ? <RouteMeter compact active={active} max={board.max_reservations} /> : undefined}
+      />
       {!replacing && <p className="sr-only">{text('activitiesIntro')}</p>}
-      {!replacing && <RouteMeter active={active} max={board.max_reservations} />}
 
       {replacing && replacingSession ? (
         <div className="space-card flex items-center gap-3 border-primary-500/60 p-3">
@@ -265,8 +270,9 @@ export default function Missions() {
           divisions={divisions.data}
           theme={theme}
           accent={(theme.colors.accent || theme.colors.secondary)}
-          featured={forYou.slice(0, 3).map(renderCard)}
+          featured={forYou.slice(0, 4).map((w, i) => renderCard(w, i, true))}
           featuredTotal={forYou.length}
+          recommendedIds={recommendedIds}
           liveCount={workshops.filter((w) => w.some((s) => s.in_progress)).length}
           liveOpenCount={workshops.filter((w) => w.some((s) => s.in_progress && isSelectable(sessionState(board, s, null)))).length}
           lifeCount={workshops.filter((w) => isUniversityLife(w[0])).length}
@@ -359,7 +365,7 @@ export default function Missions() {
             </EmptyState>
           ) : (
             <ul key={listKey} className="space-y-3">
-              {visible.map(renderCard)}
+              {visible.map((w, i) => renderCard(w, i))}
             </ul>
           )}
         </>

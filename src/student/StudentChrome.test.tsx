@@ -60,7 +60,9 @@ test('on the map itself the badge only says where you are: no link to itself tha
   layout('/mapa');
   const header = screen.getByRole('banner');
   expect(within(header).queryByRole('link', { name: 'Mapa del campus' })).not.toBeInTheDocument();
-  expect(within(header).getByText('Mapa').closest('[aria-current="page"]')).not.toBeNull();
+  const here = within(header).getByLabelText('Mapa del campus (estás aquí)');
+  expect(here).toHaveAttribute('aria-current', 'page');
+  expect(here.tagName).not.toBe('A');
 });
 
 const board = (over: Partial<Board> = {}): Board => ({
@@ -83,4 +85,17 @@ test('a restriction is never hidden, even where the open window is', () => {
 test('when it closes on another day, the date is spelled out', () => {
   render(<WindowNotice board={board({ server_time: '2026-10-14T20:00:00Z' })} />);
   expect(screen.getByRole('status')).toHaveTextContent(/Reservas abiertas hasta .*15 oct/);
+});
+
+test('the map is a quiet circular button: icon only, with its name for assistive technology and a comfortable touch area', () => {
+  layout('/misiones');
+  const header = screen.getByRole('banner');
+  const link = within(header).getByRole('link', { name: 'Mapa del campus' });
+  expect(link).toHaveAttribute('href', '/mapa');
+  expect(link).toHaveAttribute('title', 'Mapa del campus');
+  expect(link).toHaveTextContent(''); // no visible word: the pin says it
+  expect(link.className).toMatch(/h-10 w-10/); // 40 px circle…
+  expect(link.className).toMatch(/after:-inset-1/); // …with a 48 px touch area
+  expect(link.className).not.toMatch(/bg-primary-500\//); // it does not compete with the primary action of the screen
+  expect(link.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
 });

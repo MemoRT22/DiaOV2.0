@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowLeft, ArrowLeftRight, Backpack, CalendarClock, Clock3, Compass, MapPin, Sparkles, Users } from 'lucide-react';
+import { ArrowLeft, ArrowLeftRight, Backpack, CalendarClock, Clock3, Compass, MapPin, Sparkles, Users } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Alert, PageSkeleton } from '../components/ui';
@@ -14,10 +14,12 @@ import { usePublicTheme } from '../theme/PublicThemeProvider';
 import { MISSION } from './copy';
 import { missionHeadline } from './MissionCard';
 import ConfirmSheet, { type ConfirmRequest } from './reservations/ConfirmSheet';
+import { sheetEntryActive } from './useDismissOnBack';
 import { mapForSession, MapActionLink } from './campus/mapLinks';
 import PlaceLine from './campus/PlaceLine';
 import { formatPlace } from './campus/resolveCampusLocation';
 import SessionRow from './reservations/SessionRow';
+import { ClampedText } from './ui/ClampedText';
 import { DivisionOrb, divisionColor, divisionIcon, tintVars } from './ui/divisionVisuals';
 import { ErrorState } from './ui/States';
 import { StatusPill } from './ui/StatusPill';
@@ -94,7 +96,7 @@ export default function StudentWorkshopDetail() {
         title: 'Cambiar horario',
         body: `Cambiarás ${replacingSession.title} (${formatTime(replacingSession.starts_at)}) por ${s.title} (${whenWithDuration}). Si el nuevo lugar ya no está disponible, conservas tu reservación actual.`,
         confirmLabel: 'Confirmar cambio', summary, warning,
-        action: async () => { await change(replacing.id, s.id); navigate('/ruta'); },
+        action: async () => { await change(replacing.id, s.id); navigate('/ruta', { replace: sheetEntryActive() }); },
       });
     } else if (!changing) {
       setConfirm({
@@ -119,92 +121,61 @@ export default function StudentWorkshopDetail() {
   const pitch = metadata?.student_pitch || first.description;
   const seatsLeft = bookableSeats(sessions);
   const AreaSymbol = divisionIcon(onlyDivision?.name ?? (divisionNames.length === 1 ? divisionNames[0] : type === 'Vida Universitaria' ? 'Vida Universitaria' : undefined));
+  const placeName = onlyDivision?.name ?? (divisionNames.length === 1 ? divisionNames[0] : type === 'Vida Universitaria' ? 'Vida Universitaria' : undefined);
+  const careers = metadata?.careers ?? [];
+  const hasAbout = !!(metadata?.objective || metadata?.takeaway || careers.length > 0 || (metadata?.divisions?.length ?? 0) > 0);
+  const seatsValue = seatsLeft > 0 ? `${seatsLeft} libres` : workshopFinished(sessions) ? 'Finalizada' : enrollmentClosedWithSeats(sessions) ? 'Inscripción cerrada' : 'Llena';
+  const slotsValue = status === 'En tu ruta' ? 'En tu ruta' : status === 'Explorado' ? 'Completada' : openCount ? `${openCount} disponible${openCount === 1 ? '' : 's'}` : 'Ninguno libre';
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       {back}
-      <article className="space-y-5">
-        {/* 1–2 · name and what you will experience */}
-        <header className="space-card relative animate-fade-up overflow-hidden p-5" style={tintVars(color)}>
-          <span className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-[radial-gradient(circle,rgb(var(--tint)/0.35),transparent_70%)]" aria-hidden />
-          {/* the same large, faint symbol of the area as on the catalogue card: one identity from card to detail */}
-          <AreaSymbol className="pointer-events-none absolute -bottom-6 -right-6 h-36 w-36 text-[rgb(var(--tint))] opacity-[0.07]" strokeWidth={1.25} aria-hidden />
-          <div className="relative flex items-start gap-3">
-            <DivisionOrb name={onlyDivision?.name ?? (divisionNames.length === 1 ? divisionNames[0] : type === 'Vida Universitaria' ? 'Vida Universitaria' : undefined)} color={color} size="lg" />
-            <div className="min-w-0 flex-1">
-              <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-fg-brand">{[MISSION.one, type, categoryLabel].filter(Boolean).join(' · ')}</p>
-              <h1 className="mt-1 font-display text-2xl font-extrabold leading-tight">{metadata?.title || first.title}</h1>
-            </div>
+
+      {/* 1 · what it is and what it takes, in one compact card: name, pitch, the three facts and where. Times come right after. */}
+      <header className="space-card relative animate-fade-up overflow-hidden p-4" style={tintVars(color)}>
+        <span className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-[radial-gradient(circle,rgb(var(--tint)/0.35),transparent_70%)]" aria-hidden />
+        {/* the same large, faint symbol of the area as on the catalogue card: one identity from card to detail */}
+        <AreaSymbol className="pointer-events-none absolute -bottom-6 -right-6 h-36 w-36 text-[rgb(var(--tint))] opacity-[0.07]" strokeWidth={1.25} aria-hidden />
+        <div className="relative flex items-start gap-3">
+          <DivisionOrb name={placeName} color={color} size="md" />
+          <div className="min-w-0 flex-1">
+            <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-fg-brand">{[MISSION.one, type, categoryLabel].filter(Boolean).join(' · ')}</p>
+            <h1 className="mt-0.5 font-display text-[1.45rem] font-extrabold leading-tight">{metadata?.title || first.title}</h1>
           </div>
-          {headline && <div className="relative mt-3"><StatusPill kind={headline.kind}>{headline.label}</StatusPill></div>}
-          {pitch && <p className="relative mt-3 whitespace-pre-line text-[0.95rem] leading-relaxed text-ink">{pitch}</p>}
+        </div>
+        {headline && <div className="relative mt-2.5"><StatusPill kind={headline.kind}>{headline.label}</StatusPill></div>}
+        {pitch && <div className="relative mt-2.5 text-[0.95rem] leading-relaxed text-ink"><ClampedText text={pitch} lines={3} /></div>}
 
-          {/* 4–7 · logistics at a glance, never buried in text */}
-          <dl className="relative mt-4 grid grid-cols-3 gap-2 text-center">
-            <Fact icon={Clock3} label="Duración" value={workshopDuration(sessions)} />
-            <Fact icon={CalendarClock} label="Horarios" value={status === 'En tu ruta' ? 'En tu ruta' : status === 'Explorado' ? 'Completada' : openCount ? `${openCount} disponible${openCount === 1 ? '' : 's'}` : 'Ninguno libre'} />
-            <Fact icon={Users} label="Lugares" value={seatsLeft > 0 ? `${seatsLeft} libres` : workshopFinished(sessions) ? 'Finalizada' : enrollmentClosedWithSeats(sessions) ? 'Inscripción cerrada' : 'Llena'} />
-          </dl>
-          {location && (
-            <div className="relative mt-3 rounded-theme border border-line bg-surface/70 px-3 py-2.5 text-sm">
-              {sharedLocation ? (
-                <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-                  <PlaceLine location={sharedLocation} />
-                  <MapActionLink to={mapForSession(mapSession.id)} ariaLabel={`Ver en el mapa: ${formatPlace(sharedLocation)}`} />
-                </div>
-              ) : (
-                <p className="flex items-start gap-2">
-                  <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-fg-brand" aria-hidden />
-                  <span className="min-w-0">
-                    <span className="block font-semibold">{location}</span>
-                    <span className="block text-ink-muted">Cada horario indica su lugar y su mapa.</span>
-                  </span>
-                </p>
-              )}
-            </div>
-          )}
-          {openCount > 0 && (
-            <a href="#horarios" className="relative mt-4 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-full bg-primary-500 px-6 text-sm font-extrabold text-on-primary shadow-[0_8px_24px_-8px_rgb(var(--c-primary-500)/0.8)]">
-              {changing ? 'Elegir nuevo horario' : 'Elegir horario'}
-              <ArrowDown className="h-4 w-4" aria-hidden />
-            </a>
-          )}
-        </header>
-
-        {(metadata?.objective || metadata?.takeaway) && (
-          <section className="space-card space-y-2 p-5">
-            <h2 className="flex items-center gap-2 font-extrabold"><Sparkles className="h-4 w-4 text-fg-brand" aria-hidden />Qué vas a vivir</h2>
-            {metadata.objective && <p className="text-sm text-ink-muted">{metadata.objective}</p>}
-            {metadata.takeaway && <p className="text-sm text-ink-muted"><strong className="text-ink">Te llevarás:</strong> {metadata.takeaway}</p>}
-          </section>
-        )}
-
-        {/* 3 · why it could interest me */}
-        {metadata && (metadata.careers?.length > 0 || metadata.divisions?.length > 0) && (
-          <section className="space-card p-5">
-            <h2 className="flex items-center gap-2 font-extrabold"><Compass className="h-4 w-4 text-fg-brand" aria-hidden />Ideal si te interesa</h2>
-            {metadata.careers?.length > 0 && (
-              <ul className="mt-3 flex flex-wrap gap-1.5" aria-label="Carreras">
-                {metadata.careers.map((c) => <li key={c.id} className="rounded-full border border-line bg-surface-raised px-3 py-1 text-xs font-semibold">{c.name}</li>)}
-              </ul>
+        {/* the facts, at a glance and never buried in text */}
+        <ul aria-label="Datos de la misión" className="relative mt-3 flex flex-wrap gap-2">
+          <Fact icon={Clock3} label="Duración" value={workshopDuration(sessions)} />
+          <Fact icon={CalendarClock} label="Horarios" value={slotsValue} />
+          <Fact icon={Users} label="Lugares" value={seatsValue} />
+        </ul>
+        {location && (
+          <div className="relative mt-2.5 text-sm">
+            {sharedLocation ? (
+              <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-0.5">
+                <PlaceLine location={sharedLocation} />
+                <MapActionLink to={mapForSession(mapSession.id)} ariaLabel={`Ver en el mapa: ${formatPlace(sharedLocation)}`} />
+              </div>
+            ) : (
+              <p className="flex items-start gap-2">
+                <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-fg-brand" aria-hidden />
+                <span className="min-w-0">
+                  <span className="block font-semibold">{location}</span>
+                  <span className="block text-ink-muted">Cada horario indica su lugar y su mapa.</span>
+                </span>
+              </p>
             )}
-            {metadata.divisions?.length > 0 && <p className="mt-3 text-sm text-ink-muted"><strong className="text-ink">Divisiones:</strong> {metadata.divisions.map((d) => d.name).join(' · ')}</p>}
-          </section>
+          </div>
         )}
-
-        {/* 8 · requirements */}
-        {metadata?.requirements && (
-          <section className="rounded-theme border border-warning-500/40 bg-warning-500/10 p-4">
-            <h2 className="flex items-center gap-2 text-sm font-extrabold"><Backpack className="h-4 w-4 text-fg-warning" aria-hidden />Antes de ir</h2>
-            <p className="mt-1 whitespace-pre-line text-sm text-ink-muted">{metadata.requirements}</p>
-          </section>
-        )}
-      </article>
+      </header>
 
       {!!detail.error && <Alert tone="warning">No pudimos cargar toda la información de la misión. Puedes consultar los horarios y <button className="font-semibold underline" onClick={detail.reload}>reintentar</button>.</Alert>}
       {changing && !canChange && <Alert tone="warning">No encontramos la reservación que deseas cambiar. <Link to="/ruta" className="font-semibold underline">Revisa tu ruta</Link>.</Alert>}
       {changing && replacingSession && <Alert><ArrowLeftRight className="mr-2 inline h-4 w-4" aria-hidden />Elige el nuevo horario para {replacingSession.title}.</Alert>}
 
-      {/* 6–7 + 9 · schedules, availability and the action */}
+      {/* 2 · schedules, availability and the action: the point of opening a mission, right under its summary */}
       <section id="horarios" className="scroll-mt-20 space-y-3" aria-label="Horarios">
         <div>
           <h2 className="text-lg font-extrabold">Elige tu horario</h2>
@@ -214,16 +185,67 @@ export default function StudentWorkshopDetail() {
           {sessions.map((s) => <SessionRow key={s.id} session={s} state={sessionState(board, s, replacing)} actionLabel={changing ? 'Cambiar aquí' : 'Reservar'} onAction={() => ask(s)} showLocation={!sharedLocation} tightMinutes={hasTightTransfer(s, replacing) ? board.travel_buffer_minutes : null} hideAction={changing && !canChange} mapHref={!sharedLocation && s.location ? mapForSession(s.id) : undefined} />)}
         </ul>
       </section>
+
+      {/* 3 · before going: short and practical, so it stays visible */}
+      {metadata?.requirements && (
+        <section className="rounded-theme border border-warning-500/40 bg-warning-500/10 p-4">
+          <h2 className="flex items-center gap-2 text-sm font-extrabold"><Backpack className="h-4 w-4 text-fg-warning" aria-hidden />Antes de ir</h2>
+          <p className="mt-1 whitespace-pre-line text-sm text-ink-muted">{metadata.requirements}</p>
+        </section>
+      )}
+
+      {/* 4 · the academic substance, complete and one tap away: what you will live, what you take, who it is for */}
+      {hasAbout && (
+        <section className="space-card space-y-4 p-4" aria-label="Sobre la misión">
+          {metadata?.objective && (
+            <div>
+              <h2 className="flex items-center gap-2 font-extrabold"><Sparkles className="h-4 w-4 text-fg-brand" aria-hidden />Qué vas a vivir</h2>
+              <ClampedText text={metadata.objective} lines={4} className="mt-1 text-sm text-ink-muted" />
+            </div>
+          )}
+          {metadata?.takeaway && (
+            <p className="text-sm text-ink-muted"><strong className="text-ink">Te llevarás:</strong> {metadata.takeaway}</p>
+          )}
+          {(careers.length > 0 || (metadata?.divisions?.length ?? 0) > 0) && (
+            <div className={metadata?.objective || metadata?.takeaway ? 'border-t border-line pt-4' : ''}>
+              <h2 className="flex items-center gap-2 font-extrabold"><Compass className="h-4 w-4 text-fg-brand" aria-hidden />Ideal si te interesa</h2>
+              {careers.length > 0 && <CareerChips careers={careers} />}
+              {(metadata?.divisions?.length ?? 0) > 0 && <p className="mt-3 text-sm text-ink-muted"><strong className="text-ink">Divisiones:</strong> {metadata!.divisions.map((d) => d.name).join(' · ')}</p>}
+            </div>
+          )}
+        </section>
+      )}
       {confirm && <ConfirmSheet request={confirm} onClose={() => setConfirm(null)} />}
     </div>
   );
 }
 
+/** The first careers, and the rest one tap away (up to 8 exist): the chips never take over the screen. */
+const CAREERS_SHOWN = 4;
+function CareerChips({ careers }: { careers: { id: string; name: string }[] }) {
+  const [all, setAll] = useState(false);
+  const shown = all ? careers : careers.slice(0, CAREERS_SHOWN);
+  const hidden = careers.length - CAREERS_SHOWN;
+  return (
+    <ul className="mt-2.5 flex flex-wrap gap-1.5" aria-label="Carreras">
+      {shown.map((c) => <li key={c.id} className="rounded-full border border-line bg-surface-raised px-3 py-1 text-xs font-semibold">{c.name}</li>)}
+      {hidden > 0 && (
+        <li>
+          <button type="button" aria-expanded={all} onClick={() => setAll((v) => !v)} className="inline-flex min-h-8 items-center rounded-full border border-dashed border-line px-3 text-xs font-bold text-fg-brand">
+            {all ? 'Ver menos' : `+${hidden} más`}
+          </button>
+        </li>
+      )}
+    </ul>
+  );
+}
+
 function Fact({ icon: Icon, label, value }: { icon: typeof MapPin; label: string; value: string }) {
   return (
-    <div className="rounded-theme border border-line bg-surface/70 px-2 py-2.5">
-      <dt className="flex items-center justify-center gap-1 text-[10px] font-bold uppercase tracking-wide text-ink-muted"><Icon className="h-3.5 w-3.5" aria-hidden />{label}</dt>
-      <dd className="mt-0.5 text-sm font-extrabold leading-tight">{value}</dd>
-    </div>
+    <li className="inline-flex items-center gap-1.5 rounded-full border border-line bg-surface/70 px-3 py-1.5 text-sm font-bold">
+      <Icon className="h-4 w-4 shrink-0 text-fg-brand" aria-hidden />
+      <span className="sr-only">{label}: </span>
+      {value}
+    </li>
   );
 }

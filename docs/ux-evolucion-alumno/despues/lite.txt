@@ -1,0 +1,2 @@
+# Modo lite (Chrome 149, emulador): estilo calculado de la barra y del encabezado
+{"clase":"lite","nucleos":4,"memoriaGB":4,"nav":{"fondo":"rgb(4, 6, 12)","desenfoque":"none"},"header":{"fondo":"rgb(4, 6, 12)","desenfoque":"none"}}

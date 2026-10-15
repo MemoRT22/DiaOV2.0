@@ -166,3 +166,48 @@ test('changing a reservation skips the landing and the search: it goes straight 
   expect(screen.queryByRole('region', { name: 'Explora por área' })).not.toBeInTheDocument();
   expect(screen.queryByRole('searchbox', { name: 'Buscar misión' })).not.toBeInTheDocument();
 });
+
+const REC = (activity_id: string) => ({ activity_id, title: activity_id, recommendation_type: 'exact_career', matched_careers: [{ career_id: 'c', career_name: 'Médico Cirujano', preference: 1 }], already_attended: false, already_reserved: false });
+
+test('the landing opens with the whole universe: a real count in the title, areas first and «Para ti» after them', async () => {
+  m.recs = { recommendations: [REC('medicina')] };
+  await show();
+  expect(screen.getByText('5 misiones por descubrir')).toBeInTheDocument(); // 5 real missions in the catalogue (6 sessions)
+  const areas = screen.getByRole('region', { name: 'Explora por área' });
+  const forYou = await screen.findByRole('region', { name: 'Misiones para ti' });
+  // «Explora por área» comes BEFORE «Para ti» in the page
+  expect(areas.compareDocumentPosition(forYou) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  // the route is one compact control in the title row, not a row of its own
+  expect(screen.getByRole('link', { name: 'Mi ruta: 0 de 4 misiones reservadas' })).toHaveTextContent('0/4');
+});
+
+test('«Para ti» is a row that slides and ends in a door to somewhere ELSE, with real numbers', async () => {
+  m.recs = { recommendations: [REC('medicina'), REC('nutricion')] };
+  await show();
+  const forYou = await screen.findByRole('region', { name: 'Misiones para ti' });
+  // compact cards: name, state and one tap target; no description paragraphs
+  expect(within(forYou).getByRole('heading', { name: 'Urgencias médicas' })).toBeInTheDocument();
+  expect(within(forYou).getAllByRole('link', { name: 'Ver misión' })).toHaveLength(2); // one tap target per card
+  expect(within(forYou).queryByText('Atiende una emergencia simulada.')).not.toBeInTheDocument();
+  // both recommended missions are Salud, so the door leads to the biggest area they do NOT touch: Negocios (1 mission)
+  const door = within(forYou).getByRole('link', { name: /Y también…/ });
+  expect(door).toHaveAttribute('href', '/misiones?f=division&d=negocios');
+  expect(door).toHaveTextContent('Negocios');
+  expect(door).toHaveTextContent('1 misión fuera de tus sugerencias');
+});
+
+test('with no area left outside the suggestions the door simply opens the whole catalogue', async () => {
+  m.recs = { recommendations: [REC('medicina'), REC('mercado')] }; // Salud and Negocios both have a suggestion
+  await show();
+  const forYou = await screen.findByRole('region', { name: 'Misiones para ti' });
+  const door = within(forYou).getByRole('link', { name: /Y también…/ });
+  expect(door).toHaveAttribute('href', '/misiones?f=all');
+  expect(door).toHaveTextContent('Todas las misiones');
+  expect(door).toHaveTextContent('5 misiones');
+});
+
+test('«Ver las N» sits with the areas it summarises and keeps its destination', async () => {
+  await show();
+  const areas = screen.getByRole('region', { name: 'Explora por área' });
+  expect(within(areas).getByRole('link', { name: 'Ver las 5 misiones' })).toHaveAttribute('href', '/misiones?f=all');
+});

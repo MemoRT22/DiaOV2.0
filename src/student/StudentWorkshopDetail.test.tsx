@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, expect, test, vi } from 'vitest';
 import type { Board, BoardSession, MyReservation } from '../lib/reservations';
@@ -58,6 +58,8 @@ function mount(path: string, data: Board) {
   </Routes></MemoryRouter>);
 }
 const detailPath = `/misiones/${A}`;
+/** One of the facts of the summary card (Duración · Horarios · Lugares). */
+const factOf = (label: string) => within(screen.getByRole('list', { name: 'Datos de la misión' })).getByText(new RegExp(`^${label}`)).closest('li') as HTMLElement;
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -396,14 +398,14 @@ test('the mission card does not promise «reserva y entra ahora» when every liv
 test('closed enrollment with seats left says «Inscripción cerrada», never «Llena»; a truly full mission still says «Llena»', async () => {
   const closed = mount(detailPath, board([slot('late', { started: true, in_progress: true, enrollment_open: false, remaining: 12, reserved: 18 })]));
   await screen.findByRole('heading', { name: 'Taller de prototipos' });
-  const fact = screen.getByText('Lugares').parentElement as HTMLElement;
+  const fact = factOf('Lugares');
   expect(within(fact).getByText('Inscripción cerrada')).toBeInTheDocument();
   expect(within(fact).queryByText('Llena')).not.toBeInTheDocument();
   closed.unmount();
 
   mount(detailPath, board([slot('full', { started: true, in_progress: true, enrollment_open: false, remaining: 0, reserved: 30 })]));
   await screen.findByRole('heading', { name: 'Taller de prototipos' });
-  expect(within(screen.getByText('Lugares').parentElement as HTMLElement).getByText('Llena')).toBeInTheDocument();
+  expect(within(factOf('Lugares')).getByText('Llena')).toBeInTheDocument();
 });
 
 test('seats count only sessions still open for enrollment while another one is bookable', async () => {
@@ -412,7 +414,7 @@ test('seats count only sessions still open for enrollment while another one is b
     slot('open', { starts_at: '2026-10-15T16:00:00Z', ends_at: '2026-10-15T16:45:00Z', remaining: 7 }),
   ]));
   await screen.findByRole('heading', { name: 'Taller de prototipos' });
-  expect(within(screen.getByText('Lugares').parentElement as HTMLElement).getByText('7 libres')).toBeInTheDocument();
+  expect(within(factOf('Lugares')).getByText('7 libres')).toBeInTheDocument();
 });
 
 test('when every schedule is over the fact says «Finalizada» (not «Llena»), even with unfilled seats', async () => {
@@ -421,7 +423,7 @@ test('when every schedule is over the fact says «Finalizada» (not «Llena»), 
     slot('two', { starts_at: '2026-10-15T16:00:00Z', ends_at: '2026-10-15T16:45:00Z', started: true, ended: true, remaining: 0, enrollment_open: false }),
   ]));
   await screen.findByRole('heading', { name: 'Taller de prototipos' });
-  const fact = within(screen.getByText('Lugares').parentElement as HTMLElement);
+  const fact = within(factOf('Lugares'));
   expect(fact.getByText('Finalizada')).toBeInTheDocument();
   expect(fact.queryByText(/Llena|Inscripción cerrada/)).not.toBeInTheDocument();
 });
@@ -432,7 +434,7 @@ test('an ended schedule next to a live one does not mark the mission as finished
     slot('live', { starts_at: '2026-10-15T16:00:00Z', ends_at: '2026-10-15T16:45:00Z', started: true, in_progress: true, remaining: 0, enrollment_open: true }),
   ]));
   await screen.findByRole('heading', { name: 'Taller de prototipos' });
-  const fact = within(screen.getByText('Lugares').parentElement as HTMLElement);
+  const fact = within(factOf('Lugares'));
   expect(fact.getByText('Llena')).toBeInTheDocument();
   expect(fact.queryByText('Finalizada')).not.toBeInTheDocument();
 });
@@ -487,4 +489,82 @@ test('a participant with confirmed stamps that are NOT in their reservations nev
   const plan = screen.getByRole('img', { name: /0 sellos obtenidos en tu ruta, 3 sellos posibles si asistes/ });
   expect(plan.getAttribute('aria-label')).not.toMatch(/podrías llegar|Capitán|Comandante|Piloto|Navegante|Explorador/);
   expect(plan).toHaveTextContent('tu total oficial está en tu bitácora'); // the route's stamps are not the official total
+});
+
+const longMetadata = {
+  ...metadata,
+  objective: 'Una experiencia completa. '.repeat(30).trim(),
+  takeaway: 'Un prototipo propio.',
+  requirements: 'Trae zapatos cerrados.',
+  careers: Array.from({ length: 7 }, (_, i) => ({ id: `c${i}`, name: `Carrera ${i + 1}` })),
+};
+
+test('the schedules come right after the summary, before the long academic text (the point of opening a mission)', async () => {
+  m.fetchDetail.mockResolvedValue(longMetadata);
+  mount(detailPath, board([slot('one'), slot('two', { starts_at: '2026-10-15T17:00:00Z', ends_at: '2026-10-15T17:45:00Z' })]));
+  const schedules = await screen.findByRole('region', { name: 'Horarios' });
+  const about = await screen.findByRole('region', { name: 'Sobre la misión' });
+  const summary = screen.getByRole('heading', { level: 1 }).closest('header') as HTMLElement;
+  const follows = (a: Node, b: Node) => !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+  expect(follows(summary, schedules)).toBe(true);
+  expect(follows(schedules, about)).toBe(true);
+  // the two «Reservar» buttons are reachable before «Qué vas a vivir»
+  const firstBook = screen.getAllByRole('button', { name: 'Reservar' })[0];
+  expect(follows(firstBook, within(about).getByRole('heading', { name: 'Qué vas a vivir' }))).toBe(true);
+  // no scroll-anchor button any more: the times are already there
+  expect(screen.queryByRole('link', { name: /Elegir horario/ })).not.toBeInTheDocument();
+});
+
+test('the summary answers what, how long, how many places and where in one compact card', async () => {
+  mount(detailPath, board([slot('one')]));
+  const facts = await screen.findByRole('list', { name: 'Datos de la misión' });
+  expect(within(facts).getAllByRole('listitem')).toHaveLength(3);
+  expect(factOf('Duración')).toHaveTextContent('45 min');
+  expect(factOf('Horarios')).toHaveTextContent('1 disponible');
+  expect(factOf('Lugares')).toHaveTextContent('25 libres');
+  const header = screen.getByRole('heading', { level: 1 }).closest('header') as HTMLElement;
+  expect(within(header).getByText('Laboratorio 1')).toBeInTheDocument();
+  expect(within(header).getByRole('link', { name: /Ver en el mapa/ })).toBeInTheDocument();
+});
+
+test('nothing academic is removed: objective, takeaway, every career and the divisions are all still there', async () => {
+  m.fetchDetail.mockResolvedValue(longMetadata);
+  mount(detailPath, board([slot('one')]));
+  const about = await screen.findByRole('region', { name: 'Sobre la misión' });
+  expect(within(about).getByText(/Una experiencia completa\./)).toBeInTheDocument();
+  expect(within(about).getByText(/Un prototipo propio\./)).toBeInTheDocument();
+  expect(within(about).getByText('Ingenierías · Negocios')).toBeInTheDocument();
+  // the first careers show and the rest are one tap away
+  const careers = within(about).getByRole('list', { name: 'Carreras' });
+  expect(within(careers).getAllByRole('listitem').map((li) => li.textContent)).toEqual(['Carrera 1', 'Carrera 2', 'Carrera 3', 'Carrera 4', '+3 más']);
+  fireEvent.click(within(careers).getByRole('button', { name: '+3 más' }));
+  expect(within(careers).getByText('Carrera 7')).toBeInTheDocument();
+  expect(within(careers).getByRole('button', { name: 'Ver menos' })).toHaveAttribute('aria-expanded', 'true');
+});
+
+test('«Antes de ir» stays visible, right under the schedules, when the mission has requirements', async () => {
+  m.fetchDetail.mockResolvedValue(longMetadata);
+  mount(detailPath, board([slot('one')]));
+  const before = await screen.findByRole('heading', { name: 'Antes de ir' });
+  expect(screen.getByText('Trae zapatos cerrados.')).toBeVisible();
+  const schedules = screen.getByRole('region', { name: 'Horarios' });
+  expect(schedules.compareDocumentPosition(before) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+});
+
+test('a mission with no academic metadata shows its summary and schedules, and no empty «Sobre la misión»', async () => {
+  m.fetchDetail.mockResolvedValue(null);
+  mount(detailPath, board([slot('one')]));
+  expect(await screen.findByRole('region', { name: 'Horarios' })).toBeInTheDocument();
+  expect(screen.queryByRole('region', { name: 'Sobre la misión' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: 'Antes de ir' })).not.toBeInTheDocument();
+});
+
+test('the booking sheet closes with the browser Back button and the mission stays on screen', async () => {
+  mount(detailPath, board([slot('one')]));
+  fireEvent.click(await screen.findByRole('button', { name: 'Reservar' }));
+  expect(await screen.findByRole('dialog', { name: 'Reservar lugar' })).toBeInTheDocument();
+  act(() => { window.history.back(); });
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument();
+  expect(m.reserve).not.toHaveBeenCalled();
 });
