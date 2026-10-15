@@ -4,6 +4,7 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import type { Division } from '../lib/catalog';
 import type { Board, BoardSession, MyReservation } from '../lib/reservations';
 import { neutralTheme } from '../theme/neutralTheme';
+import type { ThemeConfig } from '../theme/types';
 import appSource from '../App.tsx?raw';
 import BottomNav from './BottomNav';
 import Home from './Home';
@@ -11,16 +12,21 @@ import MyRoute from './MyRoute';
 import StampCollection from './StampCollection';
 import ConfirmSheet from './reservations/ConfirmSheet';
 
-const m = vi.hoisted(() => ({ board: null as unknown, fetchProgress: vi.fn(), fetchDivisions: vi.fn(), raffle: vi.fn() }));
+const m = vi.hoisted(() => ({
+  board: null as unknown,
+  edition: { id: 'ed', interests_prompt_at: null } as { id: string; interests_prompt_at: string | null },
+  theme: null as unknown as ThemeConfig,
+  fetchProgress: vi.fn(), fetchDivisions: vi.fn(), raffle: vi.fn(),
+}));
 
-vi.mock('../edition/EditionProvider', () => ({ useEdition: () => ({ edition: { id: 'ed' } }) }));
+vi.mock('../edition/EditionProvider', () => ({ useEdition: () => ({ edition: m.edition }) }));
 vi.mock('../lib/auth', () => ({ useAuth: () => ({ profile: { display_name: 'Ana López' }, signOut: vi.fn() }) }));
 vi.mock('../theme/PublicThemeProvider', () => ({
   usePublicTheme: () => ({
-    theme: neutralTheme,
+    theme: m.theme,
     term: (key: 'stamp' | 'division' | 'rank' | 'passport' | 'route' | 'activity' | 'interests', plural = false) =>
-      (neutralTheme.vocabulary[key] as { one: string; many: string })[plural ? 'many' : 'one'],
-    text: (key: string) => (neutralTheme.texts as Record<string, string>)[key] ?? '',
+      (m.theme.vocabulary[key] as { one: string; many: string })[plural ? 'many' : 'one'],
+    text: (key: string) => (m.theme.texts as Record<string, string>)[key] ?? '',
     rankName: (level: number) => `Rango ${level}`,
   }),
 }));
@@ -64,6 +70,9 @@ beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(new Date('2026-10-15T15:00:00Z'));
   vi.clearAllMocks();
+  sessionStorage.clear();
+  m.edition = { id: 'ed', interests_prompt_at: null };
+  m.theme = neutralTheme;
   m.fetchProgress.mockResolvedValue(progress());
   m.fetchDivisions.mockResolvedValue(divisions);
   m.raffle.mockResolvedValue({ has_won: false, raffle_category: null, raffle_category_name: null, academic_stamps: 0, university_life_stamps: 0, total_stamps: 0, categories: [] });
@@ -214,6 +223,52 @@ test('Inicio shows progress with a clear hierarchy: rank, stamps and a collectio
   expect(screen.getByRole('progressbar', { name: /Avance hacia el siguiente/ })).toHaveAttribute('aria-valuenow', '60');
   expect(screen.getByLabelText('Ciencias de la Salud: conseguido')).toBeInTheDocument();
   expect(screen.getByLabelText('Negocios: pendiente')).toBeInTheDocument();
+});
+
+test('Inicio conserva el texto del tema publicado y agrega contexto inequívoco de intereses posteriores', async () => {
+  m.board = board([], []);
+  m.theme = {
+    ...neutralTheme,
+    texts: {
+      ...neutralTheme.texts,
+      interestsPromptTitle: 'Tus nuevos destinos',
+      interestsPromptBody: '¿Hacia dónde apunta tu brújula ahora?',
+    },
+  };
+  m.fetchProgress.mockResolvedValue(progress({
+    attended_workshops: 2,
+    post_event_interests_prompt: true,
+    post_event_interests_open: true,
+  }));
+  renderAt('/bitacora', <Home />);
+  expect(await screen.findByRole('heading', { name: 'Tus nuevos destinos' })).toBeInTheDocument();
+  expect(screen.getByText('Intereses después del Día OV')).toBeInTheDocument();
+  expect(screen.getByText(/no modifica tu prerregistro/)).toBeInTheDocument();
+  expect(screen.getByText('¿Hacia dónde apunta tu brújula ahora?')).toBeInTheDocument();
+});
+
+test('Inicio abierto antes de las 12:30 descubre la etapa al llegar la hora sin recarga manual', async () => {
+  vi.useRealTimers();
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date('2026-10-15T17:29:00Z'));
+  vi.spyOn(Math, 'random').mockReturnValue(0);
+  m.board = board([], []);
+  m.edition = { id: 'ed', interests_prompt_at: '2026-10-15T12:30:00-05:00' };
+  m.fetchProgress
+    .mockResolvedValueOnce(progress({ attended_workshops: 0 }))
+    .mockResolvedValue(progress({
+      attended_workshops: 0,
+      post_event_interests_prompt: true,
+      post_event_interests_open: true,
+    }));
+  renderAt('/bitacora', <Home />);
+  await act(async () => { await Promise.resolve(); });
+  expect(m.fetchProgress).toHaveBeenCalledTimes(1);
+  expect(screen.queryByText('Intereses después del Día OV')).not.toBeInTheDocument();
+  await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+  await act(async () => { await Promise.resolve(); });
+  expect(m.fetchProgress).toHaveBeenCalledTimes(2);
+  expect(screen.getByText('Intereses después del Día OV')).toBeInTheDocument();
 });
 
 // ------------------------------------------------------------------ sellos

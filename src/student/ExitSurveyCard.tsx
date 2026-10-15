@@ -8,7 +8,7 @@ import { useExitSurvey } from './ExitSurveyProvider';
  * «Encuesta de salida» en la Bitácora: el acceso permanente, también para quien nunca vio la invitación. Pendiente → invita a
  * contestar (es requisito del sorteo); completada → agradece y no ofrece volver a contestar. Todo lo dice el servidor.
  */
-export default function ExitSurveyCard() {
+export default function ExitSurveyCard({ stepLabel }: { stepLabel?: string }) {
   const { enabled, status, loaded, failed, refresh } = useExitSurvey();
   if (!enabled) return null;
   return (
@@ -17,6 +17,7 @@ export default function ExitSurveyCard() {
         <ClipboardList className="h-5 w-5 text-fg-brand" aria-hidden />
         <h2 className="text-base font-extrabold">Encuesta de salida</h2>
       </div>
+      {stepLabel && <p className="mt-1 text-xs font-bold uppercase tracking-wide text-ink-muted">{stepLabel}</p>}
       {!loaded || !status ? (
         failed ? (
           <div className="mt-3">

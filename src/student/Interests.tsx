@@ -1,12 +1,14 @@
-import { ArrowDown, ArrowUp, Check, Compass, Search, X } from 'lucide-react';
+import { ArrowDown, ArrowRight, ArrowUp, Check, ClipboardList, Compass, Search, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, Button, PageSkeleton } from '../components/ui';
+import { Link } from 'react-router-dom';
+import { Alert, Button, buttonClasses, PageSkeleton } from '../components/ui';
 import { fetchDivisions, fetchPostEventInterests } from '../lib/catalog';
 import { friendlyError } from '../lib/errors';
 import { supabase } from '../lib/supabase';
 import { useLoad } from '../lib/useLoad';
 import { usePublicTheme } from '../theme/PublicThemeProvider';
 import { ErrorState } from './ui/States';
+import { useExitSurvey } from './ExitSurveyProvider';
 
 const MAX = 3;
 
@@ -18,6 +20,7 @@ const normalize = (s: string) =>
 
 export default function Interests() {
   const { theme, text } = usePublicTheme();
+  const survey = useExitSurvey();
   const { data, error, loading, reload } = useLoad(
     () => Promise.all([fetchDivisions(), fetchPostEventInterests()]),
     [],
@@ -56,6 +59,7 @@ export default function Interests() {
   const notYet = !interests.post_event_interests_prompt && !interests.post_event_interests_completed;
   const editable = interests.post_event_interests_can_edit;
   const dirty = selected.join() !== saved.join();
+  const hasResponse = saved.length > 0;
 
   const toggle = (id: string) => {
     setStatus(null);
@@ -73,14 +77,18 @@ export default function Interests() {
   };
 
   const onSave = async () => {
-    if (saving) return;
+    // An empty list means "not answered yet", never a completed vocational response.
+    if (saving || (selected.length === 0 && !hasResponse)) return;
     setSaving(true);
     setStatus(null);
     try {
       const { error: rpcError } = await supabase.rpc('save_post_event_interests', { p_career_ids: selected });
       if (rpcError) throw rpcError;
       setSaved(selected);
-      setStatus({ tone: 'success', msg: text('interestsSaved') });
+      setStatus({
+        tone: 'success',
+        msg: selected.length > 0 ? text('interestsSaved') : 'Retiramos tus elecciones. Esta etapa vuelve a quedar pendiente.',
+      });
     } catch (cause) {
       setStatus({ tone: 'error', msg: friendlyError(cause) });
     } finally {
@@ -95,7 +103,7 @@ export default function Interests() {
           <Compass className="h-6 w-6" />
         </span>
         <div className="min-w-0">
-          <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-fg-brand">Carreras que te interesan</p>
+          <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-fg-brand">Cierre vocacional · opcional</p>
           <h1 className="text-2xl font-extrabold leading-tight">{text('interestsTitle')}</h1>
           <p className="mt-1 text-sm text-ink-muted">{text('interestsBody')}</p>
         </div>
@@ -105,6 +113,13 @@ export default function Interests() {
         <Alert tone="info">Esta pregunta se habilita después de participar en el evento. Aún no necesitas responderla.</Alert>
       )}
       {closed && <Alert tone="warning">{text('interestsClosed')}</Alert>}
+
+      {!notYet && (
+        <div className="rounded-theme border border-line bg-surface-raised p-4 text-sm text-ink-muted">
+          <strong className="block text-ink">Tu prerregistro permanece igual.</strong>
+          Esta selección registra lo que te interesa después de vivir el Día OV. Tu carrera inicial también puede estar entre estas opciones.
+        </div>
+      )}
 
       {!notYet && (
       <section className="space-card p-4" aria-label="Carreras que más me interesaron">
@@ -117,8 +132,8 @@ export default function Interests() {
         {selected.length === 0 ? (
           <p className="py-2 text-sm text-ink-muted">
             {editable
-              ? `Toca una carrera de la lista para agregarla. Puedes elegir hasta ${MAX} y ordenarlas por preferencia.`
-              : 'No registraste carreras.'}
+              ? `Todavía no has respondido. Toca al menos una carrera para comenzar; puedes elegir hasta ${MAX} y ordenarlas por preferencia.`
+              : 'No hay una respuesta vocacional registrada.'}
           </p>
         ) : (
           <ol className="space-y-2">
@@ -139,7 +154,7 @@ export default function Interests() {
                       onClick={() => move(idx, -1)}
                       disabled={idx === 0}
                       className="flex h-11 w-11 items-center justify-center rounded-full text-ink-muted hover:text-ink disabled:opacity-30"
-                      aria-label="Subir"
+                      aria-label={`Subir ${careerById.get(id)?.name ?? 'carrera'}`}
                     >
                       <ArrowUp className="h-4 w-4" />
                     </button>
@@ -147,14 +162,14 @@ export default function Interests() {
                       onClick={() => move(idx, 1)}
                       disabled={idx === selected.length - 1}
                       className="flex h-11 w-11 items-center justify-center rounded-full text-ink-muted hover:text-ink disabled:opacity-30"
-                      aria-label="Bajar"
+                      aria-label={`Bajar ${careerById.get(id)?.name ?? 'carrera'}`}
                     >
                       <ArrowDown className="h-4 w-4" />
                     </button>
                     <button
                       onClick={() => toggle(id)}
                       className="flex h-11 w-11 items-center justify-center rounded-full text-ink-muted hover:text-error-400"
-                      aria-label="Quitar"
+                      aria-label={`Quitar ${careerById.get(id)?.name ?? 'carrera'}`}
                     >
                       <X className="h-4 w-4" />
                     </button>
@@ -170,9 +185,15 @@ export default function Interests() {
           </Alert>
         )}
         {editable && (
-          <Button className="mt-4 w-full" onClick={onSave} loading={saving} disabled={!dirty}>
-            Guardar mis intereses
+          <Button className="mt-4 w-full" onClick={onSave} loading={saving} disabled={!dirty || (selected.length === 0 && !hasResponse)}>
+            {selected.length === 0 && hasResponse ? 'Retirar todas mis elecciones' : 'Guardar mis intereses'}
           </Button>
+        )}
+        {editable && selected.length === 0 && !hasResponse && (
+          <p className="mt-2 text-center text-xs text-ink-muted">Si aún no quieres responder, puedes volver más tarde. No guardaremos una selección vacía.</p>
+        )}
+        {editable && selected.length === 0 && hasResponse && (
+          <p className="mt-2 text-center text-xs text-ink-muted">Al retirar todas, no quedará una respuesta vocacional completada.</p>
         )}
       </section>
       )}
@@ -234,6 +255,22 @@ export default function Interests() {
             );
           })}
         </>
+      )}
+
+      {survey.enabled && survey.status?.isOpen && !survey.status.completed && (
+        <section className="space-card border-secondary-400/40 p-4" aria-label="Siguiente paso del cierre">
+          <div className="flex items-start gap-3">
+            <ClipboardList className="mt-0.5 h-5 w-5 shrink-0 text-fg-brand" aria-hidden />
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wide text-ink-muted">Siguiente paso del cierre</p>
+              <h2 className="mt-1 font-extrabold">Comparte cómo fue tu experiencia</h2>
+              <p className="mt-1 text-sm text-ink-muted">La encuesta es independiente de tus carreras y sigue disponible aunque hayas omitido esta etapa.</p>
+            </div>
+          </div>
+          <Link to="/encuesta" className={buttonClasses('secondary', 'mt-4 w-full')}>
+            Responder encuesta <ArrowRight className="h-4 w-4" aria-hidden />
+          </Link>
+        </section>
       )}
     </div>
   );
