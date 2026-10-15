@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { buttonClasses } from '../components/ui';
+import { useVisualViewportAnchor } from '../lib/useVisualViewportAnchor';
 import { useExitSurvey } from './ExitSurveyProvider';
 import { useCriticalActivity } from './useCriticalActivity';
 import { useModalDialog } from './useModalDialog';
@@ -35,6 +36,7 @@ export default function ExitSurveyInvite() {
   const attempts = useRef(0);
   const alive = useRef(true);
   const timer = useRef(0);
+  const overlayRef = useVisualViewportAnchor<HTMLDivElement>('bottom');
   const panel = useRef<HTMLDivElement | null>(null);
   const primary = useRef<HTMLButtonElement | null>(null);
 
@@ -68,7 +70,7 @@ export default function ExitSurveyInvite() {
 
   if (!visible) return null;
   return createPortal(
-    <div className="wn-overlay" role="presentation" onKeyDown={onKeyDown}>
+    <div ref={overlayRef} className="wn-overlay" role="presentation" onKeyDown={onKeyDown}>
       <div ref={panel} data-exit-survey-dialog className="wn-panel" role="alertdialog" aria-modal="true" aria-labelledby="es-title" aria-describedby="es-body">
         {STARS.map(([left, top], index) => <i key={index} className="wn-star" style={{ left: `${left}%`, top: `${top}%`, animationDelay: `${index * 0.35}s` }} aria-hidden />)}
         <div className="wn-halo" aria-hidden><ClipboardCheck size={44} /></div>

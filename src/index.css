@@ -5,6 +5,9 @@
 @layer base {
   html {
     -webkit-tap-highlight-color: transparent;
+    /* No pull-to-refresh and no rubber band on the window: an accidental drag from the top must not reload the app
+       (and drop the navigation frame while it boots). Inner scrollers keep their own behaviour. */
+    overscroll-behavior-y: none;
   }
   body {
     @apply bg-surface-sunken font-body text-ink antialiased;
@@ -30,6 +33,26 @@
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
+  }
+
+  /* The app bars (header, bottom navigation, sticky filters): glass while the device can afford it, SOLID otherwise.
+     In `lite` mode (low-end phones, data saver) the blur is off, so a translucent bar would show the text scrolling behind it. */
+  .chrome-surface {
+    background-color: rgb(var(--surface-sunken) / 0.9);
+    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(12px);
+  }
+  .lite .chrome-surface {
+    background-color: rgb(var(--surface-sunken));
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+  @media (prefers-reduced-transparency: reduce) {
+    .chrome-surface {
+      background-color: rgb(var(--surface-sunken));
+      -webkit-backdrop-filter: none;
+      backdrop-filter: none;
+    }
   }
 
   .starfield {
@@ -258,6 +281,8 @@
 /* ---- Campus map (student): a real plan in theme tokens; brand pins keep the official map's colours ---- */
 .campus-ground { fill: rgb(var(--surface)); }
 .campus-plan { transition: transform 0.55s cubic-bezier(0.2, 0.8, 0.2, 1); }
+/* Finger-driven: the plan follows the fingers 1:1, with no easing. */
+.campus-plan.is-gesturing { transition: none; }
 .campus-forest { fill: rgb(var(--c-success-500) / 0.11); }
 .campus-road { fill: none; stroke: rgb(var(--ink-muted) / 0.38); stroke-width: 22; stroke-linecap: round; stroke-linejoin: round; }
 .campus-road-ring { fill: none; stroke: rgb(var(--ink-muted) / 0.38); stroke-width: 22; }

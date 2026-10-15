@@ -1,5 +1,7 @@
 import { BookUser, House, Rocket, ScanQrCode, Waypoints, type LucideIcon } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
+import { useKeyboardOpen } from '../lib/useKeyboardOpen';
+import { useVisualViewportAnchor } from '../lib/useVisualViewportAnchor';
 import { NAV } from './copy';
 
 type Tab = { to: string; label: string; icon: LucideIcon; also?: (path: string) => boolean };
@@ -12,6 +14,10 @@ type Tab = { to: string; label: string; icon: LucideIcon; also?: (path: string) 
  */
 export default function BottomNav() {
   const { pathname } = useLocation();
+  // While the page is pinch-zoomed the bar follows the visible area instead of staying in the (now off-screen) layout viewport.
+  const navRef = useVisualViewportAnchor<HTMLElement>('bottom');
+  // While the on-screen keyboard is up the bar is out of the way (it would sit above the keys or behind them); it returns with the keyboard.
+  const typing = useKeyboardOpen();
 
   const left: Tab[] = [
     { to: '/bitacora', label: NAV.home, icon: House },
@@ -47,8 +53,10 @@ export default function BottomNav() {
 
   return (
     <nav
+      ref={navRef}
       aria-label="Navegación principal"
-      className="fixed inset-x-0 bottom-0 z-30 border-t border-line/70 bg-surface-sunken/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-md"
+      hidden={typing}
+      className="chrome-surface fixed inset-x-0 bottom-0 z-30 border-t border-line/70 pb-[env(safe-area-inset-bottom)]"
     >
       <div className="mx-auto grid max-w-2xl grid-cols-5 items-end px-1">
         {left.map(renderTab)}

@@ -1,0 +1,4 @@
+# Zoom 2.2× tras el cambio
+{"path":"/misiones?f=all","scrollY":1272,"inner":[426,900],"clientH":844,"vv":[194,409,164,2.2],"nav":[530,573],"navGapToVisualBottom":0,"navInView":true,"sw":426}
+{"nav":[116,530,194,42],"header":[116,164,194,22],"vv":[194,409,116,164]}
+{"path":"/misiones?f=all","scrollY":1272,"inner":[426,900],"clientH":844,"vv":[427,900,0,1],"nav":[807,900],"navGapToVisualBottom":0,"navInView":true,"sw":426}

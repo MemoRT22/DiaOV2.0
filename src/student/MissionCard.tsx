@@ -69,6 +69,7 @@ export default function MissionCard({
   reserved,
   href,
   index,
+  compact = false,
 }: {
   board: Board;
   sessions: BoardSession[];
@@ -82,6 +83,8 @@ export default function MissionCard({
   reserved?: boolean;
   href: string;
   index: number;
+  /** A short card for a carousel: area, name, state and one line of availability. The whole card is still the tap target. */
+  compact?: boolean;
 }) {
   const first = sessions[0];
   const personal = workshopPersonalStatus(sessions, attended, reserved);
@@ -91,6 +94,50 @@ export default function MissionCard({
   const footer = missionFooter(board, sessions, replacing, personal);
 
   const Symbol = divisionIcon(divisionName);
+
+  if (compact) {
+    return (
+      <li
+        className={`mission-card space-card group relative h-full min-w-[17rem] max-w-[19rem] flex-1 snap-start animate-fade-up overflow-hidden transition-transform duration-200 active:scale-[0.99] ${
+          done ? 'border-success-500/40' : headline?.kind === 'live' ? 'border-primary-500/60' : ''
+        }`}
+        style={{ animationDelay: `${Math.min(index, 8) * 45}ms`, ...tintVars(color) }}
+      >
+        <span className="pointer-events-none absolute inset-0 bg-[radial-gradient(90%_70%_at_100%_0%,rgb(var(--tint)/0.2),transparent_65%)]" aria-hidden />
+        <Symbol className="pointer-events-none absolute -bottom-4 -right-4 h-24 w-24 text-[rgb(var(--tint))] opacity-[0.1]" strokeWidth={1.25} aria-hidden />
+        <span className="absolute inset-x-0 top-0 h-0.5 bg-[rgb(var(--tint))] opacity-70" aria-hidden />
+        <div className={`relative flex h-full flex-col p-3.5 ${dim ? 'opacity-75' : ''}`}>
+          <div className="flex items-center justify-between gap-2">
+            <p className="flex min-w-0 items-center gap-1.5 text-[10.5px] font-extrabold uppercase tracking-wider text-[rgb(var(--tint))]">
+              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[rgb(var(--tint))] shadow-[0_0_8px_rgb(var(--tint)/0.9)]" aria-hidden />
+              <span className="truncate">{divisionLabel}</span>
+            </p>
+            <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-line bg-surface/70 px-2 py-0.5 text-[10.5px] font-bold text-ink-muted">
+              <Clock3 className="h-3 w-3" aria-hidden />
+              {workshopDuration(sessions)}
+            </span>
+          </div>
+          <h2 className="mt-2 line-clamp-2 min-h-[2.6rem] font-display text-[1.02rem] font-extrabold leading-snug">{first.title}</h2>
+          <div className="mt-auto flex items-end justify-between gap-2 pt-2.5">
+            <div className="min-w-0">
+              {headline && <div className="mb-1"><StatusPill kind={headline.kind}>{headline.label}</StatusPill></div>}
+              <span className={`block truncate text-xs font-semibold ${FOOTER_TONE[footer.tone]}`}>{footer.text}</span>
+            </div>
+            <Link
+              to={href}
+              state={{ fromCatalogue: true }}
+              className={`inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-colors after:absolute after:inset-0 after:content-[''] ${
+                done ? 'border border-line bg-surface text-ink' : 'bg-primary-500 text-on-primary group-hover:bg-primary-400'
+              }`}
+            >
+              <span className="sr-only">Ver misión</span>
+              <ArrowRight className="h-4 w-4" aria-hidden />
+            </Link>
+          </div>
+        </div>
+      </li>
+    );
+  }
 
   return (
     <li
@@ -138,6 +185,7 @@ export default function MissionCard({
           <span className={`min-w-0 text-xs font-semibold ${FOOTER_TONE[footer.tone]}`}>{footer.text}</span>
           <Link
             to={href}
+            state={{ fromCatalogue: true }}
             className={`inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-full px-4 text-sm font-bold transition-colors after:absolute after:inset-0 after:content-[''] ${
               done ? 'border border-line bg-surface text-ink' : 'bg-primary-500 text-on-primary group-hover:bg-primary-400'
             }`}

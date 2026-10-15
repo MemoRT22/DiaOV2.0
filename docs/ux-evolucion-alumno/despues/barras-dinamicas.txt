@@ -1,0 +1,5 @@
+# Barra de Chrome (Chrome 149 en emulador Android, 10 ciclos de desplazamiento arriba/abajo)
+fotogramas 413 con botón detectado 413 alto 1206
+y mediana del botón 1103 min 1102 max 1105
+fotogramas con la barra desplazada >3px: 0 
+sin botón detectado: 0

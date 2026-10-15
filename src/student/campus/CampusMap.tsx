@@ -1,5 +1,7 @@
-import { useId, type KeyboardEvent } from 'react';
+import { Minus, Plus, RotateCcw } from 'lucide-react';
+import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { CAMPUS_ZONES, footprintOf, MAP_VIEWBOX as VB, SCENERY, ZONE_BY_ID, type CampusZone, type CampusZoneId, type Shape } from './campusZones';
+import { clamp, IDENTITY, isZoomed, MAX_ZOOM, panView, pinchView, sameView, screenToMap, twoFingers, zoomAbout, ZOOM_STEP, type MapView } from './mapView';
 
 export type MapMarker = {
   zoneId: CampusZoneId;
@@ -37,11 +39,9 @@ export function markerMetrics(label: string) {
   return { width, height, fontSize };
 }
 
-const clamp = (v: number, min: number, max: number) => Math.min(Math.max(v, min), max);
-
 /** Transform that keeps `focus` near the upper-middle of the frame without ever showing empty space. */
-function focusTransform(focus: CampusZone | null) {
-  if (!focus) return { s: 1, tx: 0, ty: 0 };
+export function focusTransform(focus: CampusZone | null): MapView {
+  if (!focus) return IDENTITY;
   const s = FOCUS_SCALE;
   const [cx, cy] = focus.anchor;
   const tx = clamp(VB.x + VB.w / 2 - s * cx, VB.x + VB.w - s * (VB.x + VB.w), VB.x - s * VB.x);
@@ -77,7 +77,90 @@ export default function CampusMap({
 }) {
   const id = useId().replace(/:/g, '');
   const focusZone = focus ? ZONE_BY_ID.get(focus) ?? null : null;
-  const { s, tx, ty } = focusTransform(focusZone);
+  const focusView = focusTransform(focusZone);
+  // The plan the student sees: the focus on a building (as before) plus whatever they pinch, drag or zoom themselves.
+  const [view, setView] = useState<MapView>(focusView);
+  const [gesturing, setGesturing] = useState(false);
+  useEffect(() => { setView(focusTransform(focus ? ZONE_BY_ID.get(focus) ?? null : null)); }, [focus]);
+  const { s, tx, ty } = view;
+  const svgRef = useRef<SVGSVGElement>(null);
+  const pointers = useRef(new Map<number, { x: number; y: number }>());
+  const pinchStart = useRef<{ distance: number; centre: { x: number; y: number }; view: MapView } | null>(null);
+  const dragged = useRef(0);
+  const swallowClick = useRef(false);
+
+  const rect = () => svgRef.current?.getBoundingClientRect() ?? { left: 0, top: 0, width: 1, height: 1 };
+  const zoomBy = useCallback((factor: number) => setView((v) => { const c = { x: VB.x + VB.w / 2, y: VB.y + VB.h / 2 }; return zoomAbout(v, v.s * factor, c.x, c.y); }), []);
+  const zoomed = isZoomed(view);
+  const canReset = !sameView(view, IDENTITY);
+
+  const onPointerDown = (e: ReactPointerEvent<SVGSVGElement>) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    dragged.current = 0;
+    if (pointers.current.size === 2) {
+      const [a, b] = [...pointers.current.values()];
+      const fingers = twoFingers(a, b);
+      const box = rect();
+      const centre = screenToMap(fingers.cx, fingers.cy, box);
+      pinchStart.current = { distance: fingers.distance || 1, centre, view };
+      setGesturing(true);
+      for (const id of pointers.current.keys()) capture(e.currentTarget, id);
+    }
+  };
+  // The pointer is captured only once it is clearly a gesture (pinch, or a drag past the tap threshold). Capturing on touch-down would
+  // redirect the click to the map itself and a simple tap would never reach the building under the finger.
+  const capture = (el: Element, id: number) => { try { el.setPointerCapture(id); } catch { /* sin captura: el gesto sigue mientras el dedo esté sobre el plano */ } };
+  const onPointerMove = (e: ReactPointerEvent<SVGSVGElement>) => {
+    const last = pointers.current.get(e.pointerId);
+    if (!last) return;
+    const now = { x: e.clientX, y: e.clientY };
+    pointers.current.set(e.pointerId, now);
+    const box = rect();
+    if (pointers.current.size >= 2 && pinchStart.current) {
+      const [a, b] = [...pointers.current.values()];
+      const { cx, cy, distance } = twoFingers(a, b);
+      const current = screenToMap(cx, cy, box);
+      dragged.current = 99;
+      setView(pinchView(
+        pinchStart.current.view,
+        pinchStart.current.view.s * (distance / pinchStart.current.distance),
+        pinchStart.current.centre,
+        current,
+      ));
+      return;
+    }
+    dragged.current += Math.hypot(now.x - last.x, now.y - last.y);
+    if (isZoomed(view) && dragged.current > 6) {
+      setGesturing(true);
+      capture(e.currentTarget, e.pointerId);
+      const unit = screenToMap(0, 0, box).unitsPerPx;
+      setView((v) => panView(v, (now.x - last.x) * unit, (now.y - last.y) * unit));
+    }
+  };
+  const onPointerEnd = (e: ReactPointerEvent<SVGSVGElement>) => {
+    pointers.current.delete(e.pointerId);
+    if (pointers.current.size < 2) pinchStart.current = null;
+    if (pointers.current.size === 0) {
+      // A drag or pinch must not end as a «tap on a building».
+      if (dragged.current > 6) { swallowClick.current = true; setTimeout(() => { swallowClick.current = false; }, 0); }
+      setGesturing(false);
+    }
+  };
+
+  // Trackpad pinch / Ctrl+wheel on desktop zooms the plan; a plain wheel still scrolls the page.
+  useEffect(() => {
+    const el = svgRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      const f = screenToMap(e.clientX, e.clientY, el.getBoundingClientRect());
+      setView((v) => zoomAbout(v, v.s * Math.exp(-e.deltaY / 200), f.x, f.y));
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, []);
   const at = ([x, y]: readonly [number, number]) => [s * x + tx, s * y + ty] as const;
   const selectedFootprint = selected ? footprintOf(ZONE_BY_ID.get(selected)!).id : null;
   const destinationFootprint = destination ? footprintOf(ZONE_BY_ID.get(destination)!).id : null;
@@ -110,12 +193,22 @@ export default function CampusMap({
     .map((z) => at(z.anchor));
 
   return (
+    <div className="relative h-full w-full">
     <svg
+      ref={svgRef}
       viewBox={`${VB.x} ${VB.y} ${VB.w} ${VB.h}`}
       preserveAspectRatio="xMidYMid meet"
       className={`campus-map block h-full w-full select-none ${className}`}
+      // The plan handles its own pinch and drag. While it is zoomed it keeps every touch (`none`); at 1× a vertical swipe still scrolls
+      // the page (`pan-y`), and since `pan-y` does not include browser pinch-zoom, a pinch on the plan zooms the PLAN, not the whole page.
+      style={{ touchAction: zoomed || gesturing ? 'none' : 'pan-y' }}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerEnd}
+      onPointerCancel={onPointerEnd}
+      onClickCapture={(e) => { if (swallowClick.current) { e.stopPropagation(); e.preventDefault(); } }}
       role="group"
-      aria-label="Mapa del campus. Toca o selecciona un edificio para ver qué hay ahí."
+      aria-label="Mapa del campus. Toca o selecciona un edificio para ver qué hay ahí. Pellizca o usa los botones para acercar."
     >
       <defs>
         <clipPath id={`clip${id}`}>
@@ -130,7 +223,7 @@ export default function CampusMap({
         <rect x={VB.x} y={VB.y} width={VB.w} height={VB.h} className="campus-ground" />
 
         {/* zoomable plan */}
-        <g className="campus-plan" style={{ transform: `translate(${tx}px, ${ty}px) scale(${s})` }}>
+        <g className={`campus-plan ${gesturing ? 'is-gesturing' : ''}`} style={{ transform: `translate(${tx}px, ${ty}px) scale(${s})` }}>
           <g aria-hidden>
             {SCENERY.forests.map((d, i) => <path key={i} d={d} className="campus-forest" />)}
             {SCENERY.roads.map((d, i) => <path key={i} d={d} className="campus-road" />)}
@@ -247,5 +340,28 @@ export default function CampusMap({
         </g>
       </g>
     </svg>
+
+    {/* The same zoom the fingers do, as buttons: a pinch is never the only way (accessibility, mouse, one hand). */}
+    <div className="absolute bottom-2 right-2 flex flex-col gap-1.5" role="group" aria-label="Zoom del mapa">
+      <MapButton label="Acercar mapa" disabled={s >= MAX_ZOOM - 0.001} onClick={() => zoomBy(ZOOM_STEP)}><Plus className="h-5 w-5" aria-hidden /></MapButton>
+      <MapButton label="Alejar mapa" disabled={!zoomed} onClick={() => zoomBy(1 / ZOOM_STEP)}><Minus className="h-5 w-5" aria-hidden /></MapButton>
+      {canReset && <MapButton label="Restablecer vista del mapa" onClick={() => setView(IDENTITY)}><RotateCcw className="h-4 w-4" aria-hidden /></MapButton>}
+    </div>
+    </div>
+  );
+}
+
+function MapButton({ label, onClick, disabled = false, children }: { label: string; onClick: () => void; disabled?: boolean; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      disabled={disabled}
+      onClick={onClick}
+      className="flex h-11 w-11 items-center justify-center rounded-full border border-line bg-surface/95 text-ink shadow-md transition-colors hover:bg-surface-raised disabled:opacity-40"
+    >
+      {children}
+    </button>
   );
 }

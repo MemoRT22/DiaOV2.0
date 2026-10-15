@@ -78,7 +78,9 @@ export default function MapPage() {
   };
 
   const goBack = () => {
-    if (from) navigate(from);
+    // `from` is only present when a MapLink created this history entry. Pop it instead of pushing the same URL again: ScrollManager can
+    // then recover the original entry key (and therefore its exact catalogue/search/scroll state), just like the browser Back button.
+    if (from) navigate(-1);
     else navigate('/bitacora');
   };
 

@@ -5,17 +5,21 @@ import { NAV } from '../copy';
  * How full my route is, drawn as stations on a line (filled = reserved). It is a link to Mi ruta, with the count
  * spelled out for screen readers.
  */
-export function RouteMeter({ active, max, className = '' }: { active: number; max: number; className?: string }) {
+export function RouteMeter({ active, max, className = '', compact = false }: { active: number; max: number; className?: string; /** Stations and «2/4» only: for a header's side slot. */ compact?: boolean }) {
   return (
     <Link
       to="/ruta"
       aria-label={`${NAV.route}: ${active} de ${max} misiones reservadas`}
-      className={`route-meter inline-flex min-h-11 items-center gap-3 rounded-full border border-line bg-surface/70 py-1.5 pl-3 pr-4 text-sm ${className}`}
+      className={`route-meter inline-flex min-h-11 items-center rounded-full border border-line bg-surface/70 py-1.5 text-sm ${compact ? 'gap-2 pl-3 pr-3.5' : 'gap-3 pl-3 pr-4'} ${className}`}
     >
       <Stations active={active} max={max} />
-      <span className="text-ink-muted">
-        <span className="font-bold text-ink">{active}</span> de {max} en <span className="font-semibold text-fg-brand">{NAV.route.toLowerCase()}</span>
-      </span>
+      {compact ? (
+        <span className="font-bold tabular-nums text-ink" aria-hidden>{active}<span className="font-semibold text-ink-muted">/{max}</span></span>
+      ) : (
+        <span className="text-ink-muted">
+          <span className="font-bold text-ink">{active}</span> de {max} en <span className="font-semibold text-fg-brand">{NAV.route.toLowerCase()}</span>
+        </span>
+      )}
     </Link>
   );
 }

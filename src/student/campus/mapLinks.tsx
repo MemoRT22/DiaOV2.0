@@ -15,11 +15,11 @@ export const mapForRoute = () => `${MAP_PATH}?vista=ruta`;
 
 export type MapReturnState = { from?: string };
 
-export function MapLink({ to, children, className = '', ariaLabel }: { to: string; children: ReactNode; className?: string; ariaLabel?: string }) {
+export function MapLink({ to, children, className = '', ariaLabel, title }: { to: string; children: ReactNode; className?: string; ariaLabel?: string; title?: string }) {
   const location = useLocation();
   const state: MapReturnState = { from: `${location.pathname}${location.search}` };
   return (
-    <Link to={to} state={state} aria-label={ariaLabel} className={className}>
+    <Link to={to} state={state} aria-label={ariaLabel} title={title} className={className}>
       {children}
     </Link>
   );

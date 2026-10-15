@@ -1,10 +1,12 @@
 import { Clock, MapPin, Rocket } from 'lucide-react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Alert, Button, buttonClasses } from '../../components/ui';
 import { friendlyError } from '../../lib/errors';
+import { useVisualViewportAnchor } from '../../lib/useVisualViewportAnchor';
 import { StampPlan, type StampPlanView } from '../ui/StampPlan';
+import { sheetEntryActive, useDismissOnBack } from '../useDismissOnBack';
 
 export type ConfirmRequest = {
   title: string;
@@ -31,8 +33,11 @@ export type ConfirmRequest = {
 };
 
 /** Bottom sheet on phones (thumb reach), centred card on larger screens. Rendered on <body>; locks page scroll. */
-export function BottomSheet({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+export function BottomSheet({ title, onClose, locked = false, children }: { title: string; onClose: () => void; /** Hay una acción en curso: Atrás no la cierra. */ locked?: boolean; children: ReactNode }) {
   const panelRef = useRef<HTMLDivElement>(null);
+  const overlayRef = useVisualViewportAnchor<HTMLDivElement>('bottom'); // with pinch-zoom, the sheet fills what is visible instead of the (larger) layout viewport
+  // El botón Atrás del navegador cierra la hoja (no saca de la pantalla), salvo que haya una acción en curso.
+  useDismissOnBack(() => { if (locked) return false; onClose(); });
 
   useEffect(() => {
     const previous = document.body.style.overflow;
@@ -47,7 +52,7 @@ export function BottomSheet({ title, onClose, children }: { title: string; onClo
   }, [onClose]);
 
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div ref={overlayRef} className="fixed inset-0 z-50 flex items-end justify-center sm:items-center" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="absolute inset-0 bg-black/65 backdrop-blur-[2px]" aria-hidden />
       <div
         ref={panelRef}
@@ -68,6 +73,7 @@ export default function ConfirmSheet({ request, onClose }: { request: ConfirmReq
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+  const navigate = useNavigate();
 
   const confirm = async () => {
     setBusy(true);
@@ -91,7 +97,7 @@ export default function ConfirmSheet({ request, onClose }: { request: ConfirmReq
   if (done && request.success) {
     const route = request.success.progress?.();
     return (
-      <BottomSheet title={request.success.title} onClose={close}>
+      <BottomSheet title={request.success.title} onClose={close} locked={busy}>
         <div className="space-y-4 text-center">
           {/* one short launch: the mission is now on the route */}
           <span className="relative mx-auto flex h-20 w-20 items-center justify-center" aria-hidden>
@@ -134,7 +140,17 @@ export default function ConfirmSheet({ request, onClose }: { request: ConfirmReq
           )}
           <div className="grid gap-2">
             {request.success.link && (
-              <Link to={request.success.link.to} onClick={() => onClose(true)} className={buttonClasses('primary')}>
+              <Link
+                to={request.success.link.to}
+                onClick={(event) => {
+                  // Irse desde la hoja REEMPLAZA su entrada de historial: Atrás desde el destino vuelve a la pantalla, sin una pulsación de más.
+                  if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+                  event.preventDefault();
+                  navigate(request.success!.link!.to, { replace: sheetEntryActive() });
+                  onClose(true);
+                }}
+                className={buttonClasses('primary')}
+              >
                 {request.success.link.label}
               </Link>
             )}
@@ -148,7 +164,7 @@ export default function ConfirmSheet({ request, onClose }: { request: ConfirmReq
   }
 
   return (
-    <BottomSheet title={request.title} onClose={close}>
+    <BottomSheet title={request.title} onClose={close} locked={busy}>
       <div className="space-y-4">
         <h2 className="text-lg font-extrabold">{request.title}</h2>
         {request.summary ? (
