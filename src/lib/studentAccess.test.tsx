@@ -473,3 +473,67 @@ test('reads wait less than writes, and both are shorter than before (30 s × 3 t
   expect(ACCESS_READ_TIMEOUT_MS).toBeLessThan(ACCESS_TIMEOUT_MS);
   expect(ACCESS_TIMEOUT_MS).toBeLessThanOrEqual(25_000);
 });
+
+// Cabeceras a tiempo, cuerpo detenido: el plazo cubre la operación completa, no solo la llegada de las cabeceras.
+const stalledBody = () => ({ ok: true, status: 200, headers: { get: () => null }, json: () => new Promise(() => undefined) });
+
+test('headers arrive but the body stalls: identify ends in TIMEOUT at the read limit with ONE request (no endless spinner, no retry)', async () => {
+  vi.useFakeTimers();
+  fetchMock.mockResolvedValue(stalledBody());
+  const startedAt = Date.now();
+  let finishedAt = -1;
+  const pending = studentAccess.identify('a@b.co').catch((cause) => { finishedAt = Date.now() - startedAt; return cause; });
+  await vi.advanceTimersByTimeAsync(ACCESS_TIMEOUT_MS * 4);
+  expect((await pending).message).toBe('TIMEOUT');
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+  expect(finishedAt).toBeGreaterThanOrEqual(ACCESS_READ_TIMEOUT_MS);
+  expect(finishedAt).toBeLessThan(ACCESS_READ_TIMEOUT_MS + 500);
+  vi.useRealTimers();
+});
+
+test('headers arrive but the body stalls: catalog gives up at the read limit too', async () => {
+  vi.useFakeTimers();
+  fetchMock.mockResolvedValue(stalledBody());
+  const pending = studentAccess.catalog().catch((cause) => cause);
+  await vi.advanceTimersByTimeAsync(ACCESS_TIMEOUT_MS * 4);
+  expect((await pending).message).toBe('TIMEOUT');
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+  vi.useRealTimers();
+});
+
+test('writes with a stalled body keep the uncertain-outcome contract: TIMEOUT at the write limit, never repeated by themselves', async () => {
+  vi.useFakeTimers();
+  fetchMock.mockResolvedValue(stalledBody());
+  const setup = studentAccess.setupPassword('a@b.co', 'clave-segura-1').catch((cause) => cause);
+  const register = studentAccess.register(credentials).catch((cause) => cause);
+  await vi.advanceTimersByTimeAsync(ACCESS_READ_TIMEOUT_MS + 1_000);
+  let settled = false;
+  void Promise.all([setup, register]).then(() => { settled = true; });
+  await vi.advanceTimersByTimeAsync(0);
+  expect(settled).toBe(false); // una escritura espera más que una lectura
+  await vi.advanceTimersByTimeAsync(ACCESS_TIMEOUT_MS);
+  expect((await setup).message).toBe('TIMEOUT');
+  expect((await register).message).toBe('TIMEOUT');
+  expect(fetchMock).toHaveBeenCalledTimes(2); // una por operación
+  vi.useRealTimers();
+});
+
+test('leaving the screen while the body is stalled cancels it: ABORTED, not an error and not a timeout', async () => {
+  vi.useFakeTimers();
+  fetchMock.mockResolvedValue(stalledBody());
+  const leaving = new AbortController();
+  const pending = studentAccess.identify('a@b.co', { signal: leaving.signal }).catch((cause) => cause);
+  await vi.advanceTimersByTimeAsync(2_000);
+  leaving.abort();
+  expect((await pending).message).toBe('ABORTED');
+  expect(vi.getTimerCount()).toBe(0); // nada queda corriendo en segundo plano
+  vi.useRealTimers();
+});
+
+test('a body that arrives in time is read normally and releases the timer', async () => {
+  vi.useFakeTimers();
+  fetchMock.mockResolvedValue(http(200, { state: 'password_login' }));
+  await expect(studentAccess.identify('a@b.co')).resolves.toBe('password_login');
+  expect(vi.getTimerCount()).toBe(0);
+  vi.useRealTimers();
+});

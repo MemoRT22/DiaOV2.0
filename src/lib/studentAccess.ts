@@ -1,4 +1,5 @@
 import { AccessError, parseRetryAfter } from './accessErrors';
+import { abortable } from './fetchWithTimeout';
 import { retryTransient } from './retry';
 import { functionsUrl, supabaseAnonKey } from './supabase';
 
@@ -37,12 +38,18 @@ async function call<T>(body: Record<string, unknown>, options: CallOptions = {},
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   options.signal?.addEventListener('abort', () => controller.abort(), { once: true });
   let response: Response;
+  let result: { error?: unknown; retry_after?: unknown } | null;
   try {
     response = await fetch(`${functionsUrl}/student-access`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${supabaseAnonKey}`, apikey: supabaseAnonKey, 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
       signal: controller.signal,
+    });
+    // El plazo cubre también la lectura del cuerpo: cabeceras a tiempo con el cuerpo detenido no deja un spinner indefinido.
+    result = await abortable(response.json(), controller.signal).catch((cause) => {
+      if (controller.signal.aborted) throw cause;
+      return null; // cuerpo ilegible (no JSON): se trata como respuesta sin datos
     });
   } catch (cause) {
     // Abandonó la pantalla: no es un error. Si fue nuestro propio plazo, el resultado es incierto.
@@ -51,8 +58,7 @@ async function call<T>(body: Record<string, unknown>, options: CallOptions = {},
   } finally {
     clearTimeout(timer);
   }
-  const result = await response.json().catch(() => null);
-  const retryAfter = () => parseRetryAfter(response.headers?.get?.('Retry-After')) ?? parseRetryAfter(result?.retry_after);
+  const retryAfter = () => parseRetryAfter(response.headers?.get?.('Retry-After')) ?? parseRetryAfter(result?.retry_after as string | number | undefined);
   if (!response.ok || !result || typeof result !== 'object') {
     const code = typeof result?.error === 'string' ? result.error : null;
     // El estado HTTP manda: un 429/5xx nunca se convierte en un error de datos ni de contraseña, tenga o no cuerpo.
