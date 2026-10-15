@@ -458,10 +458,33 @@ test('after booking, the confirmation shows reservations AND potential stamps: 1
   fireEvent.click(within(dialog).getByRole('button', { name: 'Reservar' }));
   expect(await screen.findByText('¡Listo! Misión agregada a tu ruta')).toBeInTheDocument();
   expect(screen.getByRole('img', { name: 'Tu ruta: 3 de 4 misiones reservadas' })).toBeInTheDocument();
-  const plan = screen.getByRole('img', { name: /0 sellos obtenidos, 4 sellos posibles si asistes/ });
+  const plan = screen.getByRole('img', { name: /0 sellos obtenidos en tu ruta, 4 sellos posibles si asistes/ });
   expect(plan.querySelectorAll('[data-stamp="planned"]')).toHaveLength(4);
   expect(plan.querySelectorAll('[data-stamp="earned"]')).toHaveLength(0);
-  expect(screen.getByText(/Si asistes, podrías llegar a Capitán/)).toBeInTheDocument();
-  expect(screen.getByText(/Los sellos se ganan al confirmar tu asistencia/)).toBeInTheDocument();
+  // the board only knows the stamps of reserved missions, not the official total: no projected rank is promised
+  expect(screen.queryByText(/podrías llegar/)).not.toBeInTheDocument();
+  expect(screen.getByText(/tu total oficial está en tu bitácora/)).toBeInTheDocument();
+  expect(screen.getByText(/se ganan al confirmar tu asistencia/)).toBeInTheDocument();
   expect(screen.queryByText(/desbloque|ganaste|conseguiste/i)).not.toBeInTheDocument();
+});
+
+test('a participant with confirmed stamps that are NOT in their reservations never gets a projected rank from the partial board', async () => {
+  // the student already holds stamps won without a reservation: the board shows none of them (completed rows: 0)
+  const mine = [slot('s1', { activity_id: 'act-1', credits: 1, my_reservation_id: 'r-s1' })];
+  const refreshed = board([...mine, slot('free', { credits: 2, ends_at: '2026-10-15T16:00:00Z', my_reservation_id: 'r-new' })], {
+    active_reservation_count: 2, reservations: [reservation('r-s1', 's1', 'act-1'), reservation('r-new', 'free', A)],
+  });
+  const view = mount(detailPath, board([...mine, slot('free', { credits: 2, ends_at: '2026-10-15T16:00:00Z' })], {
+    active_reservation_count: 1, reservations: [reservation('r-s1', 's1', 'act-1')],
+  }));
+  m.reserve.mockImplementation(async () => {
+    m.board = refreshed;
+    view.rerender(<MemoryRouter initialEntries={[detailPath]}><Routes><Route path="/misiones/:activityId" element={<StudentWorkshopDetail />} /></Routes></MemoryRouter>);
+  });
+  fireEvent.click(await screen.findByRole('button', { name: 'Reservar' }));
+  fireEvent.click(within(await screen.findByRole('dialog', { name: 'Reservar lugar' })).getByRole('button', { name: 'Reservar' }));
+  await screen.findByText('¡Listo! Misión agregada a tu ruta');
+  const plan = screen.getByRole('img', { name: /0 sellos obtenidos en tu ruta, 3 sellos posibles si asistes/ });
+  expect(plan.getAttribute('aria-label')).not.toMatch(/podrías llegar|Capitán|Comandante|Piloto|Navegante|Explorador/);
+  expect(plan).toHaveTextContent('tu total oficial está en tu bitácora'); // the route's stamps are not the official total
 });

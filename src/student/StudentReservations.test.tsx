@@ -66,7 +66,7 @@ test('Mi ruta adds the potential stamps without touching the reservations indica
   state.board = board({ active_reservation_count: 2, sessions: [done, one, two], reservations: rows });
   const view = render(<MemoryRouter><MyRoute /></MemoryRouter>);
   await screen.findByText(/2 de 4 misiones reservadas · 1 completada/); // the reservations indicator keeps its meaning
-  const plan = screen.getByRole('img', { name: /2 stamp obtenidos, 3 stamp posibles si asistes/ });
+  const plan = screen.getByRole('img', { name: /2 stamp obtenidos en tu ruta, 3 stamp posibles si asistes/ });
   expect(plan.querySelectorAll('[data-stamp="earned"]')).toHaveLength(2);
   expect(plan.querySelectorAll('[data-stamp="planned"]')).toHaveLength(2);
   expect(plan).toHaveTextContent('+1'); // 5 in total: no extra positions, the real total is kept
@@ -76,7 +76,7 @@ test('Mi ruta adds the potential stamps without touching the reservations indica
   state.board = board({ active_reservation_count: 1, sessions: [done, one, two], reservations: [rows[0], rows[1]] });
   render(<MemoryRouter><MyRoute /></MemoryRouter>);
   await screen.findByText(/1 de 4 misiones reservadas · 1 completada/);
-  const after = screen.getByRole('img', { name: /2 stamp obtenidos, 1 stamp posible si asistes/ });
+  const after = screen.getByRole('img', { name: /2 stamp obtenidos en tu ruta, 1 stamp posible si asistes/ });
   expect(after.querySelectorAll('[data-stamp="planned"]')).toHaveLength(1);
 });
 

@@ -100,6 +100,15 @@ describe('sellos potenciales de la ruta', () => {
   });
 });
 
+describe('alcance de la proyección', () => {
+  test('«obtenidos» son solo los de las misiones del tablero: una asistencia sin reservación no aparece, y por eso no define ningún rango', () => {
+    // la persona tiene sellos oficiales ganados sin reservación; el tablero solo trae una reservación futura
+    const next = session('next', 1);
+    const result = projectStamps(board([next], [booking('r1', next)]));
+    expect(result).toEqual({ earned: 0, planned: 1, total: 1 }); // parcial por diseño: la pantalla lo rotula «en tu ruta»
+  });
+});
+
 describe('posiciones de la progresión (cuatro hasta el último rango)', () => {
   test('obtenidos primero, luego posibles, luego vacíos', () => {
     expect(stampSlots({ earned: 1, planned: 2 }, 4)).toEqual({ slots: ['earned', 'planned', 'planned', 'empty'], overflow: 0 });
