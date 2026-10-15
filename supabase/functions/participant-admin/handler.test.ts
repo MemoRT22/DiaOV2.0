@@ -426,3 +426,15 @@ test('claiming still requires the audited Staff caller: no audit, no claim', asy
   assert.equal((await handleRequest(post({ action: 'reset_password', participant_id: PID }), f.deps)).status, 500);
   assert.ok(!f.calls.some((c) => c.startsWith('find:') || c.startsWith('update:')));
 });
+
+test('ruta administrativa de corrección de correo: restablecer la contraseña alinea la cuenta de Auth con el correo ACTUAL del participante', async () => {
+  // Staff corrigió el correo (participants.email = ana@example.com) pero Auth conserva el anterior; `identify` ya no lo alinea.
+  const f = fixture({
+    participant: { id: PID, email: 'ana@example.com', auth_user_id: UID },
+    existing: { id: UID, email: 'correo.anterior@example.com', kind: 'participant' },
+  });
+  const response = await handleRequest(post({ action: 'reset_password', participant_id: PID }), f.deps);
+  assert.equal(response.status, 200);
+  assert.ok(f.calls.includes(`update:${UID}:ana@example.com`));
+  assert.ok(f.calls.some((call) => call.startsWith('rpc:participant_link_auth_internal')));
+});

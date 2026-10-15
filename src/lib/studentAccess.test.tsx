@@ -317,6 +317,45 @@ test('a temporary failure followed by success signs in without bothering the per
   vi.useRealTimers();
 });
 
+test('login with the CORRECT password during a temporary degradation: one quick stumble is retried once and signs in', async () => {
+  const { result } = renderHook(() => useAuth(), { wrapper });
+  vi.useFakeTimers();
+  signIn.mockClear();
+  signIn.mockResolvedValueOnce(authFailure({ status: 503, name: 'AuthRetryableFetchError', message: 'Service unavailable' }))
+    .mockResolvedValue({ data: { user: { app_metadata: { kind: 'participant' } } }, error: null } as never);
+  const done = result.current.signInParticipant('a@b.co', 'clave-correcta-1');
+  await vi.advanceTimersByTimeAsync(10_000);
+  await expect(done).resolves.toBeUndefined(); // nunca «contraseña incorrecta»
+  expect(signIn).toHaveBeenCalledTimes(2);
+  vi.useRealTimers();
+});
+
+test('a sign-in that stays degraded is NOT hammered: at most one automatic retry, then a temporary notice (never «wrong password»)', async () => {
+  const { result } = renderHook(() => useAuth(), { wrapper });
+  vi.useFakeTimers();
+  signIn.mockClear();
+  signIn.mockResolvedValue(authFailure({ status: 504, name: 'AuthRetryableFetchError', message: 'Bad gateway' }));
+  const attempt = result.current.signInParticipant('a@b.co', 'clave-correcta-1').catch((cause) => cause);
+  await vi.advanceTimersByTimeAsync(120_000);
+  const error = await attempt;
+  expect(error.message).toBe('TEMPORARILY_UNAVAILABLE');
+  expect(error.message).not.toBe('INVALID_CREDENTIALS');
+  expect(signIn.mock.calls.length).toBeLessThanOrEqual(2);
+  vi.useRealTimers();
+});
+
+test('a slow failing sign-in (a saturated Auth) is not repeated by itself: the person decides, with their password still typed', async () => {
+  const { result } = renderHook(() => useAuth(), { wrapper });
+  vi.useFakeTimers();
+  signIn.mockClear();
+  signIn.mockImplementation(() => new Promise((resolve) => setTimeout(() => resolve(authFailure({ status: 504, name: 'AuthRetryableFetchError', message: 'Bad gateway' })), 11_000)));
+  const attempt = result.current.signInParticipant('a@b.co', 'clave-correcta-1').catch((cause) => cause);
+  await vi.advanceTimersByTimeAsync(60_000);
+  expect((await attempt).message).toBe('TEMPORARILY_UNAVAILABLE');
+  expect(signIn).toHaveBeenCalledTimes(1);
+  vi.useRealTimers();
+});
+
 test('an existing session survives a limited sign-in attempt: nothing signs out', async () => {
   const { result } = renderHook(() => useAuth(), { wrapper });
   vi.useFakeTimers();

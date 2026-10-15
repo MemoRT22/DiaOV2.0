@@ -60,6 +60,19 @@ describe('retryTransient', () => {
     await expect(retryTransient(asked, options)).rejects.toThrow('RATE_LIMITED');
     expect(asked).toHaveBeenCalledTimes(1); // 6 s > 5 s: se avisa con cuenta atrás en vez de esperar a escondidas
   });
+  test('Retry-After: 5 SÍ se reintenta (el tope se compara con lo que pidió el servidor, antes de la variación aleatoria)', async () => {
+    for (const random of [() => 0, () => 0.5, () => 1]) {
+      slept.length = 0;
+      const run = vi.fn().mockRejectedValueOnce(new AccessError('TEMPORARILY_UNAVAILABLE', 5)).mockResolvedValue('ok');
+      await expect(retryTransient(run, { random, sleep: fakeSleep })).resolves.toBe('ok');
+      expect(run).toHaveBeenCalledTimes(2);
+      expect(slept[0]).toBeGreaterThanOrEqual(5000); // nunca menos de lo que pidió
+      expect(slept[0]).toBeLessThanOrEqual(6000); // y la variación solo reparte, hasta +20 %
+    }
+    const six = vi.fn().mockRejectedValue(new AccessError('TEMPORARILY_UNAVAILABLE', 6));
+    await expect(retryTransient(six, options)).rejects.toThrow();
+    expect(six).toHaveBeenCalledTimes(1); // 6 s ya supera el tope: lo decide la persona
+  });
   test('un intento lento que falla no se repite solo: señal de saturación, no de red', async () => {
     vi.useFakeTimers();
     try {

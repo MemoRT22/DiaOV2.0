@@ -4,11 +4,16 @@ import { handleRequest, unwrapQuery, upstreamTemporary, type Deps } from './hand
 const url = Deno.env.get('SUPABASE_URL');
 const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 const anonKey = Deno.env.get('SUPABASE_ANON_KEY');
-// Cada llamada a PostgREST/Auth tiene plazo propio (el gateway de Auth corta a ~11 s: esperar más no sirve de nada). Un fallo por plazo
-// llega como status 0 / AuthRetryableFetchError y `upstreamTemporary` lo convierte en 503 con Retry-After, no en 150 s de espera.
-const UPSTREAM_TIMEOUT_MS = 8_000;
+// Cada llamada a PostgREST/Auth tiene plazo propio: sin él, una llamada colgada retiene la función hasta que la plataforma la corta
+// (~150 s). Un fallo por plazo llega como status 0 / AuthRetryableFetchError y `upstreamTemporary` lo convierte en 503 con Retry-After.
+// PostgREST (consultas y RPC, milisegundos en operación normal): 8 s. Auth: 15 s. Crear/cambiar una cuenta cifra la contraseña y,
+// medido en el incidente, llegó a tardar hasta ~12 s con el servicio saturado; su puerta de enlace corta a ~11–16 s, así que un plazo
+// menor interrumpiría operaciones que sí habrían terminado (y dejaría la cuenta a medias). Auth ya no se consulta en `identify`.
+const POSTGREST_TIMEOUT_MS = 8_000;
+const AUTH_TIMEOUT_MS = 15_000;
 const timedFetch: typeof fetch = (input, init) => {
-  const limit = AbortSignal.timeout(UPSTREAM_TIMEOUT_MS);
+  const target = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+  const limit = AbortSignal.timeout(target.includes('/auth/v1/') ? AUTH_TIMEOUT_MS : POSTGREST_TIMEOUT_MS);
   return fetch(input, { ...init, signal: init?.signal ? AbortSignal.any([init.signal, limit]) : limit });
 };
 const authOptions = { auth: { persistSession: false, autoRefreshToken: false }, global: { fetch: timedFetch } };
@@ -119,11 +124,6 @@ const deps: Deps = {
   },
   // Solo códigos de evento: nunca correo, contraseña ni datos personales.
   log: (event, code) => console.error(`[student-access] ${event}`, code ?? ''),
-  // Trabajo accesorio (alinear el correo en Auth) después de responder, sin retener a la persona.
-  background: (task) => {
-    const runtime = (globalThis as { EdgeRuntime?: { waitUntil?: (p: Promise<unknown>) => void } }).EdgeRuntime;
-    if (runtime?.waitUntil) runtime.waitUntil(task);
-  },
 };
 
 Deno.serve((req: Request) => handleRequest(req, deps));

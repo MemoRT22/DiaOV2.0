@@ -49,8 +49,11 @@ export async function retryTransient<T>(run: () => Promise<T>, options: RetryOpt
       if (cause instanceof RetryAborted || signal?.aborted) throw cause instanceof RetryAborted ? cause : new RetryAborted();
       if (!isTemporaryAccessError(cause) || attempt >= retries) throw cause;
       if (Date.now() - startedAt > slowAttemptMs) throw cause; // servicio saturado: no se le suma otra petición
+      // El tope se aplica a lo que PIDIÓ el servidor (y a la espera exponencial), antes de la variación aleatoria: un `Retry-After: 5`
+      // con tope de 5 s sí se reintenta; la variación (hasta +20 %) solo reparte los reintentos, no decide si ocurren.
+      const askedMs = (retryAfterOf(cause) ?? 0) * 1000;
+      if (askedMs > maxAutoWaitMs || baseMs * 2 ** attempt > maxAutoWaitMs) throw cause; // que lo decida la persona, con la cuenta atrás
       const delay = backoffMs(attempt, retryAfterOf(cause), baseMs, random);
-      if (delay > maxAutoWaitMs) throw cause; // el servidor pidió esperar mucho: que lo decida la persona, con la cuenta atrás
       await wait(delay, signal);
     }
   }
