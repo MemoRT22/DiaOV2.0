@@ -51,3 +51,33 @@ test('a different account, and signing out, do reload the identity', async () =>
   await emit('SIGNED_IN', session('u2'));
   expect(m.identityLoads).toBe(3); // after signing out the same account is a new sign-in
 });
+
+test('signing out always leaves this device: if the server logout fails, the stored session is removed and the app restarts at the start', async () => {
+  const { supabase } = await import('./supabase');
+  vi.spyOn(supabase.auth, 'signOut').mockResolvedValueOnce({ error: new Error('network') } as never);
+  const assign = vi.fn();
+  const realLocation = window.location;
+  Object.defineProperty(window, 'location', { configurable: true, value: { ...realLocation, assign } });
+  localStorage.setItem('sb-abc-auth-token', '{"access_token":"t"}');
+  localStorage.setItem('other-key', 'keep');
+  function Out() { const { signOut } = useAuth(); return <button onClick={() => void signOut()}>salir</button>; }
+  render(<AuthProvider><Out /></AuthProvider>);
+  await act(async () => { screen.getByText('salir').click(); });
+  expect(localStorage.getItem('sb-abc-auth-token')).toBeNull();
+  expect(localStorage.getItem('other-key')).toBe('keep');
+  expect(assign).toHaveBeenCalledWith('/');
+  Object.defineProperty(window, 'location', { configurable: true, value: realLocation });
+});
+
+test('a server logout that works needs no restart', async () => {
+  const { supabase } = await import('./supabase');
+  vi.spyOn(supabase.auth, 'signOut').mockResolvedValueOnce({ error: null } as never);
+  const assign = vi.fn();
+  const realLocation = window.location;
+  Object.defineProperty(window, 'location', { configurable: true, value: { ...realLocation, assign } });
+  function Out() { const { signOut } = useAuth(); return <button onClick={() => void signOut()}>salir</button>; }
+  render(<AuthProvider><Out /></AuthProvider>);
+  await act(async () => { screen.getByText('salir').click(); });
+  expect(assign).not.toHaveBeenCalled();
+  Object.defineProperty(window, 'location', { configurable: true, value: realLocation });
+});

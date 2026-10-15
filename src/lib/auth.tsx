@@ -146,7 +146,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [passwordSignIn]);
 
   const signOut = useCallback(async () => {
-    await supabase.auth.signOut();
+    // The server logout can fail (no network, saturation, timeout) and then supabase-js keeps the session: the button would do nothing.
+    // Leaving must always work on THIS device, so the stored session is removed and the app restarts signed out.
+    const result = await supabase.auth.signOut().catch((error: unknown) => ({ error }));
+    if (!result?.error) return;
+    try {
+      const keys = Array.from({ length: localStorage.length }, (_, i) => localStorage.key(i) ?? '');
+      for (const key of keys) if (/^sb-.+-auth-token(-code-verifier)?$/.test(key)) localStorage.removeItem(key);
+    } catch { /* storage unavailable: the reload below still drops the in-memory session */ }
+    window.location.assign('/');
   }, []);
 
   const value = useMemo(
