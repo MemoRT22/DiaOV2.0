@@ -76,7 +76,7 @@ export default function ExitSurveyInvite() {
         <div className="wn-halo" aria-hidden><ClipboardCheck size={44} /></div>
         <h2 id="es-title" className="wn-title">Una última misión</h2>
         <p id="es-body" className="mt-2 text-sm text-ink-muted">
-          Cuéntanos cómo te fue en el Día OV. Responder esta encuesta es un requisito adicional para participar en el sorteo, y toma cerca de un minuto.
+          Cuéntanos cómo te fue en el Día OV. Responderla es voluntario y toma cerca de un minuto; no afecta tu participación en el sorteo.
         </p>
         <p className="mt-3 text-xs text-ink-muted">Si prefieres, puedes hacerlo después desde tu Bitácora.</p>
         <div className="wn-actions">

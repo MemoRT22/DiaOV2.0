@@ -95,8 +95,8 @@ function Done({ outcome, status, justNow }: { outcome: ExitSurveyOutcome | null;
       {!server.hasWon && (
         <p className={`mx-auto mt-4 max-w-xs rounded-theme border p-3 text-sm font-semibold ${server.eligible ? 'border-success-500/40 bg-success-500/10' : 'border-line bg-surface-raised'}`}>
           {server.eligible
-            ? `Ya cumples los requisitos para participar en el sorteo${server.stampsCategoryName ? ` (${server.stampsCategoryName})` : ''}.`
-            : 'Tu encuesta ya está lista. Sigue completando misiones para alcanzar una categoría.'}
+            ? `Ya participas en el sorteo con tus sellos${server.stampsCategoryName ? ` (${server.stampsCategoryName})` : ''}.`
+            : 'Gracias por responder. Sigue completando misiones para alcanzar una categoría del sorteo.'}
         </p>
       )}
       <Link to="/pasaporte" className={buttonClasses('primary', 'mt-6 w-full sm:w-auto')}>Ir a mi bitácora</Link>
@@ -247,7 +247,7 @@ export default function ExitSurveyPage() {
           </Button>
         </div>
       </form>
-      <p className="text-center text-xs text-ink-muted">Es un requisito adicional para participar en el sorteo. Tus respuestas ayudan a mejorar el Día OV.</p>
+      <p className="text-center text-xs text-ink-muted">Es voluntaria y no afecta tu participación en el sorteo. Tus respuestas ayudan a mejorar el Día OV.</p>
     </Shell>
   );
 }

@@ -306,7 +306,6 @@ export default function RaffleRun({ ctx }: { ctx: RaffleContext }) {
               {categories.map((item) => (
                 <div key={item.id} className="rf-board-group" data-tone={toneOf(item.name)} role="group" aria-label={`Premios de ${item.name}`}>
                   <h3>{item.name}<small>{plural(item.pool_count ?? 0, 'elegible', 'elegibles')}</small></h3>
-                  {(item.survey_pending_count ?? 0) > 0 && <p className="rf-choice-empty">{plural(item.survey_pending_count ?? 0, 'alumno con los sellos', 'alumnos con los sellos')} aún no {(item.survey_pending_count ?? 0) === 1 ? 'contesta' : 'contestan'} la encuesta de salida: no {(item.survey_pending_count ?? 0) === 1 ? 'entra' : 'entran'} al sorteo.</p>}
                   {(prizes[item.id] ?? EMPTY).map((target) => (
                     <PrizeCard key={target.id} category={item} prize={target} winners={winners} pending={!!pending[target.id]} unverified={!!unverified[target.id]}
                       checked={target.id === prizeId} disabled={locked} onSelect={() => pick(item, target)} />

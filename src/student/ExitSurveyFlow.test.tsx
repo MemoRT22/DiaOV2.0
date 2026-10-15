@@ -91,7 +91,7 @@ describe('popup de invitación', () => {
     await tick(31_000); // el temporizador solo despierta la consulta; el servidor decide
     const dialog = screen.getByRole('alertdialog');
     expect(within(dialog).getByText('Una última misión')).toBeInTheDocument();
-    expect(dialog).toHaveTextContent('requisito adicional para participar en el sorteo');
+    expect(dialog).toHaveTextContent('no afecta tu participación en el sorteo');
     expect(within(dialog).getByRole('button', { name: 'Responder encuesta' })).toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole('button', { name: 'Ahora no' }));
     expect(popup()).toBeNull();
@@ -190,7 +190,7 @@ describe('acceso permanente desde la Bitácora', () => {
     first.unmount();
     server.now = '2026-10-15T19:00:00Z';
     const second = app('/pasaporte');
-    expect(await screen.findByText('Completa tu encuesta para participar en el sorteo.')).toBeInTheDocument();
+    expect(await screen.findByText('Cuéntanos cómo te fue en el Día OV.')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Responder encuesta' })).toHaveAttribute('href', '/encuesta');
     second.unmount();
     server.completed = true;
@@ -205,13 +205,13 @@ describe('acceso permanente desde la Bitácora', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Ahora no' }));
     expect(popup()).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'ir-pasaporte' }));
-    expect(await screen.findByText('Completa tu encuesta para participar en el sorteo.')).toBeInTheDocument();
+    expect(await screen.findByText('Cuéntanos cómo te fue en el Día OV.')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('link', { name: 'Responder encuesta' }));
     await screen.findByText('Pregunta 1 de 5');
     await answerAll();
     send();
     expect(await screen.findByText('¡Misión completada!')).toBeInTheDocument();
-    expect(screen.getByText(/Ya cumples los requisitos para participar en el sorteo/)).toBeInTheDocument();
+    expect(screen.getByText(/Ya participas en el sorteo con tus sellos/)).toBeInTheDocument();
     expect(server.completed).toBe(true);
     expect(popup()).toBeNull();
     expect(vi.mocked(rpc).mock.calls.filter(([name]) => name === 'submit_exit_survey')).toHaveLength(1);
@@ -281,7 +281,7 @@ describe('encuesta: una pregunta por paso', () => {
     send();
     expect(await screen.findByText('¡Misión completada!')).toBeInTheDocument();
     expect(screen.getByText('Gracias por ayudarnos a mejorar el Día OV.')).toBeInTheDocument();
-    expect(screen.getByText(/Ya cumples los requisitos para participar en el sorteo/)).toBeInTheDocument();
+    expect(screen.getByText(/Ya participas en el sorteo con tus sellos/)).toBeInTheDocument();
     expect(payloads).toHaveLength(1);
     expect(payloads[0]).toEqual({ version: 'exit-2026-v1', q1: 'entre_varias', q2: 4, q3: 'algunas_opciones', q4: ['salud'], q5: 0, comment: null });
     expect(JSON.stringify(payloads[0])).not.toMatch(/participant|p-1/); // jamás un identificador del navegador
@@ -293,7 +293,7 @@ describe('encuesta: una pregunta por paso', () => {
     await screen.findByText('Pregunta 1 de 5');
     await answerAll();
     send();
-    expect(await screen.findByText('Tu encuesta ya está lista. Sigue completando misiones para alcanzar una categoría.')).toBeInTheDocument();
+    expect(await screen.findByText('Gracias por responder. Sigue completando misiones para alcanzar una categoría del sorteo.')).toBeInTheDocument();
     expect(screen.queryByText(/Ya cumples los requisitos/)).toBeNull();
   });
 
@@ -388,12 +388,13 @@ describe('encuesta: una pregunta por paso', () => {
 
 describe('estado del sorteo en la Bitácora', () => {
   const status = (over: Record<string, unknown>) => normalizeRaffleStatus({ academic_stamps: 1, university_life_stamps: 1, raffle_category: 'c', raffle_category_name: 'Sistema Solar', has_won: false, categories: [], ...over });
-  test('con los sellos y sin encuesta: sigue mostrando su categoría y dice qué falta', () => {
+  test('con los sellos y sin encuesta: participa; no hay aviso ni enlace que la presente como requisito', () => {
     render(<MemoryRouter><RaffleStatusCard raffle={status({ survey_completed: false, raffle_eligible: false })} /></MemoryRouter>);
     expect(screen.getByText('Sistema Solar')).toBeInTheDocument();
-    expect(screen.getByTestId('survey-pending')).toHaveTextContent('Ya tienes los sellos necesarios. Solo falta completar tu encuesta para participar.');
-    expect(screen.queryByText('Ya participas en el sorteo.')).toBeNull();
-    expect(screen.getByRole('link', { name: 'Responder encuesta' })).toHaveAttribute('href', '/encuesta');
+    expect(screen.getByText('Ya participas en el sorteo.')).toBeInTheDocument();
+    expect(screen.queryByTestId('survey-pending')).toBeNull();
+    expect(screen.queryByText(/Solo falta completar tu encuesta/)).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Responder encuesta' })).toBeNull();
   });
   test('encuesta completada: participa y ya no hay aviso', () => {
     render(<MemoryRouter><RaffleStatusCard raffle={status({ survey_completed: true, raffle_eligible: true })} /></MemoryRouter>);

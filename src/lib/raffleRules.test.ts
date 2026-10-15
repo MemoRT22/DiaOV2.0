@@ -124,11 +124,11 @@ describe('normalizing the status payload', () => {
     expect(normalizeRaffleStatus(null).total_stamps).toBe(0);
   });
 
-  it('reads the exit-survey requirement: category by stamps stays visible while the survey is pending', () => {
-    const pending = normalizeRaffleStatus({ raffle_category: 'c', raffle_category_name: 'Galaxia', survey_completed: false, raffle_eligible: false });
-    expect(pending).toMatchObject({ raffle_category_name: 'Galaxia', survey_completed: false, raffle_eligible: false });
+  it('eligibility depends only on stamps: the exit survey (voluntary) never decides it, even from a server that still asked for it', () => {
+    const withoutSurvey = normalizeRaffleStatus({ raffle_category: 'c', raffle_category_name: 'Galaxia', survey_completed: false, raffle_eligible: false });
+    expect(withoutSurvey).toMatchObject({ raffle_category_name: 'Galaxia', survey_completed: false, raffle_eligible: true });
     expect(normalizeRaffleStatus({ raffle_category: 'c', raffle_category_name: 'Galaxia', survey_completed: true, raffle_eligible: true })).toMatchObject({ survey_completed: true, raffle_eligible: true });
-    // un servidor anterior a la encuesta no inventa un requisito que no existe
-    expect(normalizeRaffleStatus({ raffle_category: 'c', raffle_category_name: 'Galaxia' })).toMatchObject({ survey_completed: true, raffle_eligible: true });
+    expect(normalizeRaffleStatus({ raffle_category: null, raffle_category_name: null, survey_completed: true, raffle_eligible: true })).toMatchObject({ raffle_eligible: false });
+    expect(normalizeRaffleStatus({ raffle_category: 'c', raffle_category_name: 'Galaxia', has_won: true })).toMatchObject({ raffle_eligible: false });
   });
 });

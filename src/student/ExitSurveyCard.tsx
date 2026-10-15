@@ -6,7 +6,7 @@ import { useExitSurvey } from './ExitSurveyProvider';
 
 /**
  * «Encuesta de salida» en la Bitácora: el acceso permanente, también para quien nunca vio la invitación. Pendiente → invita a
- * contestar (es requisito del sorteo); completada → agradece y no ofrece volver a contestar. Todo lo dice el servidor.
+ * contestar (voluntaria: no afecta el sorteo); completada → agradece y no ofrece volver a contestar. Todo lo dice el servidor.
  */
 export default function ExitSurveyCard({ stepLabel }: { stepLabel?: string }) {
   const { enabled, status, loaded, failed, refresh } = useExitSurvey();
@@ -34,14 +34,14 @@ export default function ExitSurveyCard({ stepLabel }: { stepLabel?: string }) {
         </div>
       ) : status.isOpen ? (
         <div className="mt-3">
-          <p className="text-sm font-semibold">Completa tu encuesta para participar en el sorteo.</p>
+          <p className="text-sm font-semibold">Cuéntanos cómo te fue en el Día OV.</p>
           <p className="mt-1 text-sm text-ink-muted">Son cinco preguntas, cerca de un minuto.</p>
           <Link to="/encuesta" className={buttonClasses('primary', 'mt-4 w-full sm:w-auto')}>Responder encuesta</Link>
         </div>
       ) : (
         <div className="mt-3 flex items-start gap-3 rounded-theme border border-line bg-surface-raised p-4">
           <Clock className="mt-0.5 h-5 w-5 shrink-0 text-ink-muted" aria-hidden />
-          <p className="text-sm text-ink-muted">Se abrirá {describeOpening(status)} (hora de Cancún). Será un requisito adicional para participar en el sorteo.</p>
+          <p className="text-sm text-ink-muted">Se abrirá {describeOpening(status)} (hora de Cancún). Responderla es voluntario.</p>
         </div>
       )}
     </section>
