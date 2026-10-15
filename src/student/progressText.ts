@@ -52,3 +52,15 @@ export const stampsForRank = (rank: number) => Math.max(rank - 1, 0);
 
 /** Stamps needed for the last rank (4). */
 export const MAX_RANK_STAMPS = stampsForRank(RANK_COUNT);
+
+/**
+ * Rank (1–5) the student would reach IF they attend everything still reserved, computed from the OFFICIAL stamp total (`my_progress`),
+ * never from the stamps visible in the reservation board: an attendance without a reservation is real but absent from the board, so
+ * a board-based total could understate it. `planned` counts only reservations NOT yet attended, so nothing is counted twice.
+ * It is never lower than the rank already held, and `null` when the progression is no longer «one stamp, one rank» (nothing printable).
+ */
+export function projectedRankLevel(progress: Ladder & { stamps: number }, planned: number): number | null {
+  if (!isStampLadder(progress)) return null;
+  const reachable = Math.min(Math.max(progress.stamps, 0) + Math.max(planned, 0), MAX_RANK_STAMPS) + 1;
+  return Math.min(Math.max(progress.level, reachable), RANK_COUNT);
+}

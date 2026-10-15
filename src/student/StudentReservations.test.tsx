@@ -54,6 +54,32 @@ test('the header recommends — never imposes — the transfer time', async () =
   expect(screen.queryByText(/para trasladarte/)).not.toBeInTheDocument();
 });
 
+test('Mi ruta adds the potential stamps without touching the reservations indicator, and a cancellation updates them', async () => {
+  const done = session({ id: 'done', activity_id: 'a-done', title: 'Completada', credits: 2, ended: true, started: true, attended: true, my_reservation_id: 'r0' });
+  const one = session({ id: 'one', activity_id: 'a-one', title: 'Una', credits: 1, my_reservation_id: 'r1' });
+  const two = session({ id: 'two', activity_id: 'a-two', title: 'Dos', credits: 2, ends_at: '2026-10-15T16:00:00Z', my_reservation_id: 'r2' });
+  const rows = [
+    reservation({ id: 'r0', session_id: 'done', activity_id: 'a-done', derived_status: 'completed', credits_granted: 2 }),
+    reservation({ id: 'r1', session_id: 'one', activity_id: 'a-one' }),
+    reservation({ id: 'r2', session_id: 'two', activity_id: 'a-two' }),
+  ];
+  state.board = board({ active_reservation_count: 2, sessions: [done, one, two], reservations: rows });
+  const view = render(<MemoryRouter><MyRoute /></MemoryRouter>);
+  await screen.findByText(/2 de 4 misiones reservadas · 1 completada/); // the reservations indicator keeps its meaning
+  const plan = screen.getByRole('img', { name: /2 stamp obtenidos en tu ruta, 3 stamp posibles si asistes/ });
+  expect(plan.querySelectorAll('[data-stamp="earned"]')).toHaveLength(2);
+  expect(plan.querySelectorAll('[data-stamp="planned"]')).toHaveLength(2);
+  expect(plan).toHaveTextContent('+1'); // 5 in total: no extra positions, the real total is kept
+  view.unmount();
+
+  // the student cancels the 2-credit mission: the projection follows the board
+  state.board = board({ active_reservation_count: 1, sessions: [done, one, two], reservations: [rows[0], rows[1]] });
+  render(<MemoryRouter><MyRoute /></MemoryRouter>);
+  await screen.findByText(/1 de 4 misiones reservadas · 1 completada/);
+  const after = screen.getByRole('img', { name: /2 stamp obtenidos en tu ruta, 1 stamp posible si asistes/ });
+  expect(after.querySelectorAll('[data-stamp="planned"]')).toHaveLength(1);
+});
+
 test('a session in progress can still be changed and cancelled', async () => {
   const s = session({ id: 'live', title: 'En curso ahora', started: true, in_progress: true, my_reservation_id: 'r1' });
   await renderRoute(board({ active_reservation_count: 1, sessions: [s], reservations: [reservation({ id: 'r1', session_id: 'live', derived_status: 'in_progress' })] }));

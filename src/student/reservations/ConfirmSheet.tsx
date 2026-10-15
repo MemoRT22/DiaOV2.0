@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
 import { Alert, Button, buttonClasses } from '../../components/ui';
 import { friendlyError } from '../../lib/errors';
+import { StampPlan, type StampPlanView } from '../ui/StampPlan';
 
 export type ConfirmRequest = {
   title: string;
@@ -21,9 +22,10 @@ export type ConfirmRequest = {
     link?: { to: string; label: string };
     /**
      * How full the route is NOW, read after the server accepted the action and the board was refreshed. Only shown
-     * after a real success; it is never computed from the tap itself.
+     * after a real success; it is never computed from the tap itself. `stamps` is the POTENTIAL stamp projection of the route
+     * (earned vs. possible): possible stamps are never shown as won.
      */
-    progress?: () => { active: number; max: number };
+    progress?: () => { active: number; max: number; stamps?: StampPlanView };
   };
   action: () => Promise<unknown>;
 };
@@ -105,21 +107,29 @@ export default function ConfirmSheet({ request, onClose }: { request: ConfirmReq
           </div>
           {route && route.active > 0 && (
             <div className="mx-auto w-full max-w-[16rem]" role="img" aria-label={`Tu ruta: ${route.active} de ${route.max} misiones reservadas`}>
-              <div className="flex items-center" aria-hidden>
-                {Array.from({ length: route.max }, (_, i) => (
-                  <span key={i} className="flex flex-1 items-center last:flex-none">
-                    <span
-                      className={`h-3.5 w-3.5 shrink-0 rounded-full border-2 ${
-                        i < route.active ? 'border-primary-500 bg-primary-500 shadow-[0_0_10px_rgb(var(--c-primary-500)/0.8)]' : 'border-line'
-                      } ${i === route.active - 1 ? 'anim-pop' : ''}`}
-                    />
-                    {i < route.max - 1 && <span className={`h-0.5 flex-1 ${i < route.active - 1 ? 'bg-primary-500' : 'bg-line'}`} />}
-                  </span>
-                ))}
-              </div>
+              {/* the number of reservations is the limit of the route: it stays, as text, the way it always was */}
+              {!(route.stamps && route.stamps.total > 0) && (
+                <div className="flex items-center" aria-hidden>
+                  {Array.from({ length: route.max }, (_, i) => (
+                    <span key={i} className="flex flex-1 items-center last:flex-none">
+                      <span
+                        className={`h-3.5 w-3.5 shrink-0 rounded-full border-2 ${
+                          i < route.active ? 'border-primary-500 bg-primary-500 shadow-[0_0_10px_rgb(var(--c-primary-500)/0.8)]' : 'border-line'
+                        } ${i === route.active - 1 ? 'anim-pop' : ''}`}
+                      />
+                      {i < route.max - 1 && <span className={`h-0.5 flex-1 ${i < route.active - 1 ? 'bg-primary-500' : 'bg-line'}`} />}
+                    </span>
+                  ))}
+                </div>
+              )}
               <p className="mt-2 text-xs font-semibold text-ink-muted">
-                Tu ruta: <span className="text-ink">{route.active} de {route.max}</span> misiones
+                Tu ruta: <span className="text-ink">{route.active} de {route.max}</span> misiones reservadas
               </p>
+            </div>
+          )}
+          {route?.stamps && route.stamps.total > 0 && route.active > 0 && (
+            <div className="mx-auto w-full max-w-[17rem] rounded-theme border border-line bg-surface-sunken/50 px-3 py-3">
+              <StampPlan plan={route.stamps} />
             </div>
           )}
           <div className="grid gap-2">
