@@ -121,6 +121,7 @@ export default function RaffleModule({ canConfigure }: { canConfigure: boolean }
   const context: RaffleContext | null = needsChoice ? null : {
     rehearsal, dataSet, categories, allCategories, prizes, plan, winners, loaded: !!current, stale, canConfigure,
     prizesLoading: !current && !initialFailure ? true : reading || refreshing, refresh, goTo, setRoundActive,
+    registeredTotal: data?.registered_total,
   };
 
   return (

@@ -256,10 +256,10 @@ export default function RaffleRun({ ctx }: { ctx: RaffleContext }) {
 
   // What the audience may see: no blockers, no notices, no errors, no controls.
   const publicState: PublicState = useMemo(() => toPublicState({
-    rehearsal, phase, ready: !blocker && !!prize, categoryName: category?.name, poolCount,
+    rehearsal, phase, ready: !blocker && !!prize, categoryName: category?.name, poolCount, registeredCount: ctx.registeredTotal ?? null,
     prize: prize && { name: prize.name, available: prize.available, quantity: prize.quantity },
     result: result && { winnerId: result.winnerId, name: result.name, prizeName: result.prizeName, poolSize: result.poolSize, fresh: result.fresh },
-  }), [rehearsal, phase, blocker, prize, category?.name, poolCount, result]);
+  }), [rehearsal, phase, blocker, prize, category?.name, poolCount, ctx.registeredTotal, result]);
   const screen = useRafflePublicScreen(publicState);
 
   // Space/Enter in the rehearsal: the one obvious next step of the round.

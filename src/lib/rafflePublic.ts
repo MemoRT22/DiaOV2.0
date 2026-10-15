@@ -20,6 +20,8 @@ export type PublicState = {
   categoryName: string | null;
   prize: { name: string; available: number; quantity: number } | null;
   poolCount: number;
+  /** Inscritos en la edición: lo que la pantalla pública muestra como cifra de la ronda (con su texto veraz). */
+  registeredCount?: number | null;
   result: {
     winnerId: string; name: string; prizeName: string;
     /** Pool size reported by the server for this very draw; null when unknown (a recovered selection). */
@@ -54,9 +56,10 @@ export function parsePublicMessage(value: unknown): PublicMessage | null {
   if (result !== null && !(result && isText(result.winnerId) && isText(result.name) && isText(result.prizeName)
     && (result.poolSize === null || isCount(result.poolSize)) && typeof result.fresh === 'boolean')) return null;
   if ((s.categoryName !== null && !isText(s.categoryName))) return null;
+  if (s.registeredCount != null && !isCount(s.registeredCount)) return null;
   return { type: 'state', state: {
     rehearsal: s.rehearsal as boolean, phase: s.phase as PublicPhase, categoryName: s.categoryName as string | null,
-    prize: prize as PublicState['prize'], poolCount: s.poolCount as number, result: result as PublicState['result'],
+    prize: prize as PublicState['prize'], poolCount: s.poolCount as number, registeredCount: (s.registeredCount as number | null | undefined) ?? null, result: result as PublicState['result'],
   } };
 }
 
@@ -68,7 +71,7 @@ export type ConsolePhase = 'idle' | 'drawing' | 'revealed' | 'confirmed' | 'unce
  */
 export function toPublicState(input: {
   rehearsal: boolean; phase: ConsolePhase; ready: boolean; categoryName?: string;
-  prize?: { name: string; available: number; quantity: number }; poolCount: number;
+  prize?: { name: string; available: number; quantity: number }; poolCount: number; registeredCount?: number | null;
   result: { winnerId: string; name: string; prizeName: string; poolSize: number | null; fresh: boolean } | null;
 }): PublicState {
   const phase: PublicPhase = input.phase === 'uncertain' ? 'drawing' : input.phase === 'idle' ? (input.ready ? 'ready' : 'standby') : input.phase;
@@ -76,7 +79,7 @@ export function toPublicState(input: {
   return {
     rehearsal: input.rehearsal, phase, categoryName: input.categoryName ?? null,
     prize: input.prize ? { name: input.prize.name, available: input.prize.available, quantity: input.prize.quantity } : null,
-    poolCount: input.poolCount,
+    poolCount: input.poolCount, registeredCount: input.registeredCount ?? null,
     result: showsResult && input.result ? { ...input.result } : null,
   };
 }

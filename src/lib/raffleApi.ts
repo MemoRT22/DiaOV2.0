@@ -40,6 +40,8 @@ export type UnassignedCombo = { academic: number; university_life: number; count
 export type OperatorView = {
   categories: (RaffleCategory & { pool_count: number })[];
   unassigned_combinations: UnassignedCombo[];
+  /** Alumnos inscritos en la edición (dato real; solo para la pantalla pública, no define quién participa). */
+  registered_total?: number;
 };
 
 export type DrawResult = {
@@ -50,9 +52,10 @@ export type DrawResult = {
 
 export async function fetchMyRaffleStatus(): Promise<MyRaffleStatus> { return normalizeRaffleStatus(await rpc<Record<string, unknown>>('my_raffle_status')); }
 export async function fetchOperatorView(): Promise<OperatorView> {
-  const view = await rpc<{ categories: OperatorView['categories']; unassigned_combinations: (Partial<UnassignedCombo> & { leadership?: number })[] }>('raffle_operator_view');
+  const view = await rpc<{ categories: OperatorView['categories']; unassigned_combinations: (Partial<UnassignedCombo> & { leadership?: number })[]; registered_total?: number }>('raffle_operator_view');
   return {
     categories: view.categories,
+    registered_total: typeof view.registered_total === 'number' ? view.registered_total : undefined,
     unassigned_combinations: (view.unassigned_combinations ?? []).map((c) => ({
       academic: c.academic ?? 0, university_life: c.university_life ?? c.leadership ?? 0, count: c.count ?? 0,
     })),

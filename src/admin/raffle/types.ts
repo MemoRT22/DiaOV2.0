@@ -32,4 +32,6 @@ export type RaffleContext = {
   goTo: (section: RaffleSection) => void;
   /** The console reports whether a round is in progress, so the records of the rehearsal cannot be changed under it. */
   setRoundActive: (active: boolean) => void;
+  /** Alumnos inscritos (dato real), para la pantalla pública. */
+  registeredTotal?: number;
 };

@@ -243,7 +243,7 @@ test('the on-screen rehearsal of the event rehearsal is unmistakably marked', as
 
 test('the public state has no field for errors, notices or controls', () => {
   const state = toPublicState({ rehearsal: false, phase: 'uncertain', ready: false, poolCount: 3, prize: { name: AMAZON, available: 1, quantity: 2 }, result: null });
-  expect(Object.keys(state).sort()).toEqual(['categoryName', 'phase', 'poolCount', 'prize', 'rehearsal', 'result']);
+  expect(Object.keys(state).sort()).toEqual(['categoryName', 'phase', 'poolCount', 'prize', 'registeredCount', 'rehearsal', 'result']);
   expect(state.phase).toBe('drawing');
   expect(toPublicState({ rehearsal: false, phase: 'idle', ready: false, poolCount: 3, result: null }).phase).toBe('standby');
 });
@@ -254,4 +254,31 @@ test('a message that is not exactly a public state is ignored', () => {
   expect(parsePublicMessage({ type: 'launch' })).toBeNull();
   expect(parsePublicMessage('x')).toBeNull();
   expect(parsePublicMessage({ type: 'state', state: null })).toEqual({ type: 'state', state: null });
+});
+
+test('the public screen shows the REAL number of registered students with a truthful caption; the operator console keeps the real pool', async () => {
+  m.view.mockImplementation(async () => ({ ...view(), registered_total: 1850 }));
+  const pub = openPublic();
+  openConsole();
+  await readyToDraw();
+  expect(await pub.stage().findByText('1,850')).toBeInTheDocument();
+  expect(pub.stage().getByText('alumnos inscritos en el Día OV')).toBeInTheDocument();
+  expect(pub.stage().queryByText(/compiten por/)).toBeNull(); // nothing claims that all of them compete
+  // the console (operator) still shows who really takes part
+  expect(consoleStage().getByText('participantes compiten por')).toBeInTheDocument();
+  noControls(pub.container);
+});
+
+test('without the registered total (older server) the public screen keeps its usual pool figure', async () => {
+  const pub = openPublic();
+  openConsole();
+  await readyToDraw();
+  expect(await pub.stage().findByText('participantes compiten por')).toBeInTheDocument();
+});
+
+test('the registered total travels through the public message and is validated', () => {
+  const base = { rehearsal: false, phase: 'ready', poolCount: 3, prize: null, result: null, categoryName: null };
+  expect(parsePublicMessage({ type: 'state', state: { ...base, registeredCount: 1850 } })).toMatchObject({ state: { registeredCount: 1850 } });
+  expect(parsePublicMessage({ type: 'state', state: base })).toMatchObject({ state: { registeredCount: null } });
+  expect(parsePublicMessage({ type: 'state', state: { ...base, registeredCount: 'x' } })).toBeNull();
 });

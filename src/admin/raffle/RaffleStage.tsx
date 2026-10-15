@@ -82,6 +82,8 @@ type Props = {
   categoryName?: string;
   prize?: StagePrize;
   poolCount: number;
+  /** Projection only: alumnos inscritos (dato real). Si llega, esa es la cifra de la pantalla pública; la consola del operador siempre muestra los elegibles reales. */
+  registeredCount?: number | null;
   result: StageResult | null;
   /** Projection only: false shows the title screen instead of an unfinished round. */
   ready?: boolean;
@@ -99,7 +101,7 @@ type Props = {
 };
 
 /** What the audience sees: category, prize, how many compete and, at the end, the winner. The same stage serves the console and the public screen. */
-export default function RaffleStage({ variant, phase, rehearsal, categoryName, prize, poolCount, result, ready = true, blocker = null, notice, onRevealDone, alreadyRevealed, folio, children }: Props) {
+export default function RaffleStage({ variant, phase, rehearsal, categoryName, prize, poolCount, registeredCount, result, ready = true, blocker = null, notice, onRevealDone, alreadyRevealed, folio, children }: Props) {
   const operator = variant === 'panel';
   const reduced = useReducedMotion();
   const animateReveal = phase === 'revealed' && !!result?.fresh && !reduced && !alreadyRevealed;
@@ -138,7 +140,9 @@ export default function RaffleStage({ variant, phase, rehearsal, categoryName, p
           <>
             {!blocker || (blocker.code !== 'no-category' && blocker.code !== 'no-prizes' && blocker.code !== 'inactive-category') ? (
               <>
-                <p className="rf-pool"><strong>{poolCount}</strong><span>{poolCount === 1 ? 'participante compite por' : 'participantes compiten por'}</span></p>
+                {variant === 'projection' && !!registeredCount && registeredCount > 0
+                  ? <p className="rf-pool"><strong>{registeredCount.toLocaleString('es-MX')}</strong><span>{registeredCount === 1 ? 'alumno inscrito en el Día OV' : 'alumnos inscritos en el Día OV'}</span></p>
+                  : <p className="rf-pool"><strong>{poolCount}</strong><span>{poolCount === 1 ? 'participante compite por' : 'participantes compiten por'}</span></p>}
                 <h2 className="rf-prize">{prize?.name ?? 'Elige un premio'}</h2>
                 {prize && <p className="rf-facts">{unitsText}</p>}
               </>
@@ -187,7 +191,7 @@ export function PublicStage({ state, alreadyRevealed }: { state: PublicState; al
   const phase: StagePhase = state.phase === 'standby' || state.phase === 'ready' ? 'idle' : state.phase;
   return (
     <RaffleStage variant="projection" phase={phase} rehearsal={state.rehearsal} categoryName={state.categoryName ?? undefined} prize={state.prize ?? undefined}
-      poolCount={state.poolCount} ready={state.phase !== 'standby'} alreadyRevealed={alreadyRevealed}
+      poolCount={state.poolCount} registeredCount={state.registeredCount} ready={state.phase !== 'standby'} alreadyRevealed={alreadyRevealed}
       result={state.result ? { ...state.result, categoryName: state.categoryName ?? '' } : null} />
   );
 }
