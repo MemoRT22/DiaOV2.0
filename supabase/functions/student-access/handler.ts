@@ -208,19 +208,13 @@ async function identify(deps: Deps, body: Record<string, unknown>) {
     if (temp) throw temp;
     return fail(rpcErrorCode(state.error));
   }
-  // Si Staff corrigió el correo del participante, la identidad de Auth sigue con el correo anterior: se alinea antes de
-  // que el navegador intente iniciar sesión. Es un ajuste silencioso; un fallo no impide continuar.
-  if (state.data === 'password_login') await syncAuthEmail(deps, email).catch(() => deps.log('email_sync_failed'));
+  // Hotfix: identificar el paso de acceso SOLO requiere la lectura de Postgres.
+  // Consultar Auth Admin en cada intento multiplicaba las dependencias bajo alta carga
+  // y podía retener este request hasta agotar su timeout. La creación y recuperación
+  // de cuentas mantienen sus comprobaciones de propiedad en rutas separadas.
+  // Una corrección excepcional de correo debe sincronizarse de forma administrativa,
+  // no durante el ingreso concurrente de estudiantes.
   return json({ state: state.data });
-}
-
-async function syncAuthEmail(deps: Deps, email: string) {
-  const participant = await deps.participantByEmail(email);
-  if (!participant?.auth_user_id) return;
-  const user = await deps.getUser(participant.auth_user_id);
-  if (user && isParticipantIdentity(user) && (user.email ?? '').toLowerCase() !== email) {
-    await deps.updateUser(user.id, email);
-  }
 }
 
 async function setupPassword(deps: Deps, body: Record<string, unknown>) {
