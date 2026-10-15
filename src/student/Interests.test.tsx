@@ -4,7 +4,12 @@ import { beforeEach, expect, test, vi } from 'vitest';
 import { neutralTheme } from '../theme/neutralTheme';
 import Interests from './Interests';
 
-const m = vi.hoisted(() => ({ fetchDivisions: vi.fn(), fetchInterests: vi.fn(), rpc: vi.fn() }));
+const m = vi.hoisted(() => ({
+  fetchDivisions: vi.fn(),
+  fetchInterests: vi.fn(),
+  rpc: vi.fn(),
+  survey: { enabled: true, status: { isOpen: true, completed: false } },
+}));
 
 vi.mock('../lib/catalog', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../lib/catalog')>()),
@@ -13,7 +18,7 @@ vi.mock('../lib/catalog', async (importOriginal) => ({
 }));
 vi.mock('../lib/supabase', () => ({ supabase: { rpc: m.rpc } }));
 vi.mock('./ExitSurveyProvider', () => ({
-  useExitSurvey: () => ({ enabled: true, status: { isOpen: true, completed: false } }),
+  useExitSurvey: () => m.survey,
 }));
 vi.mock('../theme/PublicThemeProvider', () => ({
   usePublicTheme: () => ({
@@ -44,6 +49,9 @@ beforeEach(() => {
   ]);
   m.fetchInterests.mockResolvedValue(openInterests());
   m.rpc.mockResolvedValue({ error: null });
+  m.survey.enabled = true;
+  m.survey.status.isOpen = true;
+  m.survey.status.completed = false;
 });
 
 const show = () => render(<MemoryRouter><Interests /></MemoryRouter>);
@@ -60,6 +68,7 @@ test('una selección vacía sigue pendiente y nunca se guarda como respuesta', a
   expect(await screen.findByText(/Todavía no has respondido/)).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Guardar mis intereses' })).toBeDisabled();
   expect(screen.getByText(/No guardaremos una selección vacía/)).toBeInTheDocument();
+  expect(screen.getByRole('link', { name: /Responder encuesta/ })).toHaveAttribute('href', '/encuesta');
   expect(m.rpc).not.toHaveBeenCalled();
 });
 
@@ -84,7 +93,7 @@ test('una respuesta guardada puede retirarse por completo sin dejar una selecci�
   fireEvent.click(screen.getByRole('button', { name: 'Retirar todas mis elecciones' }));
   await waitFor(() => expect(m.rpc).toHaveBeenCalledWith('save_post_event_interests', { p_career_ids: [] }));
   expect(await screen.findByText(/Esta etapa vuelve a quedar pendiente/)).toBeInTheDocument();
-  expect(screen.queryByRole('link', { name: /Responder encuesta/ })).not.toBeInTheDocument();
+  expect(screen.getByRole('link', { name: /Responder encuesta/ })).toHaveAttribute('href', '/encuesta');
   expect(screen.getByText(/No guardaremos una selección vacía/)).toBeInTheDocument();
 });
 
@@ -94,6 +103,20 @@ test('un fallo de Supabase conserva el estado pendiente y nunca muestra éxito',
   fireEvent.click(await screen.findByRole('button', { name: 'Medicina' }));
   fireEvent.click(screen.getByRole('button', { name: 'Guardar mis intereses' }));
   expect(await screen.findByRole('alert')).not.toHaveTextContent(/Guardamos|Retiramos/);
+  expect(screen.getByRole('link', { name: /Responder encuesta/ })).toHaveAttribute('href', '/encuesta');
+});
+
+test('no ofrece continuar a una encuesta que el alumno ya contestó', async () => {
+  m.survey.status.completed = true;
+  show();
+  await screen.findByText(/Todavía no has respondido/);
+  expect(screen.queryByRole('link', { name: /Responder encuesta/ })).not.toBeInTheDocument();
+});
+
+test('no ofrece continuar mientras la encuesta todavía está cerrada', async () => {
+  m.survey.status.isOpen = false;
+  show();
+  await screen.findByText(/Todavía no has respondido/);
   expect(screen.queryByRole('link', { name: /Responder encuesta/ })).not.toBeInTheDocument();
 });
 

@@ -257,7 +257,7 @@ export default function Interests() {
         </>
       )}
 
-      {hasResponse && survey.enabled && survey.status?.isOpen && !survey.status.completed && (
+      {survey.enabled && survey.status?.isOpen && !survey.status.completed && (
         <section className="space-card border-secondary-400/40 p-4" aria-label="Siguiente paso del cierre">
           <div className="flex items-start gap-3">
             <ClipboardList className="mt-0.5 h-5 w-5 shrink-0 text-fg-brand" aria-hidden />
