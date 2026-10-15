@@ -7,6 +7,8 @@
 // identidad de participante; jamás una cuenta de Staff o Coordinación— y después la base elimina al participante con
 // todo lo suyo en una transacción. Si algo falla a medias, repetir la operación la termina: nunca queda una cuenta de
 // acceso sin participante. Si Auth no puede decir si la cuenta existe, no se elimina nada.
+import { TemporaryFailure, temporaryOf, temporaryResponse } from '../_shared/operations.ts';
+
 export type AuthResult = { kind: 'ok'; userId: string; coordinator?: boolean } | { kind: 'unauthorized' | 'forbidden' };
 export type RpcResult = { data: unknown; error: { code?: string; message: string } | null };
 export type ParticipantRow = { id: string; email: string; auth_user_id: string | null };
@@ -29,6 +31,7 @@ export type Deps = {
   deleteUser: (id: string) => Promise<void>;
   randomBytes: (length: number) => Uint8Array;
   log: (event: string, code?: string) => void;
+  deadlineMs?: number;
 };
 
 const headers = {
@@ -71,16 +74,17 @@ export function classifyAuthLookup(user: unknown, error: { status?: number; code
   return user ? 'found' : 'inconclusive';
 }
 
-const isParticipantIdentity = (user: AuthUserInfo) => user.kind === 'participant' || SYNTHETIC.test(user.email ?? '');
+const isParticipantIdentity = (user: AuthUserInfo) => user.kind === 'participant' || (user.kind === null && SYNTHETIC.test(user.email ?? ''));
 
 async function applyPassword(deps: Deps, participant: ParticipantRow, password: string): Promise<'ok' | 'EMAIL_EXISTS' | 'SERVER_ERROR'> {
   let existing: AuthUserInfo | null = null;
   if (participant.auth_user_id) {
     try {
       existing = await deps.getUser(participant.auth_user_id);
-    } catch {
+    } catch (cause) {
       // Auth no respondió: no se sabe si la cuenta existe, así que no se crea otra ni se cambia nada.
       deps.log('auth_lookup_failed');
+      if (temporaryOf(cause)) throw cause;
       return 'SERVER_ERROR';
     }
   }
@@ -100,7 +104,10 @@ async function applyPassword(deps: Deps, participant: ParticipantRow, password: 
   if (!created.id) return created.code === 'EMAIL_TAKEN' ? claimInterruptedAccount(deps, participant, password) : 'SERVER_ERROR';
   const linked = await deps.rpc('participant_link_auth_internal', { p_participant: participant.id, p_auth_user: created.id });
   if (linked.error) {
-    await deps.deleteUser(created.id).catch(() => deps.log('rollback_delete_failed'));
+    // The link may have committed before its answer was lost. Keep the identity on EVERY link failure: a later audited reset can
+    // recover it by email, after checking kind and ownership. A definitive link failure is also recoverable without deleting Auth.
+    const temporary = temporaryOf(linked.error);
+    if (temporary) throw temporary;
     return 'SERVER_ERROR';
   }
   return 'ok';
@@ -118,8 +125,9 @@ async function claimInterruptedAccount(deps: Deps, participant: ParticipantRow, 
   try {
     user = await deps.findUserByEmail(participant.email);
     owner = user ? await deps.participantByAuthUser(user.id) : null;
-  } catch {
+  } catch (cause) {
     deps.log('auth_lookup_failed');
+    if (temporaryOf(cause)) throw cause;
     return 'SERVER_ERROR';
   }
   if (!user || user.kind !== 'participant' || (user.email ?? '').toLowerCase() !== participant.email.toLowerCase() || (owner && owner.id !== participant.id)) {
@@ -179,20 +187,25 @@ async function deleteParticipant(deps: Deps, actor: string, participantId: strin
   return json({ ok: true, account, removed: (removed.data as { removed?: unknown } | null)?.removed ?? {} });
 }
 
-export async function handleRequest(req: Request, deps: Deps): Promise<Response> {
+async function processRequest(req: Request, deps: Deps, locks: Set<string>): Promise<Response> {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers });
   if (req.method !== 'POST') return fail('METHOD_NOT_ALLOWED', 405);
   const token = (req.headers.get('authorization') ?? '').replace(/^Bearer\s+/i, '');
   if (!token) return fail('NOT_AUTHORIZED', 401);
+  let locked: string | null = null;
   try {
     const caller = await deps.authorize(token);
     if (caller.kind !== 'ok') return fail('NOT_AUTHORIZED', caller.kind === 'forbidden' ? 403 : 401);
     const body = await req.json().catch(() => null);
     if (!body || typeof body !== 'object' || (body.action !== 'reset_password' && body.action !== 'delete')) return fail('INVALID_ACTION', 400);
     if (typeof body.participant_id !== 'string' || !UUID.test(body.participant_id)) return fail('INVALID_INPUT', 400);
+    if (body.action === 'delete' && !caller.coordinator) return fail('NOT_AUTHORIZED', 403);
+    // Coalesce concurrent operations in this isolate. Auth's email uniqueness remains the cross-isolate account-creation guard.
+    if (locks.has(body.participant_id)) return fail('OPERATION_IN_PROGRESS', 409);
+    locked = body.participant_id;
+    locks.add(locked!);
     if (body.action === 'delete') {
       // Staff puede restablecer contraseñas, pero eliminar es exclusivo de Coordinación.
-      if (!caller.coordinator) return fail('NOT_AUTHORIZED', 403);
       return await deleteParticipant(deps, caller.userId, body.participant_id);
     }
     const manual = body.password !== undefined && body.password !== null && body.password !== '';
@@ -205,6 +218,8 @@ export async function handleRequest(req: Request, deps: Deps): Promise<Response>
     const audit = await deps.rpc('participant_password_audit_internal', { p_actor: caller.userId, p_participant: participant.id });
     if (audit.error) {
       deps.log('audit_failed');
+      const temporary = temporaryOf(audit.error);
+      if (temporary) throw temporary;
       return fail('SERVER_ERROR', 500);
     }
     const password = manual ? (body.password as string) : generatePassword(deps.randomBytes);
@@ -212,8 +227,37 @@ export async function handleRequest(req: Request, deps: Deps): Promise<Response>
     if (outcome === 'EMAIL_EXISTS') return fail('EMAIL_EXISTS', 409);
     if (outcome !== 'ok') return fail('SERVER_ERROR', 500);
     return json(manual ? { ok: true, generated: false } : { ok: true, generated: true, password });
-  } catch {
+  } catch (cause) {
+    const temporary = temporaryOf(cause);
+    if (temporary) return temporaryResponse(temporary);
     deps.log('unexpected_failure');
     return fail('SERVER_ERROR', 500);
+  } finally {
+    if (locked) locks.delete(locked);
   }
+}
+
+export const ADMIN_DEADLINE_MS = 50_000;
+const operationLocks = new WeakMap<Deps, Set<string>>();
+
+/** A late dependency may finish, but no further step (especially Auth mutations) starts after the response deadline. */
+export async function handleRequest(req: Request, deps: Deps): Promise<Response> {
+  let cancelled = false;
+  const guard = <A extends unknown[], T>(fn: (...args: A) => Promise<T>) => async (...args: A): Promise<T> => {
+    if (cancelled) throw new TemporaryFailure();
+    const value = await fn(...args);
+    if (cancelled) throw new TemporaryFailure();
+    return value;
+  };
+  const guarded: Deps = { ...deps, authorize: guard(deps.authorize), participant: guard(deps.participant), rpc: guard(deps.rpc),
+    getUser: guard(deps.getUser), findUserByEmail: guard(deps.findUserByEmail), participantByAuthUser: guard(deps.participantByAuthUser),
+    createUser: guard(deps.createUser), updateUser: guard(deps.updateUser), deleteUser: guard(deps.deleteUser) };
+  let locks = operationLocks.get(deps);
+  if (!locks) operationLocks.set(deps, (locks = new Set()));
+  let timer: ReturnType<typeof setTimeout>;
+  const timeout = new Promise<Response>((resolve) => {
+    timer = setTimeout(() => { cancelled = true; resolve(temporaryResponse(new TemporaryFailure())); }, deps.deadlineMs ?? ADMIN_DEADLINE_MS);
+  });
+  try { return await Promise.race([processRequest(req, guarded, locks), timeout]); }
+  finally { clearTimeout(timer!); }
 }

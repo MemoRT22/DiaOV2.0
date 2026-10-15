@@ -69,7 +69,7 @@ test('«Escanear otro» really restarts the camera: a NEW scanner is created and
   // 1) first QR is decoded → check-in succeeds → the success screen replaces the camera (no <video>)
   scanners()[0].onDecode({ data: 'QR-1' });
   expect(await screen.findByRole('heading', { name: 'Misión completada' })).toBeInTheDocument();
-  expect(q.checkIn).toHaveBeenLastCalledWith('QR-1');
+  expect(q.checkIn).toHaveBeenLastCalledWith('QR-1', expect.any(AbortSignal));
   expect(video(container)).toBeNull();
   expect(scanners()[0].stop).toHaveBeenCalled();
 
@@ -85,7 +85,7 @@ test('«Escanear otro» really restarts the camera: a NEW scanner is created and
   q.checkIn.mockResolvedValueOnce(result({ title: 'Segundo taller', stamps: 2, attended_workshops: 2 }));
   scanners()[1].onDecode({ data: 'QR-2' });
   expect(await screen.findByText('Segundo taller')).toBeInTheDocument();
-  expect(q.checkIn).toHaveBeenLastCalledWith('QR-2');
+  expect(q.checkIn).toHaveBeenLastCalledWith('QR-2', expect.any(AbortSignal));
   expect(q.checkIn).toHaveBeenCalledTimes(2);
 });
 
@@ -101,7 +101,7 @@ test('after «Escanear otro» the manual code still works', async () => {
   fireEvent.change(screen.getByPlaceholderText('ABCDEF'), { target: { value: 'ABCDEF' } });
   fireEvent.click(screen.getByRole('button', { name: 'Validar' }));
   expect(await screen.findByRole('heading', { name: 'Asistencia ya registrada' })).toBeInTheDocument();
-  expect(q.checkIn).toHaveBeenLastCalledWith('ABCDEF');
+  expect(q.checkIn).toHaveBeenLastCalledWith('ABCDEF', expect.any(AbortSignal));
 });
 
 test('a repeated check-in also restarts the camera with «Escanear otro»', async () => {
@@ -172,7 +172,7 @@ test('a student enrolled earlier registers attendance after the workshop ended: 
     await waitFor(() => expect(scanners()).toHaveLength(1));
     scanners()[0].onDecode({ data: 'QR-TARDE' });
     expect(await screen.findByRole('heading', { name: 'Misión completada' })).toBeInTheDocument();
-    expect(q.checkIn).toHaveBeenCalledWith('QR-TARDE');
+    expect(q.checkIn).toHaveBeenCalledWith('QR-TARDE', expect.any(AbortSignal));
     expect(q.announce).toHaveBeenCalledWith('attendance');
   } finally {
     vi.useRealTimers();

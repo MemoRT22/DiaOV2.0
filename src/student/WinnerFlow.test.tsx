@@ -621,7 +621,7 @@ describe('transiciones de cadencia (reglas del servidor, sin atajos)', () => {
   const OTHER: Row = { id: 'w-x', participant: 'C', folio: 'GAN-000050', status: 'confirmado', prize: 'Audífonos', category: 'Galaxia', name: 'Otra Persona' };
   const announce = (kind: string) => act(async () => { m.listeners.forEach((listener) => listener(kind)); await vi.advanceTimersByTimeAsync(10); });
 
-  beforeEach(() => { db.forcePoll = undefined; });
+  beforeEach(() => { db.forcePoll = undefined; vi.spyOn(Math, 'random').mockReturnValue(0.5); });
 
   test('sin asistencias el latido es de 10 min; al llegar la primera, la cadencia baja a 3 min (sin depender de eventos)', async () => {
     db.attended = false; db.eligible = false;
@@ -634,13 +634,15 @@ describe('transiciones de cadencia (reglas del servidor, sin atajos)', () => {
     expect(since).toBeGreaterThanOrEqual(3); // …y desde entonces consulta cada ~3 min (180 s), no cada 10
   });
 
-  test('si lo registra en esta pestaña o en otra, no espera al latido: la cadencia cambia al momento', async () => {
+  test('si lo registra en esta pestaña o en otra, reparte la actualización hasta 2 s sin esperar al latido', async () => {
     db.attended = false; db.eligible = false;
     app('/ruta');
     await tick(100);
     db.attended = true; db.eligible = true;
     const before = calls();
     await announce('attendance'); // otra pestaña registró la asistencia
+    expect(calls()).toBe(before);
+    await tick(2100);
     expect(calls()).toBe(before + 1);
     expect(await within(10 * 60_000)).toBeGreaterThanOrEqual(3); // ya en la cadencia de 180 s
   });
@@ -651,6 +653,16 @@ describe('transiciones de cadencia (reglas del servidor, sin atajos)', () => {
     const before = calls();
     await announce('reservation');
     expect(calls()).toBe(before);
+  });
+
+  test('varios avisos de asistencia antes de la lectura se coalescen en una sola consulta de premios', async () => {
+    app('/ruta');
+    await tick(100);
+    const before = calls();
+    await announce('attendance'); await announce('attendance'); await announce('attendance');
+    expect(calls()).toBe(before);
+    await tick(2100);
+    expect(calls()).toBe(before + 1);
   });
 
   test('primera selección del sorteo: quien estaba en el latido de 3 min pasa a ~20 s en su siguiente consulta, y desde entonces se entera en ~20 s', async () => {

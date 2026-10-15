@@ -79,6 +79,8 @@ beforeEach(() => {
   m.listeners = [];
   m.edition = { interests_prompt_at: null };
   m.fetchDivisions.mockResolvedValue([]);
+  m.fetchProgress.mockResolvedValue(progress());
+  vi.spyOn(Math, 'random').mockReturnValue(0);
   m.fetchBoard.mockResolvedValue(null);
   m.fetchMyRaffleStatus.mockResolvedValue(raffle(1, 0));
   m.fetchPrizes.mockResolvedValue({ prizes: [], pollSeconds: 600 });
@@ -305,7 +307,7 @@ async function scanWithRaffleProvider(res: CheckInResult | Error) {
   fireEvent.click(screen.getByRole('button', { name: 'Validar' }));
 }
 
-test('de cero asistencias a una: el primer check-in vuelve a consultar el sorteo de inmediato, sin esperar el latido', async () => {
+test('de cero asistencias a una: el primer check-in actualiza el sorteo con espera acotada, sin esperar el latido', async () => {
   await scanWithRaffleProvider(result());
   await screen.findByRole('heading', { name: 'Misión completada' });
   await waitFor(() => expect(m.fetchPrizes).toHaveBeenCalledTimes(2));

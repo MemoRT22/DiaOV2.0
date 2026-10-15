@@ -1,6 +1,7 @@
 // Frontera HTTP de administración de talleres (Coordinación): listar, consultar, crear, editar, publicar, descartar y
 // eliminar. Las dependencias con service_role viven solo en index.ts.
 import { validateSubmission } from '../workshop-intake/validation.ts';
+import { temporaryOf, temporaryResponse } from '../_shared/operations.ts';
 export type DbError = { code?: string; message?: string };
 export type AuthResult = { kind: 'ok'; userId: string } | { kind: 'unauthorized' | 'forbidden' };
 export type Deps = {
@@ -138,6 +139,8 @@ export async function handleRequest(req: Request, deps: Deps): Promise<Response>
     });
     return error ? dbFailure(error, deps) : json({ submission: data });
   } catch (cause) {
+    const temporary = temporaryOf(cause);
+    if (temporary) return temporaryResponse(temporary);
     deps.log?.('unhandled', cause instanceof Error ? cause.name : typeof cause);
     return json({ error: 'INTERNAL_ERROR' }, 500);
   }

@@ -1,4 +1,6 @@
 import { rpc } from './adminApi';
+import { operationRequest } from './operationRequest';
+import { AccessError } from './accessErrors';
 
 export type CheckInResult = {
   already_registered: boolean;
@@ -14,7 +16,17 @@ export type CheckInResult = {
   level: number;
 };
 
-export const checkIn = (credential: string) => rpc<CheckInResult>('check_in', { p_credential: credential });
+export const CHECKIN_TIMEOUT_MS = 12_000;
+export async function checkIn(credential: string, signal?: AbortSignal): Promise<CheckInResult> {
+  const result = await operationRequest<CheckInResult>('/rest/v1/rpc/check_in', { p_credential: credential }, CHECKIN_TIMEOUT_MS, signal);
+  if (typeof result.already_registered !== 'boolean' || typeof result.title !== 'string'
+    || typeof result.session_id !== 'string' || typeof result.activity_id !== 'string'
+    || !Number.isFinite(Date.parse(result.starts_at)) || !Number.isFinite(Date.parse(result.ends_at))
+    || !['stamps', 'credits_granted', 'attended_workshops', 'level'].every((k) => Number.isFinite(result[k as keyof CheckInResult]))) {
+    throw new AccessError('TEMPORARILY_UNAVAILABLE');
+  }
+  return result;
+}
 
 export type CheckinSession = {
   session_id: string;
