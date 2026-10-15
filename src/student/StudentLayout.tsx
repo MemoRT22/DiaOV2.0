@@ -15,15 +15,18 @@ import { ExitSurveyProvider } from './ExitSurveyProvider';
 import { RafflePrizeProvider } from './RafflePrizeProvider';
 import ScrollManager from './ScrollManager';
 import WinnerNotice from './WinnerNotice';
+import { ErrorState } from './ui/States';
 
 export default function StudentLayout() {
-  const { ready, profile } = useAuth();
+  const { ready, profile, identityFailed, refreshIdentity } = useAuth();
   const { theme, loading } = usePublicTheme();
   const { edition } = useEdition();
   const location = useLocation();
   const headerRef = useVisualViewportAnchor<HTMLElement>('top');
 
   if (!ready || loading) return <BootSpinner />;
+  // There is a session but the profile could not be loaded (network/server): offer a retry instead of sending the student to the login screen.
+  if (!profile && identityFailed) return <div className="mx-auto max-w-md p-6"><ErrorState error={new Error('TEMPORARILY_UNAVAILABLE')} onRetry={() => void refreshIdentity()} title="No pudimos verificar tu cuenta" /></div>;
   if (!profile) return <Navigate to="/" replace />;
 
   const consentOk = !!edition && profile.platform_consent_version === edition.privacy_notice_version;

@@ -3,7 +3,7 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { AuthProvider, navigation, useAuth } from './auth';
 import { authStorageKey } from './localSession';
 
-const m = vi.hoisted(() => ({ listener: null as null | ((event: string, session: unknown) => void), identityLoads: 0, who: 'staff' as 'staff' | 'alumno' }));
+const m = vi.hoisted(() => ({ listener: null as null | ((event: string, session: unknown) => void), identityLoads: 0, who: 'staff' as 'staff' | 'alumno', fail: false }));
 
 vi.mock('./supabase', () => {
   const query = (table: string) => {
@@ -11,6 +11,7 @@ vi.mock('./supabase', () => {
     chain.select = () => chain;
     chain.eq = () => chain;
     chain.maybeSingle = async () => {
+      if (m.fail) return { data: null, error: { message: 'timeout' } };
       if (table === 'staff_members') m.identityLoads += 1;
       if (table === 'participant_profiles' && m.who === 'alumno') return { data: { participant_id: 'p1', display_name: 'Ana', high_school: null, platform_consent_at: null, platform_consent_version: null }, error: null };
       return { data: table === 'staff_members' && m.who === 'staff' ? { user_id: 'u1', full_name: 'Operador', is_active: true, staff_roles: [{ role: 'coordinacion' }] } : null, error: null };
@@ -30,7 +31,7 @@ function Probe() {
 }
 const emit = (event: string, value: unknown) => act(async () => { m.listener?.(event, value); });
 
-beforeEach(() => { m.identityLoads = 0; m.listener = null; m.who = 'staff'; });
+beforeEach(() => { m.identityLoads = 0; m.listener = null; m.who = 'staff'; m.fail = false; });
 
 test('the same account signing in again (tab regains focus, another window opens) does not reset the identity', async () => {
   render(<AuthProvider><Probe /></AuthProvider>);
@@ -129,4 +130,54 @@ test('if the key is still there after removing it, the same happens (no false su
   await press();
   expect(restart).not.toHaveBeenCalled();
   expect(screen.getByText(/No pudimos cerrar tu sesión/)).toBeInTheDocument();
+});
+
+function Who() { const { ready, profile, staff, identityFailed } = useAuth(); return <p>{!ready ? 'cargando' : identityFailed ? 'fallo' : profile ? `alumno:${profile.display_name}` : staff ? 'personal' : 'anónimo'}</p>; }
+const profile = { participant_id: 'p1', display_name: 'Ana', high_school: null, platform_consent_at: null, platform_consent_version: 'v1' };
+
+test('a verified identity is remembered per account, and a failing server never turns it into «no account»', async () => {
+  m.who = 'alumno';
+  const { unmount } = render(<AuthProvider><Who /></AuthProvider>);
+  await emit('INITIAL_SESSION', session('u1'));
+  expect(await screen.findByText('alumno:Ana')).toBeInTheDocument();
+  expect(JSON.parse(localStorage.getItem('diaov-identity:u1') ?? 'null').profile.display_name).toBe('Ana');
+  unmount();
+  // the app is opened again while the server fails: the student is still in, not sent to the login screen
+  m.fail = true;
+  render(<AuthProvider><Who /></AuthProvider>);
+  await emit('INITIAL_SESSION', session('u1'));
+  expect(await screen.findByText('alumno:Ana')).toBeInTheDocument();
+});
+
+test('another account never inherits a remembered identity', async () => {
+  localStorage.setItem('diaov-identity:u1', JSON.stringify({ profile, staff: null }));
+  m.fail = true;
+  vi.useFakeTimers();
+  render(<AuthProvider><Who /></AuthProvider>);
+  await emit('INITIAL_SESSION', session('u2'));
+  await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
+  vi.useRealTimers();
+  expect(screen.getByText('fallo')).toBeInTheDocument();
+});
+
+test('with a session but no way to load the profile: retries, then reports the failure (not an anonymous visitor)', async () => {
+  m.fail = true;
+  vi.useFakeTimers();
+  render(<AuthProvider><Who /></AuthProvider>);
+  await emit('INITIAL_SESSION', session('u1'));
+  expect(screen.getByText('cargando')).toBeInTheDocument();
+  await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
+  vi.useRealTimers();
+  expect(screen.getByText('fallo')).toBeInTheDocument();
+});
+
+test('a real sign-out clears the remembered identities; a server that answers «no profile» is believed', async () => {
+  localStorage.setItem('diaov-identity:u1', JSON.stringify({ profile, staff: null }));
+  m.who = 'alumno';
+  render(<AuthProvider><Who /></AuthProvider>);
+  await emit('INITIAL_SESSION', session('u1'));
+  await screen.findByText('alumno:Ana');
+  await emit('SIGNED_OUT', null);
+  expect(await screen.findByText('anónimo')).toBeInTheDocument();
+  expect(localStorage.getItem('diaov-identity:u1')).toBeNull();
 });
