@@ -4,6 +4,8 @@ import { AccessError } from './accessErrors';
 
 export type CheckInResult = {
   already_registered: boolean;
+  /** The student never reserved this workshop: the attendance still counts (rule of 2026-10-15). */
+  without_reservation?: boolean;
   session_id: string;
   activity_id: string;
   title: string;

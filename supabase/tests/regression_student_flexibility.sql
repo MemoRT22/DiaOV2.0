@@ -114,7 +114,10 @@ BEGIN
 
   -- 5) código inválido, 6) sin reservación, 7) sesión cancelada, 8) demo/real
   IF pg_temp.run(uc, $q$select check_in('ZZZZZZ')$q$) <> 'ERR:INVALID_CREDENTIAL' THEN RAISE EXCEPTION 'STUDENT_FLEX_FAIL[código inválido]'; END IF;
-  IF pg_temp.run(uc, format($q$select check_in(%L)$q$, p1->>'qr')) <> 'ERR:NO_RESERVATION' THEN RAISE EXCEPTION 'STUDENT_FLEX_FAIL[sin reservación]'; END IF;
+  -- Regla vigente (2026-10-15): sin reservación TAMBIÉN cuenta.
+  v := pg_temp.run(uc, format($q$select check_in(%L)$q$, p1->>'qr'));
+  IF v LIKE 'ERR:%' OR (v::jsonb->>'without_reservation') <> 'true' THEN RAISE EXCEPTION 'STUDENT_FLEX_FAIL[sin reservación debe contar: %]', v; END IF;
+  DELETE FROM attendances WHERE participant_id = (SELECT id FROM participants WHERE auth_user_id = uc::uuid) AND activity_id = (p1->>'act')::uuid;
   INSERT INTO reservations (participant_id, session_id, activity_id)
   SELECT p.id, (cx->>'ses')::uuid, (cx->>'act')::uuid FROM participants p WHERE p.auth_user_id = uh::uuid;
   IF pg_temp.run(uh, format($q$select check_in(%L)$q$, cx->>'qr')) <> 'ERR:SESSION_CANCELLED' THEN RAISE EXCEPTION 'STUDENT_FLEX_FAIL[sesión cancelada]'; END IF;

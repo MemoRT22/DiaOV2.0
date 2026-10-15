@@ -133,7 +133,13 @@ BEGIN
   END LOOP;
   a:=pg_temp.activity(ed,divs[1],NULL,0,60);
   result:=pg_temp.as_student(uid[1],format('select check_in(%L)',a->>'qr_token'));
-  PERFORM pg_temp.assert_true(result->>'error'='NO_RESERVATION','QR without reservation');
+  -- Regla vigente (2026-10-15): el QR sin reservación también registra asistencia (sin crear reservación) y es idempotente.
+  PERFORM pg_temp.assert_true(result->>'error' IS NULL AND result->>'without_reservation'='true','QR without reservation counts');
+  PERFORM pg_temp.assert_true((SELECT count(*) FROM attendances WHERE participant_id=pid[1] AND activity_id=(a->>'activity')::uuid AND reservation_id IS NULL)=1,'one unreserved attendance');
+  PERFORM pg_temp.assert_true((SELECT count(*) FROM reservations WHERE participant_id=pid[1] AND activity_id=(a->>'activity')::uuid)=0,'no reservation created');
+  result:=pg_temp.as_student(uid[1],format('select check_in(%L)',a->>'qr_token'));
+  PERFORM pg_temp.assert_true(result->>'already_registered'='true','unreserved check-in is idempotent');
+  DELETE FROM attendances WHERE participant_id=pid[1] AND activity_id=(a->>'activity')::uuid;  -- el escenario siguiente parte sin asistencia
   INSERT INTO reservations(participant_id,session_id,activity_id) VALUES(pid[1],(a->>'session')::uuid,(a->>'activity')::uuid);
   UPDATE activity_sessions SET status='cancelada' WHERE id=(a->>'session')::uuid;
   result:=pg_temp.as_student(uid[1],format('select check_in(%L)',a->>'manual_code'));

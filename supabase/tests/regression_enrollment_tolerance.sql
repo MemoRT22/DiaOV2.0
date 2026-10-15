@@ -169,12 +169,17 @@ BEGIN
   sa := pg_temp.mk('qr-dentro', interval '-3 minutes', 30);
   sb := pg_temp.mk('qr-fuera', interval '-20 minutes', 30);
   u := pg_temp.mkp('qrsin');
-  n := n + pg_temp.expect('QR sin reservación (aún en tolerancia)', pg_temp.run(u, format($q$select check_in(%L)$q$, sa->>'qr')), 'ERR:NO_RESERVATION');
-  n := n + pg_temp.expect('QR sin reservación (fuera de tolerancia)', pg_temp.run(u, format($q$select check_in(%L)$q$, sb->>'qr')), 'ERR:NO_RESERVATION');
-  n := n + pg_temp.expect('código manual sin reservación', pg_temp.run(u, format($q$select check_in(%L)$q$, sb->>'code')), 'ERR:NO_RESERVATION');
+  -- Regla vigente (2026-10-15): sin reservación TAMBIÉN cuenta (dentro y fuera de tolerancia), sin crear reservación; una asistencia por actividad.
+  n := n + pg_temp.expect('QR sin reservación (aún en tolerancia) cuenta',
+    (SELECT CASE WHEN r LIKE 'ERR:%' THEN r ELSE r::jsonb->>'without_reservation' END FROM (SELECT pg_temp.run(u, format($q$select check_in(%L)$q$, sa->>'qr')) r) t), 'true');
+  n := n + pg_temp.expect('QR sin reservación (fuera de tolerancia) cuenta',
+    (SELECT CASE WHEN r LIKE 'ERR:%' THEN r ELSE r::jsonb->>'without_reservation' END FROM (SELECT pg_temp.run(u, format($q$select check_in(%L)$q$, sb->>'qr')) r) t), 'true');
+  n := n + pg_temp.expect('código manual después del QR: ya registrada',
+    (SELECT CASE WHEN r LIKE 'ERR:%' THEN r ELSE r::jsonb->>'already_registered' END FROM (SELECT pg_temp.run(u, format($q$select check_in(%L)$q$, sb->>'code')) r) t), 'true');
   n := n + pg_temp.expect('escanear no genera reservación', pg_temp.res_count(u)::text, '0');
-  n := n + pg_temp.expect('escanear sin reservación no registra asistencia',
-    (SELECT count(*) FROM attendances WHERE participant_id = pg_temp.pid(u))::text, '0');
+  n := n + pg_temp.expect('dos asistencias sin reservación (una por actividad)',
+    (SELECT count(*) FROM attendances WHERE participant_id = pg_temp.pid(u) AND reservation_id IS NULL)::text, '2');
+  DELETE FROM attendances WHERE participant_id = pg_temp.pid(u);  -- el resto del escenario parte sin asistencias
 
   -- ===== 5) reservar dentro de tolerancia y luego escanear =====
   s := pg_temp.mk('reserva-y-qr', interval '-10 minutes', 30);   -- EN el límite exacto

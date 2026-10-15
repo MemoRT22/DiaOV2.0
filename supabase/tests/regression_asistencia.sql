@@ -68,7 +68,12 @@ BEGIN
   IF (SELECT count(*) FROM activity_credentials WHERE activity_id IN (a1,a2)) <> 2
   THEN RAISE EXCEPTION 'ACTIVITY_CREDENTIAL_CONTRACT'; END IF;
   answer := pg_temp.as_user(ub,format('select check_in(%L)',cred1->>'qr_token'));
-  IF answer <> 'ERR:NO_RESERVATION' THEN RAISE EXCEPTION 'WRONG_WORKSHOP[%]',answer; END IF;
+  -- Regla vigente (2026-10-15): sin reservación TAMBIÉN cuenta, en la sesión de ESA actividad, sin crear reservación ni ocupar cupo.
+  IF answer LIKE 'ERR:%' OR (answer::jsonb->>'without_reservation') <> 'true' OR (answer::jsonb->>'session_id')::uuid <> s1
+     OR NOT EXISTS (SELECT 1 FROM attendances WHERE participant_id=pb AND activity_id=a1 AND session_id=s1 AND reservation_id IS NULL)
+     OR EXISTS (SELECT 1 FROM reservations WHERE participant_id=pb AND activity_id=a1)
+  THEN RAISE EXCEPTION 'UNRESERVED_CHECKIN[%]',answer; END IF;
+  DELETE FROM attendances WHERE participant_id=pb AND activity_id=a1;  -- el resto del escenario parte de «pb sin asistencias»
   answer := pg_temp.as_user(ua,$q$select check_in('ZZZZZZ')$q$);
   IF answer <> 'ERR:INVALID_CREDENTIAL' THEN RAISE EXCEPTION 'INVALID_CREDENTIAL[%]',answer; END IF;
   answer := pg_temp.as_user(ua,format('select check_in(%L)',cred1->>'qr_token'));
