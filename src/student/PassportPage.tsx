@@ -9,6 +9,8 @@ import { useLocation } from 'react-router-dom';
 import { useRafflePrizes } from './RafflePrizeProvider';
 import { useLoad } from '../lib/useLoad';
 import { useParticipantSync } from '../lib/useParticipantSync';
+import { useInterestOpeningRefresh } from '../lib/useInterestOpeningRefresh';
+import { useEdition } from '../edition/EditionProvider';
 import { usePublicTheme } from '../theme/PublicThemeProvider';
 import { LOGBOOK, MISSION } from './copy';
 import ExitSurveyCard from './ExitSurveyCard';
@@ -29,11 +31,16 @@ const initials = (name: string | undefined) =>
 export default function PassportPage() {
   const { theme, term, text, rankName } = usePublicTheme();
   const { profile, signOut } = useAuth();
+  const { edition } = useEdition();
   const { data, error, loading, reload } = useLoad(
     () => Promise.all([fetchProgress(), fetchDivisions(), fetchMyRaffleStatus().catch(() => null)]),
     [],
   );
   useParticipantSync(reload);
+  useInterestOpeningRefresh(reload, {
+    opensAt: edition?.interests_prompt_at,
+    available: data?.[0].post_event_interests_prompt ?? false,
+  });
   // Al completar la encuesta (con la Bitácora ya abierta, p. ej. desde otra pestaña) el estado del sorteo cambia en el servidor: se vuelve a leer.
   const survey = useExitSurvey();
   const surveyDone = survey.status?.completed ?? null;
@@ -123,17 +130,21 @@ export default function PassportPage() {
         </p>
       </section>
 
-      <ExitSurveyCard />
-
-      <RaffleStatusCard raffle={raffle} prizes={prizes} verified={verified} onRetry={() => void refresh()} surveyOpen={survey.status?.isOpen ?? false} />
-
+      {(showInterestsLink || progress.post_event_interests_completed || survey.enabled) && (
+        <div>
+          <p className="text-xs font-extrabold uppercase tracking-[0.18em] text-fg-brand">Cierre de tu experiencia</p>
+          <h2 className="mt-1 text-xl font-extrabold">Reflexiona y comparte</h2>
+          <p className="mt-1 text-sm text-ink-muted">Son dos pasos independientes. Puedes responder la encuesta aunque dejes tus carreras para después.</p>
+        </div>
+      )}
       {(showInterestsLink || progress.post_event_interests_completed) && (
         <section className="space-card p-5" aria-label="Carreras de interés">
           <div className="flex items-center gap-2">
             <Compass className="h-5 w-5 text-fg-brand" aria-hidden />
             <h2 className="text-base font-extrabold">{term('interests', true)}</h2>
           </div>
-          <p className="mt-0.5 text-xs font-semibold uppercase tracking-wide text-ink-muted">Carreras que te interesan</p>
+          <p className="mt-0.5 text-xs font-semibold uppercase tracking-wide text-ink-muted">Paso 1 de 2 · opcional</p>
+          <p className="mt-1 text-sm font-semibold">Intereses después del Día OV</p>
           <p className="mt-1 text-sm text-ink-muted">
             {progress.post_event_interests_completed ? 'Ya guardaste tus carreras. Puedes revisarlas.' : text('interestsPromptBody')}
           </p>
@@ -142,6 +153,10 @@ export default function PassportPage() {
           </Link>
         </section>
       )}
+
+      <ExitSurveyCard stepLabel="Paso 2 de 2" />
+
+      <RaffleStatusCard raffle={raffle} prizes={prizes} verified={verified} onRetry={() => void refresh()} surveyOpen={survey.status?.isOpen ?? false} />
 
       <div className="pt-2 text-center">
         <button
