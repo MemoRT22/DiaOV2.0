@@ -1,0 +1,8 @@
+# Datos ficticios generados (incluyen la contraseña común de las cuentas de prueba) y resultados de corridas.
+data/
+/results/*
+!/results/.gitkeep
+.env
+.env.*
+!.env.example
+node_modules/

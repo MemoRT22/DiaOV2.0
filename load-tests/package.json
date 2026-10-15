@@ -1,0 +1,13 @@
+{
+  "name": "dia-ov-load-tests",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Pruebas de carga (Grafana k6) del Día OV 2026. Solo contra entornos aislados.",
+  "scripts": {
+    "generate": "node tools/generate-data.mjs",
+    "report": "node tools/render-report.mjs",
+    "check": "node --test tests/*.test.mjs && node tools/check-suite.mjs",
+    "k6": "node tools/run-k6.mjs"
+  }
+}
