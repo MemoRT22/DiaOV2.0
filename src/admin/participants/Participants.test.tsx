@@ -111,7 +111,8 @@ test('the participants flow never calls the retired lock or manual-signup RPCs',
   await userEvent.type(screen.getByRole('textbox', { name: 'Buscar participante' }), 'ana');
   await screen.findByText('Ana López');
   const called = vi.mocked(rpc).mock.calls.map(([name]) => name);
-  expect(new Set(called)).toEqual(new Set(['search_participants']));
+  // Solo lectura: la búsqueda y las dos consultas del panel de orientación.
+  expect(new Set(called)).toEqual(new Set(['search_participants', 'participants_dashboard_summary', 'participants_orientation']));
   expect(called).not.toContain('clear_access_lock');
   expect(called).not.toContain('create_participant_manual');
   expect(called).not.toContain('access_diagnosis');
@@ -133,4 +134,52 @@ test('an empty edition says so instead of a «no match» message', async () => {
   show();
   expect(await screen.findByText('Aún no hay participantes registrados en esta edición.')).toBeInTheDocument();
   expect(screen.queryByText(/se registró con otro correo/)).not.toBeInTheDocument();
+});
+
+const orient = (over: Record<string, unknown> = {}) => ({
+  id: 'p-1', last_seen_at: new Date(Date.now() - 5 * 60_000).toISOString(), reservations_active: 0, attendances: 0, stamps: 0, category: null, others: [], ...over,
+});
+const summary = { server_time: '2026-10-15T16:00:00Z', accounts_total: 1700, accounts_with_login: 1500, active_last_hour: 420, with_reservations: 1295, reservations_active: 3534,
+  with_attendance: 300, stamps_total: 410, duplicate_groups: 129, duplicate_accounts: 268, duplicates_data_split: 57, duplicates_route_elsewhere: 9 };
+
+test('shows the quick dashboard for Coordinación and Staff', async () => {
+  vi.mocked(rpc).mockImplementation((async (name: string) => (name === 'search_participants' ? [hit({})] : name === 'participants_dashboard_summary' ? summary : [])) as never);
+  role(['staff']);
+  show();
+  const dash = await screen.findByRole('region', { name: 'Resumen de participantes' });
+  expect(within(dash).getByText('1700')).toBeInTheDocument();
+  expect(within(dash).getByText('420')).toBeInTheDocument();
+  expect(within(dash).getByText('3534 vigentes')).toBeInTheDocument();
+  expect(within(dash).getByText('Posibles duplicados')).toBeInTheDocument();
+  expect(within(dash).getByText('Su ruta está en otra cuenta')).toBeInTheDocument();
+});
+
+test('a search lists each person with their activity and ALL their other accounts, pointing to the one that has their route', async () => {
+  vi.mocked(rpc).mockImplementation((async (name: string) => {
+    if (name === 'search_participants') return [hit({ id: 'p-1', full_name: 'Karol Orozco', email: 'karolorozcocamacho@gmail.com', phone: '9981487369' })];
+    if (name === 'participants_orientation') return [orient({ id: 'p-1', others: [
+      { id: 'p-2', full_name: 'Karol sophia Orozco camacho', email: 'r.miguel.ocampo.021208@gmail.com', origin: 'self_service', has_login: true,
+        last_seen_at: new Date(Date.now() - 3 * 60_000).toISOString(), reservations_active: 2, attendances: 0, stamps: 0 }] })];
+    return undefined;
+  }) as never);
+  show();
+  await screen.findByText('Karol Orozco');
+  expect(await screen.findByText('0 reservaciones')).toBeInTheDocument();
+  expect(screen.getByText('Última actividad: hace 5 min')).toBeInTheDocument();
+  expect(screen.getByText('Otra cuenta con el mismo teléfono')).toBeInTheDocument();
+  const note = screen.getByRole('note');
+  expect(note).toHaveTextContent('Esta cuenta está vacía');
+  expect(note).toHaveTextContent('r.miguel.ocampo.021208@gmail.com');
+  expect(screen.getByText('Karol sophia Orozco camacho')).toBeInTheDocument();
+  expect(screen.getByText(/entró hace 3 min/)).toBeInTheDocument();
+});
+
+test('the list keeps working when the orientation or the dashboard fail', async () => {
+  vi.mocked(rpc).mockImplementation((async (name: string) => {
+    if (name === 'search_participants') return [hit({})];
+    throw new Error('boom');
+  }) as never);
+  show();
+  expect(await screen.findByText('Ana López')).toBeInTheDocument();
+  expect(screen.queryByRole('note')).toBeNull();
 });

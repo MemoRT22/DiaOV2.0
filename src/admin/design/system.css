@@ -203,3 +203,24 @@ html[data-surface='admin'] .ad-credential h2 { margin-top: 1.1rem; font-size: 1.
   .ad-credential { border: 0; box-shadow: none; width: 100%; margin: 0; padding: 1cm; break-inside: avoid; }
   .ad-credential img { width: 8cm; }
 }
+
+/* Participantes: panel de orientación */
+.ad-dashboard-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr)); gap: .6rem; }
+.ad-stat { padding: .7rem .85rem; border: 1px solid var(--ad-line); border-radius: 8px; background: #fff; }
+.ad-stat strong { display: block; font-size: 1.35rem; line-height: 1.1; color: var(--ad-ink); font-variant-numeric: tabular-nums; }
+.ad-stat span { display: block; margin-top: .15rem; font-size: .76rem; font-weight: 650; color: var(--ad-ink); }
+.ad-stat small { display: block; margin-top: .1rem; font-size: .7rem; color: var(--ad-muted); }
+.ad-stat-warn { border-color: #e7b9a3; background: #fdf3ee; }
+.ad-dashboard-foot { margin-top: .45rem; display: flex; gap: .75rem; align-items: center; color: var(--ad-muted); font-size: .72rem; }
+.ad-dashboard-foot button { display: inline-flex; gap: .25rem; align-items: center; color: var(--ad-accent); font-weight: 650; }
+.ad-dashboard-foot button:disabled { opacity: .5; }
+.ad-participant-identity .ad-orient { display: flex; flex-wrap: wrap; gap: .3rem .45rem; margin-top: .4rem; white-space: normal; }
+.ad-orient-chip { display: inline-flex; align-items: center; gap: .25rem; padding: .12rem .5rem; border-radius: 999px; background: #f1efe9; color: var(--ad-ink); font-size: .72rem; font-weight: 600; }
+.ad-orient-chip.is-empty { background: #f6f4ef; color: var(--ad-muted); font-weight: 500; }
+.ad-others { margin-top: .5rem; padding: .5rem .6rem; border: 1px dashed #d8cfc2; border-radius: 8px; background: #fbfaf6; white-space: normal; }
+.ad-others > strong { display: block; font-size: .72rem; color: var(--ad-ink); }
+.ad-others ul { margin-top: .3rem; display: grid; gap: .3rem; }
+.ad-others li { font-size: .74rem; color: var(--ad-muted); overflow-wrap: anywhere; }
+.ad-others li b { color: var(--ad-ink); font-weight: 650; }
+.ad-others .ad-has-route { color: #1f6b3a; font-weight: 700; }
+.ad-hint-route { margin-top: .4rem; padding: .4rem .55rem; border-radius: 8px; background: #fdf3ee; border: 1px solid #e7b9a3; color: #7a3a1d; font-size: .74rem; font-weight: 600; white-space: normal; overflow-wrap: anywhere; }

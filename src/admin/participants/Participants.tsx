@@ -6,9 +6,11 @@ import { ORIGIN_LABELS, rpc } from '../../lib/adminApi';
 import { fetchCareers, fetchHighSchools, type Career, type HighSchool } from '../../lib/catalog';
 import { hasRole, useAuth } from '../../lib/auth';
 import { friendlyError } from '../../lib/errors';
+import { accountWithTheirData, fetchOrientation, lastSeenLabel, type Orientation } from '../../lib/participantOrientation';
 import ParticipantCreate from './ParticipantCreate';
 import ParticipantForm, { type ParticipantValues } from './ParticipantForm';
 import { DataPanel, EmptyState, PageHeader, SearchField } from '../design/Primitives';
+import ParticipantsDashboard from './ParticipantsDashboard';
 
 type Hit = {
   id: string;
@@ -33,6 +35,8 @@ export default function Participants() {
   const coordinacion = hasRole(staff, 'coordinacion');
   const [query, setQuery] = useState('');
   const [hits, setHits] = useState<Hit[] | null>(null);
+  // Activity of each listed person and their other accounts (same phone). Never blocks or breaks the list.
+  const [orientation, setOrientation] = useState<Map<string, Orientation>>(new Map());
   const [error, setError] = useState('');
   const [searching, setSearching] = useState(false);
   const [revision, setRevision] = useState(0);
@@ -90,7 +94,9 @@ export default function Participants() {
       setError('');
       try {
         const data = await rpc<Hit[]>('search_participants', { p_query: q });
-        if (!cancelled) setHits(Array.isArray(data) ? data : []);
+        const list = Array.isArray(data) ? data : [];
+        if (!cancelled) setHits(list);
+        fetchOrientation(list.map((h) => h.id)).then((map) => { if (!cancelled) setOrientation(map); }, () => { if (!cancelled) setOrientation(new Map()); });
       } catch (cause) {
         if (!cancelled) setError(friendlyError(cause));
       } finally {
@@ -117,6 +123,7 @@ export default function Participants() {
         </div>}
       </div>
 
+      <ParticipantsDashboard />
       {notice && <Alert tone="success">{notice}</Alert>}
       {error && <Alert tone="error">{error}</Alert>}
       {editError && <Alert tone="error">No se pudo abrir el formulario: {editError}</Alert>}
@@ -153,6 +160,7 @@ export default function Participants() {
                     </Link>
                     <p>{h.email}</p>
                     <p className="ad-mobile-meta">{h.phone ?? 'Sin teléfono'}{h.career_name ? ` · ${h.career_name}` : ''}</p>
+                    <OrientationBlock info={orientation.get(h.id)} />
                   </td>
                   <td className="ad-col-phone">{h.phone ?? '—'}</td>
                   <td className="ad-col-career">{h.career_name ?? '—'}</td>
@@ -183,5 +191,38 @@ export default function Participants() {
         careers={editData.careers} highSchools={editData.highSchools} canEditHighSchool={coordinacion}
         onClose={closeEdit} onSaved={() => { closeEdit(); setRevision((value) => value + 1); }} />}
     </div>
+  );
+}
+
+/** What orients a student at the desk: their activity, and the other accounts they may have (same phone) with the one holding their route first. */
+function OrientationBlock({ info }: { info: Orientation | undefined }) {
+  if (!info) return null;
+  const holder = accountWithTheirData(info);
+  return (
+    <>
+      <div className="ad-orient" aria-label="Actividad de la cuenta">
+        <span className={`ad-orient-chip ${info.reservations_active === 0 ? 'is-empty' : ''}`}>{info.reservations_active} {info.reservations_active === 1 ? 'reservación' : 'reservaciones'}</span>
+        <span className={`ad-orient-chip ${info.stamps === 0 ? 'is-empty' : ''}`}>{info.stamps} {info.stamps === 1 ? 'sello' : 'sellos'}</span>
+        {info.category && <span className="ad-orient-chip">Sorteo: {info.category}</span>}
+        <span className="ad-orient-chip is-empty">Última actividad: {lastSeenLabel(info.last_seen_at)}</span>
+      </div>
+      {holder && (
+        <p className="ad-hint-route" role="note">Esta cuenta está vacía. Su ruta está en <b>{holder.email}</b> ({holder.reservations_active} {holder.reservations_active === 1 ? 'reservación' : 'reservaciones'}, {holder.stamps} sellos): debe entrar con ese correo.</p>
+      )}
+      {info.others.length > 0 && (
+        <div className="ad-others">
+          <strong>{info.others.length === 1 ? 'Otra cuenta con el mismo teléfono' : `${info.others.length} cuentas más con el mismo teléfono`}</strong>
+          <ul>
+            {info.others.map((o) => (
+              <li key={o.id}>
+                <Link to={o.id} className="ad-person-link"><b>{o.full_name}</b></Link> · {o.email} · {ORIGIN_LABELS[o.origin] ?? o.origin}
+                {' · '}{o.has_login ? `entró ${lastSeenLabel(o.last_seen_at)}` : 'nunca ha entrado'}
+                {' · '}<span className={o.reservations_active > 0 || o.attendances > 0 ? 'ad-has-route' : ''}>{o.reservations_active} {o.reservations_active === 1 ? 'reservación' : 'reservaciones'}, {o.stamps} sellos</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </>
   );
 }
