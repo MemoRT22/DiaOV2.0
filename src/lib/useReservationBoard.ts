@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { boardIsFresh, invalidateBoard, loadBoard, patchBoardAvailability, peekBoard } from './boardCache';
 import { announceParticipantChange } from './participantSync';
 import { supabase } from './supabase';
 import { useParticipantSync } from './useParticipantSync';
@@ -86,31 +87,43 @@ export function nextEnrollmentClose(board: Board, now: number): number | null {
  * broadcast channel per edition. Losing the channel only makes counts staler; the server always revalidates.
  */
 export function useReservationBoard(editionId: string | undefined) {
-  const [board, setBoard] = useState<Board | null>(null);
+  // Stale-while-revalidate: a copy already held by another screen is shown at once; it is only re-requested when older than the TTL.
+  const held = useRef(peekBoard());
+  const offset = useRef(held.current ? new Date(held.current.board.server_time).getTime() - held.current.receivedAt : 0);
+  const [board, setBoard] = useState<Board | null>(() => (held.current ? applyClock(held.current.board, offset.current) : null));
   const [error, setError] = useState<unknown>(null);
-  const [loading, setLoading] = useState(true);
-  const offset = useRef(0);
+  /** The last request failed but the last known board is kept: seat counts must be verified again. */
+  const [stale, setStale] = useState(false);
+  const [loading, setLoading] = useState(!held.current);
   const requestSeq = useRef(0);
+  const hasBoard = useRef(!!held.current);
 
-  const reload = useCallback(async () => {
+  const load = useCallback(async (force: boolean) => {
     const seq = ++requestSeq.current;
     try {
-      const data = await fetchBoard();
+      const { board: data, receivedAt } = await loadBoard(fetchBoard, force);
       if (seq !== requestSeq.current) return;
       if (!data || !Array.isArray(data.sessions) || !Array.isArray(data.reservations)) throw new Error('BAD_BOARD');
-      offset.current = new Date(data.server_time).getTime() - Date.now();
+      offset.current = new Date(data.server_time).getTime() - receivedAt;
+      hasBoard.current = true;
       setBoard(applyClock(data, offset.current));
       setError(null);
+      setStale(false);
     } catch (cause) {
-      if (seq === requestSeq.current) setError(cause);
+      if (seq !== requestSeq.current) return;
+      // Never throw away what the student already has: keep it and say it must be verified again.
+      if (hasBoard.current) setStale(true);
+      else setError(cause);
     } finally {
       if (seq === requestSeq.current) setLoading(false);
     }
   }, []);
+  /** Explicit refresh (retry button, confirmed change, change announced by another tab): always asks the server. */
+  const reload = useCallback(() => load(true), [load]);
 
   useEffect(() => {
-    void reload();
-  }, [reload]);
+    if (!boardIsFresh()) void load(false);
+  }, [load]);
 
   useEffect(() => {
     const id = window.setInterval(() => setBoard((b) => (b ? applyClock(b, offset.current) : b)), CLOCK_TICK_MS);
@@ -157,7 +170,8 @@ export function useReservationBoard(editionId: string | undefined) {
     let reloadTimer = 0;
     const scheduleReload = () => {
       window.clearTimeout(reloadTimer);
-      reloadTimer = window.setTimeout(() => void reload(), 400 + Math.random() * 800);
+      // Spread over several seconds: a schedule/availability change reaches every phone at the same time.
+      reloadTimer = window.setTimeout(() => void reload(), 1000 + Math.random() * 7000);
     };
 
     (async () => {
@@ -169,6 +183,7 @@ export function useReservationBoard(editionId: string | undefined) {
         .on('broadcast', { event: 'availability' }, ({ payload }) => {
           const p = payload as AvailabilityPatch;
           if (!p || typeof p.session_id !== 'string') return;
+          patchBoardAvailability(p);
           setBoard((b) =>
             b
               ? {
@@ -203,6 +218,7 @@ export function useReservationBoard(editionId: string | undefined) {
         // Only a successful action is announced; the reload below never announces, so tabs cannot ping-pong.
         announceParticipantChange('reservation');
       } finally {
+        invalidateBoard();
         await reload();
       }
     },
@@ -212,6 +228,7 @@ export function useReservationBoard(editionId: string | undefined) {
   return {
     board,
     error,
+    stale,
     loading,
     reload,
     reserve: (sessionId: string) => run(() => reserveSession(sessionId)),

@@ -1,10 +1,12 @@
 import '@testing-library/jest-dom/vitest';
 import { cleanup } from '@testing-library/react';
-import { afterEach } from 'vitest';
+import { afterEach, beforeEach } from 'vitest';
+import { resetBoardCache } from '../lib/boardCache';
 
 // Pruebas con `@vitest-environment node` (rasterizar PDF) no tienen DOM: lo de abajo solo aplica con jsdom.
 const hasDom = typeof window !== 'undefined';
 
+beforeEach(() => { resetBoardCache(); });
 afterEach(() => { if (!hasDom) return; cleanup(); try { window.localStorage.clear(); } catch { /* none */ } });
 
 // jsdom no implementa estas APIs de layout.

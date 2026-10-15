@@ -19,6 +19,7 @@ import WindowNotice from './reservations/WindowNotice';
 import { divisionColor, tintVars } from './ui/divisionVisuals';
 import { GuideTip } from './ui/Guide';
 import { PageHeader } from './ui/PageHeader';
+import StaleBoardNotice from './ui/StaleBoardNotice';
 import { Stations } from './ui/RouteMeter';
 import { StampPlan } from './ui/StampPlan';
 import { EmptyState, ErrorState } from './ui/States';
@@ -42,7 +43,7 @@ type Variant = 'now' | 'next' | 'later' | 'pending' | 'done' | 'closed';
 export default function MyRoute() {
   const { edition } = useEdition();
   const { term } = usePublicTheme();
-  const { board, error, loading, reload, cancel } = useReservationBoard(edition?.id);
+  const { board, error, stale, loading, reload, cancel } = useReservationBoard(edition?.id);
   const divisions = useLoad(fetchDivisions, []);
   const [confirm, setConfirm] = useState<ConfirmRequest | null>(null);
   const now = useNow();
@@ -76,6 +77,7 @@ export default function MyRoute() {
 
   return (
     <div className="space-y-5">
+      <StaleBoardNotice stale={stale} onRetry={reload} />
       <PageHeader
         eyebrow="Tu itinerario del día"
         title={NAV.route}

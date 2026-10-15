@@ -87,3 +87,27 @@ test('the tab that performs the action reloads exactly once (no double reload fr
   await act(async () => { await result.current.reserve('s1'); });
   expect(m.fetchBoard.mock.calls.length).toBe(before + 1);
 });
+
+test('if a refresh fails the last known board is kept and flagged as stale (no error screen)', async () => {
+  m.fetchBoard.mockResolvedValueOnce(board(2)).mockRejectedValueOnce(new Error('timeout'));
+  const { result } = renderHook(() => useReservationBoard('ed'));
+  await waitFor(() => expect(result.current.board?.active_reservation_count).toBe(2));
+  await act(async () => { await result.current.reload(); });
+  expect(result.current.board?.active_reservation_count).toBe(2);
+  expect(result.current.stale).toBe(true);
+  expect(result.current.error).toBeNull();
+  m.fetchBoard.mockResolvedValueOnce(board(3));
+  await act(async () => { await result.current.reload(); });
+  expect(result.current.stale).toBe(false);
+  expect(result.current.board?.active_reservation_count).toBe(3);
+});
+
+test('a second screen mounting while the board is fresh does not request it again', async () => {
+  m.fetchBoard.mockResolvedValue(board(1));
+  const first = renderHook(() => useReservationBoard('ed'));
+  await waitFor(() => expect(first.result.current.board).not.toBeNull());
+  const second = renderHook(() => useReservationBoard('ed'));
+  expect(second.result.current.board?.active_reservation_count).toBe(1); // available immediately
+  expect(second.result.current.loading).toBe(false);
+  expect(m.fetchBoard).toHaveBeenCalledTimes(1);
+});

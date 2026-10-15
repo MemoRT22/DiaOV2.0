@@ -1,6 +1,7 @@
 import { ArrowLeft, ArrowLeftRight, Backpack, CalendarClock, Clock3, Compass, MapPin, Sparkles, Users } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import StaleBoardNotice from './ui/StaleBoardNotice';
 import { Alert, PageSkeleton } from '../components/ui';
 import { fetchDivisions, formatTime } from '../lib/catalog';
 import { durationMinutes, hasTightTransfer, isSelectable, sessionState, type Board, type BoardSession } from '../lib/reservations';
@@ -36,7 +37,7 @@ export default function StudentWorkshopDetail() {
   const [params] = useSearchParams();
   const backPath = `/misiones${params.toString() ? `?${params.toString()}` : ''}`;
   const { edition } = useEdition();
-  const { board, error, loading, reload, reserve, change } = useReservationBoard(edition?.id);
+  const { board, error, stale, loading, reload, reserve, change } = useReservationBoard(edition?.id);
   // The success sheet reads the route AFTER the board was refreshed with the server's answer.
   const latestBoard = useRef<Board | null>(null);
   latestBoard.current = board;
@@ -139,6 +140,7 @@ export default function StudentWorkshopDetail() {
   return (
     <div className="space-y-4">
       {back}
+      <StaleBoardNotice stale={stale} onRetry={reload} />
 
       {/* 1 · what it is and what it takes, in one compact card: name, pitch, the three facts and where. Times come right after. */}
       <header className="space-card relative animate-fade-up overflow-hidden p-4" style={tintVars(color)}>

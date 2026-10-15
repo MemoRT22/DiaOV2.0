@@ -20,6 +20,7 @@ import MissionExplorer from './MissionExplorer';
 import WindowNotice from './reservations/WindowNotice';
 import { divisionColor } from './ui/divisionVisuals';
 import { PageHeader } from './ui/PageHeader';
+import StaleBoardNotice from './ui/StaleBoardNotice';
 import { RouteMeter } from './ui/RouteMeter';
 import { EmptyState, ErrorState } from './ui/States';
 
@@ -34,7 +35,7 @@ type Filter =
 export default function Missions() {
   const { theme, text } = usePublicTheme();
   const { edition } = useEdition();
-  const { board, error, loading, reload } = useReservationBoard(edition?.id);
+  const { board, error, stale, loading, reload } = useReservationBoard(edition?.id);
   const divisions = useLoad(fetchDivisions, []);
   // The personalised ranking is an enhancement: if it fails the catalogue keeps working, and `useLoad` keeps the last good
   // snapshot when a re-query fails (it only replaces `data` on success).
@@ -199,6 +200,7 @@ export default function Missions() {
 
   return (
     <div className="space-y-4">
+      <StaleBoardNotice stale={stale} onRetry={reload} />
       <PageHeader
         eyebrow={MISSION.descriptor}
         title={MISSION.many}

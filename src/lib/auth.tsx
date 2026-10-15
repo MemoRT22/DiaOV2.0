@@ -1,6 +1,7 @@
 import type { Session } from '@supabase/supabase-js';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { AccessError, classifyAuthError } from './accessErrors';
+import { invalidateBoard } from './boardCache';
 import { friendlyError } from './errors';
 import { authStorageKey, clearLocalSession } from './localSession';
 import { retryTransient, RetryAborted } from './retry';
@@ -91,6 +92,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const { data: sub } = supabase.auth.onAuthStateChange((event, s) => {
       setSession(s);
+      if (event === 'SIGNED_IN' || event === 'SIGNED_OUT') invalidateBoard(); // never show another account's board
       if (event === 'SIGNED_IN' && s && loadedUser.current === s.user.id) return;
       if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN' || event === 'SIGNED_OUT') {
         loadedUser.current = s?.user.id ?? null;

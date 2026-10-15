@@ -10,6 +10,7 @@ import { friendlyError } from '../lib/errors';
 import { announceParticipantChange } from '../lib/participantSync';
 import { fetchMyRaffleStatus } from '../lib/raffleApi';
 import { nextTierHint, type MyRaffleStatus } from '../lib/raffleRules';
+import { loadBoard } from '../lib/boardCache';
 import { fetchBoard } from '../lib/reservations';
 import { buildJourney, focusStop, type Stop } from '../lib/studentJourney';
 import { useRafflePrizes } from './RafflePrizeProvider';
@@ -141,7 +142,7 @@ export default function Scanner() {
       later(fetchMyRaffleStatus, (s) => setRaffle(s ?? null), 500, 1000),
       // Direct reads of reservations/attendances are intentionally revoked. Keep the authorized RPC, once and deferred.
       // my_progress uses active_reservation_count: zero already proves there is no next/current mission. Reuse that answer.
-      later(() => freshProgress?.reserved_workshops === 0 ? Promise.resolve(null) : fetchBoard(),
+      later(() => freshProgress?.reserved_workshops === 0 ? Promise.resolve(null) : loadBoard(fetchBoard, true).then((loaded) => loaded.board),
         (board) => setNext(board ? (focusStop(buildJourney(board))?.stop ?? null) : null), 1000, 2000),
     ];
     return () => { controller.abort(); timers.forEach(window.clearTimeout); };
