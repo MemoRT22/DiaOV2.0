@@ -6,7 +6,7 @@ import { friendlyError } from '../lib/errors';
 import { ADMIN_LOGO, ADMIN_PRODUCT_NAME } from './adminTheme';
 
 export default function AdminLogin() {
-  const { session, staff, profile, signInStaff, signOut } = useAuth();
+  const { session, staff, profile, signInStaff, signOut, signOutError } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -79,6 +79,7 @@ export default function AdminLogin() {
               <Button variant="secondary" className="w-full" onClick={signOut}>
                 Cerrar sesión
               </Button>
+              {signOutError && <Alert tone="error">{signOutError}</Alert>}
             </div>
           ) : (
             <form onSubmit={onSubmit} className="card space-y-4 p-6 sm:p-7">

@@ -30,7 +30,7 @@ const initials = (name: string | undefined) =>
  */
 export default function PassportPage() {
   const { theme, term, text, rankName } = usePublicTheme();
-  const { profile, signOut } = useAuth();
+  const { profile, signOut, signOutError } = useAuth();
   const { edition } = useEdition();
   const { data, error, loading, reload } = useLoad(
     () => Promise.all([fetchProgress(), fetchDivisions(), fetchMyRaffleStatus().catch(() => null)]),
@@ -166,6 +166,7 @@ export default function PassportPage() {
           <LogOut className="h-4 w-4" aria-hidden />
           Cerrar sesión
         </button>
+        {signOutError && <p role="alert" className="mx-auto mt-2 max-w-sm text-sm text-fg-error">{signOutError}</p>}
       </div>
     </div>
   );
