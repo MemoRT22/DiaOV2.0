@@ -49,6 +49,7 @@ const MESSAGES: Record<string, string> = {
   TIMEOUT: 'La conexión tardó demasiado. Tu información se conserva: inténtalo de nuevo.',
   RATE_LIMITED: 'Estamos recibiendo muchas solicitudes. Tu información se conserva. Intenta nuevamente en unos momentos.',
   TEMPORARILY_UNAVAILABLE: 'El servicio no está disponible por unos momentos. Tu información se conserva. Intenta nuevamente en unos momentos.',
+  SIGN_OUT_FAILED: 'No pudimos cerrar tu sesión en este dispositivo. Cierra esta pestaña o el navegador y vuelve a intentarlo; si usas un equipo compartido, borra los datos del sitio.',
   OPERATION_IN_PROGRESS: 'Hay una operación en curso para esta persona. Espera a que termine y vuelve a consultar su acceso.',
   WEAK_PASSWORD: 'La contraseña debe tener al menos 10 caracteres.',
   PASSWORD_MISMATCH: 'Las contraseñas no coinciden.',

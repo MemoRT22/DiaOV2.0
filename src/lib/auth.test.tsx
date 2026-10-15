@@ -1,8 +1,9 @@
 import { act, render, screen } from '@testing-library/react';
-import { beforeEach, expect, test, vi } from 'vitest';
-import { AuthProvider, useAuth } from './auth';
+import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { AuthProvider, navigation, useAuth } from './auth';
+import { authStorageKey } from './localSession';
 
-const m = vi.hoisted(() => ({ listener: null as null | ((event: string, session: unknown) => void), identityLoads: 0 }));
+const m = vi.hoisted(() => ({ listener: null as null | ((event: string, session: unknown) => void), identityLoads: 0, who: 'staff' as 'staff' | 'alumno' }));
 
 vi.mock('./supabase', () => {
   const query = (table: string) => {
@@ -11,13 +12,14 @@ vi.mock('./supabase', () => {
     chain.eq = () => chain;
     chain.maybeSingle = async () => {
       if (table === 'staff_members') m.identityLoads += 1;
-      return { data: table === 'staff_members' ? { user_id: 'u1', full_name: 'Operador', is_active: true, staff_roles: [{ role: 'coordinacion' }] } : null, error: null };
+      if (table === 'participant_profiles' && m.who === 'alumno') return { data: { participant_id: 'p1', display_name: 'Ana', high_school: null, platform_consent_at: null, platform_consent_version: null }, error: null };
+      return { data: table === 'staff_members' && m.who === 'staff' ? { user_id: 'u1', full_name: 'Operador', is_active: true, staff_roles: [{ role: 'coordinacion' }] } : null, error: null };
     };
     return chain;
   };
-  return { supabase: {
+  return { supabaseUrl: 'https://abc.supabase.co', supabase: {
     from: query,
-    auth: { onAuthStateChange: (callback: (event: string, session: unknown) => void) => { m.listener = callback; return { data: { subscription: { unsubscribe: () => undefined } } }; }, signOut: async () => undefined },
+    auth: { onAuthStateChange: (callback: (event: string, session: unknown) => void) => { m.listener = callback; return { data: { subscription: { unsubscribe: () => undefined } } }; }, signOut: async () => undefined, stopAutoRefresh: () => undefined },
   } };
 });
 
@@ -28,7 +30,7 @@ function Probe() {
 }
 const emit = (event: string, value: unknown) => act(async () => { m.listener?.(event, value); });
 
-beforeEach(() => { m.identityLoads = 0; m.listener = null; });
+beforeEach(() => { m.identityLoads = 0; m.listener = null; m.who = 'staff'; });
 
 test('the same account signing in again (tab regains focus, another window opens) does not reset the identity', async () => {
   render(<AuthProvider><Probe /></AuthProvider>);
@@ -52,32 +54,79 @@ test('a different account, and signing out, do reload the identity', async () =>
   expect(m.identityLoads).toBe(3); // after signing out the same account is a new sign-in
 });
 
-test('signing out always leaves this device: if the server logout fails, the stored session is removed and the app restarts at the start', async () => {
+const KEY = authStorageKey('https://abc.supabase.co');
+function Out() { const { signOut, signOutError, staff, profile } = useAuth(); return <><button onClick={() => void signOut()}>salir</button><p>{signOutError ?? 'sin error'}</p><p>{staff ? 'personal' : profile ? 'alumno' : 'anónimo'}</p></>; }
+const press = async () => { await act(async () => { screen.getByText('salir').click(); }); };
+async function failingServer(error: unknown = new Error('network')) {
   const { supabase } = await import('./supabase');
-  vi.spyOn(supabase.auth, 'signOut').mockResolvedValueOnce({ error: new Error('network') } as never);
-  const assign = vi.fn();
-  const realLocation = window.location;
-  Object.defineProperty(window, 'location', { configurable: true, value: { ...realLocation, assign } });
-  localStorage.setItem('sb-abc-auth-token', '{"access_token":"t"}');
-  localStorage.setItem('other-key', 'keep');
-  function Out() { const { signOut } = useAuth(); return <button onClick={() => void signOut()}>salir</button>; }
+  return vi.spyOn(supabase.auth, 'signOut').mockResolvedValue({ error } as never);
+}
+beforeEach(() => { localStorage.clear(); });
+afterEach(() => vi.restoreAllMocks());
+
+test('normal sign-out: the server answers, nothing else is touched and the app is not restarted', async () => {
+  const { supabase } = await import('./supabase');
+  vi.spyOn(supabase.auth, 'signOut').mockResolvedValue({ error: null } as never);
+  const restart = vi.spyOn(navigation, 'restart').mockImplementation(() => undefined);
+  localStorage.setItem(KEY, '{"access_token":"t"}');
   render(<AuthProvider><Out /></AuthProvider>);
-  await act(async () => { screen.getByText('salir').click(); });
-  expect(localStorage.getItem('sb-abc-auth-token')).toBeNull();
-  expect(localStorage.getItem('other-key')).toBe('keep');
-  expect(assign).toHaveBeenCalledWith('/');
-  Object.defineProperty(window, 'location', { configurable: true, value: realLocation });
+  await press();
+  expect(restart).not.toHaveBeenCalled();
+  expect(localStorage.getItem(KEY)).not.toBeNull(); // removing it after a successful logout is supabase-js's job, as before
+  expect(screen.getByText('sin error')).toBeInTheDocument();
 });
 
-test('a server logout that works needs no restart', async () => {
-  const { supabase } = await import('./supabase');
-  vi.spyOn(supabase.auth, 'signOut').mockResolvedValueOnce({ error: null } as never);
-  const assign = vi.fn();
-  const realLocation = window.location;
-  Object.defineProperty(window, 'location', { configurable: true, value: { ...realLocation, assign } });
-  function Out() { const { signOut } = useAuth(); return <button onClick={() => void signOut()}>salir</button>; }
+test.each([['network failure', new Error('network')], ['timeout', Object.assign(new Error('aborted'), { name: 'AbortError' })]])('recovery (%s): only THIS project\'s session is removed, then the app restarts', async (_name, error) => {
+  await failingServer(error);
+  const restart = vi.spyOn(navigation, 'restart').mockImplementation(() => undefined);
+  localStorage.setItem(KEY, '{"access_token":"t"}');
+  localStorage.setItem(`${KEY}-code-verifier`, 'v');
+  localStorage.setItem('sb-otherproject-auth-token', '{"access_token":"other"}');
+  localStorage.setItem('unrelated', 'keep');
   render(<AuthProvider><Out /></AuthProvider>);
-  await act(async () => { screen.getByText('salir').click(); });
-  expect(assign).not.toHaveBeenCalled();
-  Object.defineProperty(window, 'location', { configurable: true, value: realLocation });
+  await press();
+  expect(localStorage.getItem(KEY)).toBeNull();
+  expect(localStorage.getItem(`${KEY}-code-verifier`)).toBeNull();
+  expect(localStorage.getItem('sb-otherproject-auth-token')).not.toBeNull();
+  expect(localStorage.getItem('unrelated')).toBe('keep');
+  expect(restart).toHaveBeenCalledTimes(1);
+});
+
+test.each([['alumno'], ['personal']])('recovery as %s: after the restart the identity is anonymous and the old session does not come back', async (who) => {
+  m.who = who === 'alumno' ? 'alumno' : 'staff';
+  await failingServer();
+  const restart = vi.spyOn(navigation, 'restart').mockImplementation(() => undefined);
+  localStorage.setItem(KEY, JSON.stringify({ access_token: 't', user: { id: 'u1' } }));
+  const first = render(<AuthProvider><Out /></AuthProvider>);
+  await emit('INITIAL_SESSION', session('u1'));
+  await screen.findByText(who === 'personal' ? 'personal' : 'alumno');
+  await press();
+  expect(restart).toHaveBeenCalled();
+  first.unmount();
+  // «reload»: a new app reads the storage; nothing is left to restore
+  render(<AuthProvider><Out /></AuthProvider>);
+  await emit('INITIAL_SESSION', localStorage.getItem(KEY) ? session('u1') : null);
+  expect(await screen.findByText('anónimo')).toBeInTheDocument();
+});
+
+test('if the stored session cannot be proven gone, nothing is restarted and the person is told', async () => {
+  await failingServer();
+  const restart = vi.spyOn(navigation, 'restart').mockImplementation(() => undefined);
+  vi.spyOn(localStorage, 'removeItem').mockImplementation(() => { throw new Error('denied'); });
+  localStorage.setItem(KEY, '{"access_token":"t"}');
+  render(<AuthProvider><Out /></AuthProvider>);
+  await press();
+  expect(restart).not.toHaveBeenCalled();
+  expect(screen.getByText(/No pudimos cerrar tu sesión en este dispositivo/)).toBeInTheDocument();
+});
+
+test('if the key is still there after removing it, the same happens (no false success)', async () => {
+  await failingServer();
+  const restart = vi.spyOn(navigation, 'restart').mockImplementation(() => undefined);
+  vi.spyOn(localStorage, 'removeItem').mockImplementation(() => undefined); // silently does nothing
+  localStorage.setItem(KEY, '{"access_token":"t"}');
+  render(<AuthProvider><Out /></AuthProvider>);
+  await press();
+  expect(restart).not.toHaveBeenCalled();
+  expect(screen.getByText(/No pudimos cerrar tu sesión/)).toBeInTheDocument();
 });

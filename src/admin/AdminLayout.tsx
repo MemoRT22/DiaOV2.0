@@ -4,7 +4,7 @@ import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useEdition } from '../edition/EditionProvider';
 import { BootSpinner } from '../components/BootSpinner';
 import RouteErrorBoundary from '../components/RouteErrorBoundary';
-import { Button } from '../components/ui';
+import { Alert, Button } from '../components/ui';
 import { ROLE_LABELS } from '../lib/adminApi';
 import { hasRole, useAuth } from '../lib/auth';
 import AdminLogin from './AdminLogin';
@@ -24,7 +24,7 @@ const NAV_ICONS: Record<string, LucideIcon> = {
 };
 
 export default function AdminLayout() {
-  const { ready, staff, profile, signOut } = useAuth();
+  const { ready, staff, profile, signOut, signOutError } = useAuth();
   const { edition, loading } = useEdition();
   const [open, setOpen] = useState(false);
   const menuTrigger = useRef<HTMLButtonElement>(null);
@@ -66,6 +66,7 @@ export default function AdminLayout() {
         <div className="card max-w-md space-y-4 p-8 text-center">
           <h1 className="text-xl font-extrabold">Sin acceso</h1>
           <Button variant="secondary" onClick={signOut}>Cerrar sesión</Button>
+          {signOutError && <Alert tone="error">{signOutError}</Alert>}
         </div>
       </div>
     );
@@ -137,6 +138,7 @@ export default function AdminLayout() {
             <LogOut className="h-4 w-4" aria-hidden />
             Cerrar sesión
           </button>
+          {signOutError && <p role="alert" className="mt-1 text-xs text-error-600">{signOutError}</p>}
         </div>
       </aside>
       {open && <button className="fixed inset-0 z-30 bg-ink/30 lg:hidden" onClick={closeDrawer} aria-label="Cerrar menú" />}

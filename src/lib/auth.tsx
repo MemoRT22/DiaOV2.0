@@ -1,8 +1,13 @@
 import type { Session } from '@supabase/supabase-js';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { AccessError, classifyAuthError } from './accessErrors';
+import { friendlyError } from './errors';
+import { authStorageKey, clearLocalSession } from './localSession';
 import { retryTransient, RetryAborted } from './retry';
-import { supabase } from './supabase';
+import { supabase, supabaseUrl } from './supabase';
+
+/** The only way out of the app after a local sign-out: a seam so tests can observe it (`window.location` cannot be redefined in jsdom). */
+export const navigation = { restart: () => window.location.assign('/') };
 
 export type ParticipantProfile = {
   participant_id: string;
@@ -31,6 +36,8 @@ type AuthContextValue = {
   signInParticipant: (email: string, password: string, options?: SignInOptions) => Promise<void>;
   signInStaff: (email: string, password: string, options?: SignInOptions) => Promise<void>;
   signOut: () => Promise<void>;
+  /** Why the session could not be closed on this device (shown next to the button), or `null`. */
+  signOutError?: string | null;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -40,6 +47,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<ParticipantProfile | null>(null);
   const [staff, setStaff] = useState<StaffMember | null>(null);
   const [ready, setReady] = useState(false);
+  const [signOutError, setSignOutError] = useState<string | null>(null);
   // The account whose identity is loaded. Supabase repeats SIGNED_IN for the SAME account when a tab regains focus or
   // another tab of the app loads; that is not a new sign-in and must not tear the whole back office down.
   const loadedUser = useRef<string | null>(null);
@@ -146,20 +154,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [passwordSignIn]);
 
   const signOut = useCallback(async () => {
+    setSignOutError(null);
     // The server logout can fail (no network, saturation, timeout) and then supabase-js keeps the session: the button would do nothing.
-    // Leaving must always work on THIS device, so the stored session is removed and the app restarts signed out.
+    // Leaving must work on THIS device, but only once it is PROVEN that the stored session is gone; otherwise the person is told.
     const result = await supabase.auth.signOut().catch((error: unknown) => ({ error }));
     if (!result?.error) return;
-    try {
-      const keys = Array.from({ length: localStorage.length }, (_, i) => localStorage.key(i) ?? '');
-      for (const key of keys) if (/^sb-.+-auth-token(-code-verifier)?$/.test(key)) localStorage.removeItem(key);
-    } catch { /* storage unavailable: the reload below still drops the in-memory session */ }
-    window.location.assign('/');
+    supabase.auth.stopAutoRefresh?.(); // a refresh must not write the session back between clearing it and restarting
+    if (!clearLocalSession(authStorageKey(supabaseUrl))) {
+      setSignOutError(friendlyError(new Error('SIGN_OUT_FAILED')));
+      return;
+    }
+    navigation.restart();
   }, []);
 
   const value = useMemo(
-    () => ({ session, ready, profile, staff, refreshIdentity, signInParticipant, signInStaff, signOut }),
-    [session, ready, profile, staff, refreshIdentity, signInParticipant, signInStaff, signOut],
+    () => ({ session, ready, profile, staff, refreshIdentity, signInParticipant, signInStaff, signOut, signOutError }),
+    [session, ready, profile, staff, refreshIdentity, signInParticipant, signInStaff, signOut, signOutError],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
