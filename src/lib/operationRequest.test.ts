@@ -21,3 +21,12 @@ test('admin deadline covers a stalled body; no follow-up request is sent on expi
   await outcome;
   expect(fetcher).toHaveBeenCalledTimes(1);
 });
+
+test.each([[500, 'SERVER_ERROR'], [502, 'AUTH_DELETE_FAILED'], [503, 'NO_ACTIVE_EDITION']])('a definitive server answer (%i %s) keeps its code instead of reading as «try again»', async (status, error) => {
+  vi.stubGlobal('fetch', vi.fn(async () => Response.json({ error }, { status })));
+  await expect(operationRequest('/functions/v1/participant-admin', {}, 1000)).rejects.toThrow(error);
+});
+test.each([500, 502, 504])('a gateway answer without a code (%i) stays temporary', async (status) => {
+  vi.stubGlobal('fetch', vi.fn(async () => new Response('<html>bad gateway</html>', { status })));
+  await expect(operationRequest('/functions/v1/participant-admin', {}, 1000)).rejects.toMatchObject({ code: 'TEMPORARILY_UNAVAILABLE' });
+});

@@ -27,8 +27,11 @@ export async function operationRequest<T>(path: string, body: Record<string, unk
     if (response.status === 429) throw new AccessError('RATE_LIMITED', retryAfter);
     // A gateway failure or unreadable success cannot confirm whether a write committed.
     if (response.status >= 500 || response.status === 408 || (response.ok && (!result || typeof result !== 'object'))) {
-      // Preserve these existing administrative business states even though their HTTP status is 5xx.
-      if (['NO_ACTIVE_EDITION', 'AUTH_UNAVAILABLE', 'AUTH_DELETE_FAILED'].includes(result?.error)) throw new Error(result.error);
+      // Our own functions answer a definitive failure as `{ error: CODE }` with 500/502 (SERVER_ERROR, INTERNAL_ERROR, AUTH_UNAVAILABLE,
+      // AUTH_DELETE_FAILED…) or 503 NO_ACTIVE_EDITION: keep the code, so a permanent fault is not shown as «try again». A 503/504/408 and any
+      // gateway answer (no code) stay temporary.
+      if (typeof result?.error === 'string' && /^[A-Z][A-Z0-9_]{2,60}$/.test(result.error)
+        && (response.status === 500 || response.status === 502 || result.error === 'NO_ACTIVE_EDITION')) throw new Error(result.error);
       throw new AccessError('TEMPORARILY_UNAVAILABLE', retryAfter);
     }
     if (!response.ok) throw new Error(typeof result?.error === 'string' ? result.error : typeof result?.message === 'string' ? result.message : 'SERVER_ERROR');

@@ -138,12 +138,15 @@ const MESSAGES: Record<string, string> = {
 const GENERIC = 'Algo salió mal. Inténtalo de nuevo.';
 
 export function friendlyError(cause: unknown): string {
-  // Errors from network clients may carry request bodies or personal data. Never log the raw object here.
   const raw =
     typeof cause === 'string'
       ? cause
       : cause && typeof cause === 'object' && 'message' in cause
         ? String((cause as { message: unknown }).message)
         : '';
+  // Never log the raw object: network clients may carry request bodies or personal data. Only its kind and a code-like message.
+  const { name, code, status } = (cause && typeof cause === 'object' ? cause : {}) as { name?: unknown; code?: unknown; status?: unknown };
+  console.error('[error]', { name: typeof name === 'string' ? name : undefined, code: typeof code === 'string' || typeof code === 'number' ? code : undefined,
+    status: typeof status === 'number' ? status : undefined, message: /^[A-Z][A-Z0-9_]{2,60}$/.test(raw) ? raw : undefined });
   return MESSAGES[raw] ?? GENERIC;
 }
